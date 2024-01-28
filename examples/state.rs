@@ -6,7 +6,7 @@ fn main() -> anyhow::Result<()> {
 		.transform_syscalls()
 		.only_notify_syscall_exit()
 		.finish()?;
-	
+
 	let cmd = std::process::Command::new("true");
 	let mut ctx = ctx::Main::spawn(cmd, 0_usize)?;
 	ctx.secondary_mut().set_generic_syscall_handler(|cl, sys| {
@@ -15,10 +15,7 @@ fn main() -> anyhow::Result<()> {
 		Ok(())
 	})?;
 
-	ctx
-		.secondary_mut()
-		.client_mut()
-		.set_config(args)?;
+	ctx.secondary_mut().client_mut().set_config(args)?;
 
 	let count = ctx.loop_until_exit()?;
 	println!("hit {count} syscalls");

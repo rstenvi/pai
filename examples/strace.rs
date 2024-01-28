@@ -8,21 +8,19 @@ fn main() -> anyhow::Result<()> {
 		// Gather info about what type of syscall is hit
 		.transform_syscalls()
 		.finish()?;
-	
+
 	let cmd = std::process::Command::new("true");
 	let mut ctx = ctx::Main::spawn(cmd, ())?;
 
 	// Register callback to be executed on every system call
-	ctx.secondary_mut().set_generic_syscall_handler(|_cl, sys| {
-		println!("{sys}");
-		Ok(())
-	})?;
+	ctx.secondary_mut()
+		.set_generic_syscall_handler(|_cl, sys| {
+			println!("{sys}");
+			Ok(())
+		})?;
 
 	// We must also set the config
-	ctx
-		.secondary_mut()
-		.client_mut()
-		.set_config(args)?;
+	ctx.secondary_mut().client_mut().set_config(args)?;
 
 	ctx.loop_until_exit()?;
 	Ok(())

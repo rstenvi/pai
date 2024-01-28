@@ -148,7 +148,7 @@ impl<T> Secondary<T> {
 	}
 
 	/// Try and locate the symbol `name` in any of the loaded executables.
-	/// 
+	///
 	/// This function will not search in the order they are retrieved, which
 	/// should not be considered deterministic. If a symbol is defined multiple
 	/// times, there is no guarantee on which is returned.
