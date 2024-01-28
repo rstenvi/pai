@@ -1,3 +1,7 @@
+//! # Process Analyzer and Instrumenter
+//!
+//! Reserve name, code coming soon
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }

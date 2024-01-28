@@ -2,6 +2,12 @@
 name = "pai"
 version = "0.1.0"
 edition = "2021"
+license-file = "LICENSE"
+description = "Process Analyzer and Instrumenter"
+readme = "README.md"
+homepage = "https://github.com/rstenvi/pai"
+repository = "https://github.com/rstenvi/pai"
+keywords = ["instrumentation", "debugging", "analysis", "strace", "trace", "syscall"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
