@@ -46,7 +46,7 @@ pub struct Secondary<T> {
 	pub(crate) req: Option<ReqNewClient>,
 }
 impl<T> Secondary<T> {
-	pub fn new(
+	pub(crate) fn new(
 		mut client: Client<Command, Response>,
 		data: T,
 		req: Option<ReqNewClient>,
@@ -93,7 +93,7 @@ impl<T> Secondary<T> {
 		let ctx = Secondary::new_second(client, data)?;
 		Ok(ctx)
 	}
-	pub fn new_master(
+	pub(crate) fn new_master(
 		client: Client<Command, Response>,
 		data: T,
 		req: ReqNewClient,
@@ -114,6 +114,8 @@ impl<T> Secondary<T> {
 		let mods = ModuleSymbols::new(path.clone(), base, symbols);
 		self.resolved.insert(path, mods);
 	}
+
+	/// Get a [MemoryMap] which exactly matches the name in `pbuf`
 	pub fn get_module(&mut self, pbuf: &PathBuf) -> Result<MemoryMap> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		let mods = self.proc.proc_modules()?;
@@ -144,6 +146,12 @@ impl<T> Secondary<T> {
 			}
 		}
 	}
+
+	/// Try and locate the symbol `name` in any of the loaded executables.
+	/// 
+	/// This function will not search in the order they are retrieved, which
+	/// should not be considered deterministic. If a symbol is defined multiple
+	/// times, there is no guarantee on which is returned.
 	pub fn lookup_symbol(&mut self, name: &str) -> Result<Option<ElfSymbol>> {
 		let paths = self
 			.proc
@@ -161,6 +169,8 @@ impl<T> Secondary<T> {
 		}
 		Ok(None)
 	}
+
+	/// Resolve a given symbol `name` in a given module with path `pbuf`
 	pub fn resolve_symbol(&mut self, pbuf: &PathBuf, name: &str) -> Result<Option<ElfSymbol>> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		log::info!("resolving  in {pbuf:?}");
@@ -174,6 +184,9 @@ impl<T> Secondary<T> {
 			Err(Error::msg(format!("found no modules matching '{pbuf:?}'")).into())
 		}
 	}
+
+	/// Enumerate all symbols of the given type. See [SymbolType] for more
+	/// details on type of symbols.
 	pub fn symbols_of_type(
 		&mut self,
 		pbuf: &PathBuf,
@@ -443,7 +456,6 @@ impl<T> Secondary<T> {
 		Ok(())
 	}
 	fn event_breakpoint(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {
-		log::error!("hit bp @ {addr:x}");
 		let mut r = self.bpcbs.remove(&addr);
 		if let Some(cb) = std::mem::take(&mut r) {
 			let r = cb(self, tid, addr);

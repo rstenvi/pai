@@ -1,5 +1,49 @@
 //! # Process Analyzer and Instrumenter
 //!
+//! ## Examples
+//! 
+//! **minimal.rs**
+//! 
+//! Below is a minimal example spawning a program and tracing it. Since no
+//! handlers are registered, it doesn't do anything useful. 
+//! This is the example [minimal.rs](https://github.com/rstenvi/pai/examples/minimal.rs)
+//! 
+//! ```rust
+#![doc = include_str!("../examples/minimal.rs")]
+//! ```
+//! 
+//! **strace.rs**
+//! 
+//! A slightly more complicated example is the strace-like program below.
+//! This is the example [strace.rs](https://github.com/rstenvi/pai/examples/strace.rs)
+//! 
+//! ```rust
+#![doc = include_str!("../examples/strace.rs")]
+//! ```
+//! 
+//! **state.r**
+//! 
+//! The second argument passed in [ctx::Main::spawn] is a state which
+//! the caller can access on each callback. The following example is very
+//! similar to the previous one, but it counts the number of system calls
+//! instead.
+//! 
+//! This is the example [state.rs](https://github.com/rstenvi/pai/examples/state.rs)
+//! 
+//! ```rust
+#![doc = include_str!("../examples/state.rs")]
+//! ```
+//! 
+//! **breakpoint.rs**
+//! 
+//! This shows an example of inserting a breakpoint.
+//! 
+//! This is the example [state.rs](https://github.com/rstenvi/pai/examples/breakpoint.rs)
+//! 
+//! ```rust
+#![doc = include_str!("../examples/breakpoint.rs")]
+//! ```
+
 
 #![feature(extract_if)]
 #![feature(hash_extract_if)]
@@ -24,7 +68,7 @@ pub mod syscalls;
 pub mod utils;
 
 pub(crate) mod ctrl;
-pub(crate) mod exe;
+pub mod exe;
 pub(crate) mod trace;
 
 #[cfg(target_pointer_width = "64")]
