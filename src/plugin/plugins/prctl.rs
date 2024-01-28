@@ -22,8 +22,9 @@ impl Prctl {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
+		let client = ctx.client_mut();
 
-		let prctl = ctx.client.resolve_syscall("prctl")?;
+		let prctl = client.resolve_syscall("prctl")?;
 
 		let args = ArgsBuilder::new()
 			.push_registered(RegEvent::Files)
@@ -32,7 +33,7 @@ impl Prctl {
 			.transform_syscalls()
 			.finish()?;
 
-		ctx.client.set_config(args)?;
+		client.set_config(args)?;
 
 		ctx.set_specific_syscall_handler(prctl, |cl, sys| {
 			if sys.args.len() < 5 {
@@ -50,13 +51,13 @@ impl Prctl {
 
 			let event = match option {
 				libc::PR_SET_NAME => {
-					let name = cl.client.read_c_string(tid, arg2)?;
+					let name = cl.client_mut().read_c_string(tid, arg2)?;
 					EventPrctl::SetName { name }
 				}
 				libc::PR_GET_DUMPABLE => EventPrctl::GetDumpable,
 				libc::PR_SET_VMA => {
 					if arg2 as i32 == libc::PR_SET_VMA_ANON_NAME {
-						let name = cl.client.read_c_string(tid, arg5)?;
+						let name = cl.client_mut().read_c_string(tid, arg5)?;
 						EventPrctl::SetVmaAnonName {
 							name,
 							addr: arg3,
@@ -71,7 +72,7 @@ impl Prctl {
 			let event = EventInner::Prctl { event };
 			let event = Event::new_attached(sys.tid, event);
 			log::trace!("sending {event:?}");
-			cl.client.send_event(event)?;
+			cl.client_mut().send_event(event)?;
 			Ok(())
 		});
 		Ok(ctx)

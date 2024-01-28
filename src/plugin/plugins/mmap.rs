@@ -45,8 +45,8 @@ impl Mmap {
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
 
-		let mmap = ctx.client.resolve_syscall("mmap")?;
-		let mmap2 = ctx.client.resolve_syscall("mmap2");
+		let mmap = ctx.client_mut().resolve_syscall("mmap")?;
+		let mmap2 = ctx.client_mut().resolve_syscall("mmap2");
 
 		let mut args = ArgsBuilder::new()
 			.push_registered(RegEvent::Files)
@@ -59,19 +59,19 @@ impl Mmap {
 			ctx.set_specific_syscall_handler(n, |cl, sys| {
 				debug_assert!(sys.is_exit());
 				let event = Self::gen_mmap(&sys, true)?;
-				cl.client.send_event(event)?;
+				cl.client_mut().send_event(event)?;
 				Ok(())
 			});
 		}
 
 		let args = args.finish()?;
 
-		ctx.client.set_config(args)?;
+		ctx.client_mut().set_config(args)?;
 
 		ctx.set_specific_syscall_handler(mmap, |cl, sys| {
 			debug_assert!(sys.is_exit());
 			let event = Self::gen_mmap(&sys, true)?;
-			cl.client.send_event(event)?;
+			cl.client_mut().send_event(event)?;
 			Ok(())
 		});
 		Ok(ctx)

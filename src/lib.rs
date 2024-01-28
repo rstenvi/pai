@@ -18,13 +18,14 @@ extern crate test;
 pub mod api;
 pub mod arch;
 pub mod buildinfo;
-pub mod ctrl;
 pub mod ctx;
-pub mod exe;
 pub mod plugin;
 pub mod syscalls;
-pub mod trace;
 pub mod utils;
+
+pub(crate) mod ctrl;
+pub(crate) mod exe;
+pub(crate) mod trace;
 
 #[cfg(target_pointer_width = "64")]
 pub type TargetPtr = u64;

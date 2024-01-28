@@ -69,8 +69,9 @@ impl DlopenDetect {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
+		let client = ctx.client_mut();
 
-		let mmap = ctx.client.resolve_syscall("mmap")?;
+		let mmap = client.resolve_syscall("mmap")?;
 
 		let args = ArgsBuilder::new()
 			.push_registered(RegEvent::Files)
@@ -78,7 +79,7 @@ impl DlopenDetect {
 			.transform_syscalls()
 			.finish()?;
 
-		ctx.client.set_config(args)?;
+		client.set_config(args)?;
 
 		ctx.set_specific_syscall_handler(mmap, |cl, sys| {
 			if sys.is_entry() {
@@ -108,7 +109,7 @@ impl DlopenDetect {
 							let event = EventInner::Dlopen { fname };
 							let event = Event::new_attached(tid, event);
 							log::warn!("sending dlopen event {event:?}");
-							cl.client.send_event(event)?;
+							cl.client_mut().send_event(event)?;
 						}
 					}
 				}

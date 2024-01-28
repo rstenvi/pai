@@ -50,11 +50,9 @@ impl ApiWrapper<Command, Response> for ClientGen {
 	fn wrap(&self, cmd: RemoteCmd) -> (usize, Command) {
 		(0, Command::Tracer { cmd })
 	}
-
 	fn is_match(&self, _id: usize, _rsp: &Response) -> bool {
 		true
 	}
-
 	fn unwrap(&self, rsp: Response) -> Response {
 		rsp
 	}
@@ -88,13 +86,11 @@ impl<TX: serde::Serialize, RX: serde::de::DeserializeOwned> ClientApi<TX, RX> fo
 		self.writer.flush()?;
 		Ok(())
 	}
-
 	fn read(&mut self) -> Result<RX> {
 		log::info!("trying to read");
 		let v = RX::deserialize(&mut self.stream)?;
 		Ok(v)
 	}
-
 	fn write_read(&mut self, tx: TX) -> Result<RX> {
 		let v = serde_json::to_string(&tx)?;
 		self.writer.write_all(v.as_bytes())?;
@@ -122,12 +118,10 @@ where
 		self.tx.send(tx)?;
 		Ok(())
 	}
-
 	fn read(&mut self) -> Result<RX> {
 		let r = self.rx.recv()?;
 		Ok(r)
 	}
-
 	fn write_read(&mut self, tx: TX) -> Result<RX> {
 		self.write(tx)?;
 		self.read()
@@ -193,20 +187,14 @@ where
 	}
 	pub fn read(&mut self) -> Result<RX> {
 		self.stream.read()
-		// let r = self.rx.recv()?;
-		// Ok(r)
 	}
 	pub fn write(&mut self, val: TX) -> Result<()> {
 		self.stream.write(val)
-		// self.tx.send(val)?;
-		// Ok(())
 	}
 	fn write_remote(&mut self, cmd: RemoteCmd) -> crate::Result<Response> {
 		let (id, cmd) = self.wrap.wrap(cmd);
-		// self.tx.send(cmd)?;
 		self.stream.write(cmd)?;
 		loop {
-			// let rsp = self.rx.recv()?;
 			let rsp = self.stream.read()?;
 			if self.wrap.is_match(id, &rsp) {
 				return Ok(self.wrap.unwrap(rsp));
@@ -215,10 +203,8 @@ where
 	}
 	pub fn write_read(&mut self, cmd: TX) -> crate::Result<RX> {
 		self.stream.write(cmd)?;
-		// self.tx.send(cmd)?;
 		log::trace!("{}: reading response", self.id);
 		let r = self.stream.read()?;
-		// let r = self.rx.recv()?;
 		Ok(r)
 	}
 }
@@ -256,7 +242,6 @@ where
 		let cmd = RemoteCmd::syscall(tid, sysno, args.into());
 		self.wr_value_remote(cmd)
 	}
-
 	pub fn get_libc_regs(&mut self, tid: Tid) -> RemoteResult<crate::Registers> {
 		let cmd = RemoteCmd::get_libc_regs(tid);
 		self.wr_value_remote(cmd)
@@ -276,12 +261,10 @@ where
 		let cmd = RemoteCmd::get_threads_status();
 		self.wr_value_remote(cmd)
 	}
-
 	pub fn read_c_string(&mut self, tid: Tid, addr: TargetPtr) -> RemoteResult<String> {
 		let cmd = RemoteCmd::read_c_string(tid, addr);
 		self.wr_value_remote(cmd)
 	}
-
 	pub fn read_bytes(&mut self, tid: Tid, addr: TargetPtr, bytes: usize) -> RemoteResult<Vec<u8>> {
 		let cmd = RemoteCmd::read_bytes(tid, addr, bytes);
 		self.wr_value_remote(cmd)
@@ -324,7 +307,6 @@ where
 		let cmd = RemoteCmd::remove_bp(tid, addr);
 		self.wr_value_remote(cmd)
 	}
-
 	pub fn write_scratch_string<S: Into<String>>(
 		&mut self,
 		tid: Tid,
@@ -374,7 +356,6 @@ impl Client<Command, Response> {
 		let stream = Box::new(stream);
 		Self { id, wrap, stream }
 	}
-
 	pub fn prepare_load_client(&mut self) -> Result<()> {
 		let cmd = Command::prepare_load_client();
 		self.wr_ack(cmd)
@@ -408,7 +389,6 @@ impl Client<Command, Response> {
 	}
 	pub fn get_config(&mut self) -> Result<Option<Args>> {
 		let cmd = Command::get_config();
-
 		let r = self.write_read(cmd)?;
 		let v: serde_json::Value = TryInto::<serde_json::Value>::try_into(r)?;
 		let v: Option<Args> = serde_json::from_value(v)?;
@@ -432,7 +412,6 @@ impl Client<Command, Response> {
 		let r = r.ok_or(crate::Error::NotFound)?;
 		Ok(r)
 	}
-
 	pub fn remove_client(&mut self, cid: usize) -> Result<()> {
 		let cmd = Command::remove_client(cid);
 		self.wr_ack(cmd)
@@ -459,11 +438,9 @@ impl ApiWrapper<MasterComm, Response> for IdWrapper {
 		let ocmd = Command::Tracer { cmd };
 		(self.id, MasterComm::new(self.id, ocmd))
 	}
-
 	fn is_match(&self, _id: usize, _rsp: &Response) -> bool {
 		true
 	}
-
 	fn unwrap(&self, rsp: Response) -> Response {
 		rsp
 	}

@@ -6,12 +6,16 @@ use crate::trace::ptrace::Tracer;
 use crate::utils::process::Process;
 use crate::{Error, Result, TargetPtr};
 use std::thread::JoinHandle;
-pub struct Master<T> {
-	// TODO: Remove pub here
-	pub ctx: ctx::Secondary<T>,
+
+/// Main context object which is initially created when attaching/starting the
+/// tracee.
+///
+/// Subsequent clients will get a [crate::ctx::Secondary] object.
+pub struct Main<T> {
+	ctx: ctx::Secondary<T>,
 	handle: JoinHandle<Result<()>>,
 }
-impl<T> Master<T> {
+impl<T> Main<T> {
 	pub fn get_new(attach: bool, mut args: Vec<String>, state: T) -> Result<Self> {
 		let ctx = if attach {
 			let name = args.remove(0);
@@ -28,6 +32,12 @@ impl<T> Master<T> {
 			Self::spawn(cmd, state)?
 		};
 		Ok(ctx)
+	}
+	pub fn secondary(&self) -> &ctx::Secondary<T> {
+		&self.ctx
+	}
+	pub fn secondary_mut(&mut self) -> &mut ctx::Secondary<T> {
+		&mut self.ctx
 	}
 	pub fn new(ctx: ctx::Secondary<T>, handle: JoinHandle<Result<()>>) -> Self {
 		Self { ctx, handle }

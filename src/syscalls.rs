@@ -454,7 +454,7 @@ impl SyscallItem {
 		len: Option<&ValueLen>,
 	) -> Result<Option<Value>> {
 		if arg.refers_c_string() {
-			let string = ctx.client.read_c_string(tid, raw)?;
+			let string = ctx.client_mut().read_c_string(tid, raw)?;
 			let value = if arg.is_filename() {
 				Value::new_filename(string)
 			} else {
@@ -465,7 +465,7 @@ impl SyscallItem {
 			Ok(match n.name.as_str() {
 				"stat" => {
 					let bytes = std::mem::size_of::<libc_stat>();
-					let bytes = ctx.client.read_bytes(tid, raw, bytes)?;
+					let bytes = ctx.client_mut().read_bytes(tid, raw, bytes)?;
 
 					let (head, body, _tail) = unsafe { bytes.align_to::<libc_stat>() };
 					assert!(head.is_empty(), "Data was not aligned");
@@ -478,7 +478,7 @@ impl SyscallItem {
 		} else if arg.is_int() {
 			if raw != 0 {
 				let sz = arg.arg_size(std::mem::size_of::<TargetPtr>())?;
-				let bytes = ctx.client.read_bytes(tid, raw, sz)?;
+				let bytes = ctx.client_mut().read_bytes(tid, raw, sz)?;
 				let value = arg.bytes_as_int(&bytes)?;
 				let value = Value::new_number(value, sz * 8);
 				Ok(Some(value))
@@ -492,7 +492,7 @@ impl SyscallItem {
 					let sub = farg.arg_type();
 					if let Ok(itemsz) = sub.arg_size(std::mem::size_of::<TargetPtr>()) {
 						let bytes = len.bytes(itemsz);
-						let data = ctx.client.read_bytes(tid, raw, bytes)?;
+						let data = ctx.client_mut().read_bytes(tid, raw, bytes)?;
 						if let ArgType::Int8 = sub {
 							let value = Value::new_byte_array(data);
 							Ok(Some(value))

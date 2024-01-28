@@ -25,9 +25,10 @@ impl Files {
 		log::info!("plugin Files started");
 		let data = Self::new();
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
+		let client = ctx.client_mut();
 
-		let openat = ctx.client.resolve_syscall("openat")?;
-		let close = ctx.client.resolve_syscall("close")?;
+		let openat = client.resolve_syscall("openat")?;
+		let close = client.resolve_syscall("close")?;
 		let args = ArgsBuilder::new()
 			.push_syscall_traced(openat)
 			.push_syscall_traced(close)
@@ -35,11 +36,11 @@ impl Files {
 			.only_notify_syscall_exit()
 			.finish()?;
 
-		ctx.client.set_config(args)?;
+		client.set_config(args)?;
 		ctx.set_specific_syscall_handler(openat, |cl, sys| {
 			debug_assert!(sys.is_exit());
 			let fname = sys.args[1].raw_value();
-			let fname = cl.client.read_c_string(sys.tid, fname)?;
+			let fname = cl.client_mut().read_c_string(sys.tid, fname)?;
 			let fd = sys.output_as_raw();
 			let fd = utils::twos_complement(fd);
 			if fd > 0 {
@@ -48,7 +49,7 @@ impl Files {
 				let tid = sys.tid;
 				let event = EventInner::FileOpened { fname, fd };
 				let event = Event::new_attached(tid, event);
-				cl.client.send_event(event)?;
+				cl.client_mut().send_event(event)?;
 			}
 			Ok(())
 		});
@@ -62,7 +63,7 @@ impl Files {
 				let tid = sys.tid;
 				let event = EventInner::FileClosed { fname, fd };
 				let event = Event::new_attached(tid, event);
-				cl.client.send_event(event)?;
+				cl.client_mut().send_event(event)?;
 			}
 			Ok(())
 		});

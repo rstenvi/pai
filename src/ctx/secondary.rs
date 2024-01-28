@@ -26,7 +26,7 @@ pub type StoppedCb<T> = fn(&mut Secondary<T>, Stopped) -> Result<()>;
 pub type RawSyscallCb<T> = fn(&mut Secondary<T>, Tid, bool) -> Result<()>;
 
 pub struct Secondary<T> {
-	pub client: Client<Command, Response>,
+	client: Client<Command, Response>,
 	pub proc: Process,
 	pub(crate) plugins: HashMap<Plugin, LoadedPlugin>,
 
@@ -74,6 +74,12 @@ impl<T> Secondary<T> {
 			raw_syscall_cb: None,
 		};
 		Ok(r)
+	}
+	pub fn client(&self) -> &Client<Command, Response> {
+		&self.client
+	}
+	pub fn client_mut(&mut self) -> &mut Client<Command, Response> {
+		&mut self.client
 	}
 	pub fn new_second(client: Client<Command, Response>, data: T) -> Result<Self> {
 		Self::new(client, data, None)

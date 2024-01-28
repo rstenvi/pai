@@ -23,13 +23,14 @@ impl Prctl {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
+		let client = ctx.client_mut();
 
-		let read = ctx.client.resolve_syscall("read")?;
-		let pread = ctx.client.resolve_syscall("pread");
-		let pread64 = ctx.client.resolve_syscall("pread64");
-		let readv = ctx.client.resolve_syscall("readv");
-		let preadv = ctx.client.resolve_syscall("preadv");
-		let preadv2 = ctx.client.resolve_syscall("preadv2");
+		let read = client.resolve_syscall("read")?;
+		let pread = client.resolve_syscall("pread");
+		let pread64 = client.resolve_syscall("pread64");
+		let readv = client.resolve_syscall("readv");
+		let preadv = client.resolve_syscall("preadv");
+		let preadv2 = client.resolve_syscall("preadv2");
 
 		let mut args = ArgsBuilder::new()
 			.push_registered(RegEvent::Files)
@@ -55,7 +56,7 @@ impl Prctl {
 
 		let args = args.finish()?;
 
-		ctx.client.set_config(args)?;
+		client.set_config(args)?;
 
 		ctx.set_specific_syscall_handler(read, |_cl, _sys| Ok(()));
 
