@@ -284,6 +284,7 @@ lazy_static::lazy_static! {
 	};
 }
 
+#[cfg(feature = "syscalls")]
 lazy_static::lazy_static! {
 	#[derive(Default)]
 	static ref PARSED: std::sync::RwLock<syzlang_parser::parser::Parsed> = {
@@ -298,6 +299,7 @@ lazy_static::lazy_static! {
 	};
 }
 
+#[cfg(feature = "syscalls")]
 lazy_static::lazy_static! {
 	pub(crate) static ref SYSCALLS: std::sync::RwLock<syscalls::Syscalls> = {
 		if let Ok(parsed) = PARSED.read() {

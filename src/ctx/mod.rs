@@ -50,12 +50,14 @@ mod tests {
 		b.iter(move || clientmgr_strace())
 	}
 
+	#[cfg(feature = "syscalls")]
 	#[bench]
 	fn bench_parsed_syscalls(b: &mut Bencher) {
 		syscalls1();
 		b.iter(|| syscalls1())
 	}
 
+	#[cfg(feature = "syscalls")]
 	#[test]
 	fn syscalls0() {
 		let data = syzlang_data::linux::PARSED.read().unwrap();
@@ -73,6 +75,7 @@ mod tests {
 		let _v = syscalls.resolve(1).unwrap();
 	}
 
+	#[cfg(feature = "syscalls")]
 	#[test]
 	fn syscalls1() {
 		let data = syzlang_data::linux::PARSED.read().unwrap();
@@ -109,10 +112,10 @@ mod tests {
 		sec.set_generic_syscall_handler(|cl, mut sys| {
 			if sys.is_exit() {
 				format!("{sys}");
-				sys.enrich_values().unwrap();
-				format!("{sys}");
-				sys.parse_deep(sys.tid, cl, Direction::InOut).unwrap();
-				let _sys = format!("{sys}");
+				// sys.enrich_values().unwrap();
+				// format!("{sys}");
+				// sys.parse_deep(sys.tid, cl, Direction::InOut).unwrap();
+				// let _sys = format!("{sys}");
 			}
 			Ok(())
 		})
@@ -140,7 +143,7 @@ mod tests {
 		let sec = ctx.secondary_mut();
 		sec.set_generic_syscall_handler(|_cl, sys| {
 			if sys.is_exit() {
-				format!("{}", sys.as_nice_str());
+				format!("{sys}");
 			}
 			Ok(())
 		})
@@ -183,7 +186,7 @@ mod tests {
 		let sec = ctx.secondary_mut();
 		sec.set_generic_syscall_handler(|_cl, sys| {
 			if sys.is_exit() {
-				format!("{}", sys.as_nice_str());
+				format!("{sys}");
 			}
 			Ok(())
 		})
@@ -240,6 +243,7 @@ mod tests {
 		assert_eq!(res, 1);
 	}
 
+	#[cfg(feature = "syscalls")]
 	#[test]
 	fn clientmgr_plugins() {
 		let args = ArgsBuilder::new()

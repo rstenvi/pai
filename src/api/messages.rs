@@ -1,12 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-	exe::elf::SymbolType,
-	plugin::Plugin,
-	syscalls::SyscallItem,
-	trace::{Stop, Stopped},
-	utils::{process::Tid, Perms},
-	TargetPtr,
+	exe::elf::SymbolType, plugin::Plugin, syscalls::SyscallItem, trace::{Stop, Stopped}, utils::{process::Tid, Perms}, TargetPtr
 };
 use serde::{Deserialize, Serialize};
 
@@ -451,6 +446,7 @@ pub enum ClientProxy {
 	SetConfigThread { tid: Tid, config: Args },
 	GetConfig,
 	GetConfigThread { tid: Tid },
+	#[cfg(feature = "syscalls")]
 	ResolveSyscall(String),
 	Detach,
 }
@@ -531,6 +527,7 @@ impl Command {
 		let cmd = ClientProxy::GetConfigThread { tid };
 		Self::ClientProxy { cmd }
 	}
+	#[cfg(feature = "syscalls")]
 	pub fn resolve_syscall<S: Into<String>>(s: S) -> Self {
 		let cmd = ClientProxy::ResolveSyscall(s.into());
 		Self::ClientProxy { cmd }

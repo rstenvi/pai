@@ -332,9 +332,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.1.0"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d530e1a18b1cb4c484e6e34556a0d948706958449fca0cab753d649f2bce3d1f"
+checksum = "cf2a4f498956c7723dc280afc6a37d0dec50b39a29e232c6187ce4503703e8c2"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -431,6 +431,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+dependencies = [
+ "bitflags 2.4.2",
+ "cfg-if",
+ "libc 0.2.152 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -460,7 +471,7 @@ dependencies = [
  "lazy_static",
  "libc 0.2.152 (git+https://github.com/rstenvi/libc?branch=libc-0.2)",
  "log",
- "nix",
+ "nix 0.26.4",
  "paste",
  "pete",
  "procfs",
@@ -489,7 +500,7 @@ checksum = "0f09c1c1ad40df294ff8643fe88a3dc64fff3293b6bc0ed9f71aff71f7086cbd"
 dependencies = [
  "libc 0.2.152 (registry+https://github.com/rust-lang/crates.io-index)",
  "memoffset 0.8.0",
- "nix",
+ "nix 0.26.4",
  "thiserror",
 ]
 
@@ -667,12 +678,13 @@ dependencies = [
 
 [[package]]
 name = "syzlang-data"
-version = "0.1.0"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46fb2786e0cc7f45d98aa611bfe9ff232d18f29b3a995a7d9d109650c813002c"
+checksum = "4e26ea7da78339faf9db71339e7334b504db1adff88ca6e9a8fabfb03923474f"
 dependencies = [
  "anyhow",
  "lazy_static",
+ "nix 0.27.1",
  "scratch",
  "serde_json",
  "syzlang-parser",

@@ -426,7 +426,6 @@ impl std::fmt::Display for SyscallItem {
 		f.write_fmt(format_args!("{}", self.as_nice_str()))
 	}
 }
-
 impl SyscallItem {
 	/// Return true if syscall has failed or if we don't know if it has failed
 	/// or not
@@ -445,6 +444,49 @@ impl SyscallItem {
 			None
 		}
 	}
+	pub fn is_entry(&self) -> bool {
+		self.output.is_none()
+	}
+	pub fn is_exit(&self) -> bool {
+		!self.is_entry()
+	}
+	pub fn output_as_raw(&self) -> TargetPtr {
+		assert!(self.output.is_some());
+		if let Some(o) = &self.output {
+			o.raw_value()
+		} else {
+			panic!("Tried to get output on syscall which is entry");
+		}
+	}
+	pub fn as_nice_str(&self) -> String {
+		let mut n = format!("[{}]: ", self.tid);
+		if !self.name.is_empty() {
+			n.push_str(&self.name);
+		} else {
+			n.push_str(&format!("{}", self.sysno));
+		}
+		n.push('(');
+
+		let mut parts = Vec::new();
+		for arg in self.args.iter() {
+			let ins = arg.as_nice_str();
+			parts.push(ins);
+		}
+
+		n.push_str(&parts.join(", "));
+
+		n.push(')');
+
+		if let Some(v) = &self.output {
+			n.push_str(" = ");
+			n.push_str(&v.as_nice_str());
+		}
+		n
+	}
+}
+
+#[cfg(feature = "syscalls")]
+impl SyscallItem {
 	fn parse_ptr<T>(
 		raw: TargetPtr,
 		tid: Tid,
@@ -722,6 +764,7 @@ impl SyscallItem {
 	fn parse_arg(raw: TargetPtr, arg: &Argument) -> Option<Value> {
 		Self::parse_arg_type(raw, arg.arg_type(), &arg.opts)
 	}
+	
 	pub fn enrich_values(&mut self) -> crate::Result<()> {
 		if let Some(sys) = crate::SYSCALLS
 			.read()
@@ -917,45 +960,9 @@ impl SyscallItem {
 		};
 		(atype, resource)
 	}
-	pub fn as_nice_str(&self) -> String {
-		let mut n = format!("[{}]: ", self.tid);
-		if !self.name.is_empty() {
-			n.push_str(&self.name);
-		} else {
-			n.push_str(&format!("{}", self.sysno));
-		}
-		n.push('(');
+	
+	
 
-		let mut parts = Vec::new();
-		for arg in self.args.iter() {
-			let ins = arg.as_nice_str();
-			parts.push(ins);
-		}
-
-		n.push_str(&parts.join(", "));
-
-		n.push(')');
-
-		if let Some(v) = &self.output {
-			n.push_str(" = ");
-			n.push_str(&v.as_nice_str());
-		}
-		n
-	}
-	pub fn is_entry(&self) -> bool {
-		self.output.is_none()
-	}
-	pub fn is_exit(&self) -> bool {
-		!self.is_entry()
-	}
-	pub fn output_as_raw(&self) -> TargetPtr {
-		assert!(self.output.is_some());
-		if let Some(o) = &self.output {
-			o.raw_value()
-		} else {
-			panic!("Tried to get output on syscall which is entry");
-		}
-	}
 }
 
 #[derive(Debug)]
@@ -1045,6 +1052,7 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 #[cfg(test)]
 mod test {
 
+	#[cfg(feature = "syscalls")]
 	#[test]
 	fn test_syscalls() {
 		let _ret = crate::PARSED

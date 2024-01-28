@@ -22,7 +22,7 @@ serde = { version = "1.0", features = ["derive"]}
 
 
 # We have added some constants to libc which have yet to be merged
-libc = { git = "https://github.com/rstenvi/libc", branch = "libc-0.2" }
+libc = { git = "https://github.com/rstenvi/libc", branch = "libc-0.2", version = "0.2" }
 
 # We use an older one, because we match the one used in pete
 # nix = {version = "0.27.1", features = ["process", "ptrace"]}
@@ -50,7 +50,7 @@ xattr = "1.2.0"
 crossbeam-channel = "0.5.8"
 
 # Syscall specification for all the supported system calls
-syzlang-data = { version = "0.1", features = ["linux"] }
+syzlang-data = { version = "0.1" }
 syzlang-parser = "0.1"
 
 # Used to parse symbols out of ELF files
@@ -70,7 +70,7 @@ anyhow = "1"
 
 [build-dependencies]
 anyhow = "1"
-syzlang-data = { version = "0.1", features = ["linux"] }
+syzlang-data = { version = "0.1" }
 syzlang-parser = "0.1"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"]}
@@ -83,3 +83,7 @@ tar = "0.4.40"
 [dev-dependencies]
 ctor = "0.2.6"
 env_logger = "0.11.1"
+
+[features]
+std = []
+syscalls = [ "syzlang-data/linux" ]

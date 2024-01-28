@@ -1,11 +1,5 @@
 use crate::{
-	api::client::IdWrapper,
-	arch::ReadRegisters,
-	syscalls::SyscallItem,
-	syzarch,
-	trace::{Stop, Stopped},
-	utils::process::Tid,
-	Result,
+	api::client::IdWrapper, arch::ReadRegisters, syscalls::SyscallItem, syzarch, trace::{Stop, Stopped}, utils::process::Tid, Result
 };
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::HashMap;
@@ -90,6 +84,7 @@ impl ClientThread {
 		self.tx.send(Response::Value(value))?;
 		Ok(())
 	}
+	#[cfg(feature = "syscalls")]
 	fn resolve_sysno(&self, name: &str) -> Result<Response> {
 		let ret = crate::PARSED
 			.read()
@@ -111,6 +106,7 @@ impl ClientThread {
 				self.send_config(Some(tid))?;
 				Ok(None)
 			}
+			#[cfg(feature = "syscalls")]
 			ClientProxy::ResolveSyscall(name) => {
 				let r = self.resolve_sysno(&name)?;
 				self.tx.send(r)?;
@@ -141,6 +137,7 @@ impl ClientThread {
 	fn process_event(&self, event: Event) -> Result<Option<Response>> {
 		Ok(Some(Response::Event(event)))
 	}
+	#[cfg(feature = "syscalls")]
 	fn transform_syscall(&mut self, tid: Tid, entry: bool) -> Result<Option<Response>> {
 		log::trace!("transform syscall {tid} {entry}");
 		let regs = self.client.get_libc_regs(tid)?;
@@ -171,6 +168,7 @@ impl ClientThread {
 	fn process_stopped(&mut self, s: Stopped) -> Result<Option<Response>> {
 		log::trace!("process stop {s:?}");
 		match &s.stop {
+			#[cfg(feature = "syscalls")]
 			Stop::SyscallEnter | Stop::SyscallExit => {
 				if self.args.transform_syscalls(s.tid) {
 					let r = self.transform_syscall(s.tid, matches!(s.stop, Stop::SyscallEnter))?;

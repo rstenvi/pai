@@ -202,10 +202,8 @@ fn add_functions(parsed: &mut Parsed) {
 	parsed.functions.push(access);
 }
 
-fn main() -> anyhow::Result<()> {
-	let build = get_build_info()?;
-	compile_testdata(&build)?;
-
+#[cfg(feature = "syscalls")]
+fn get_syscall_data(build: &BuildInfo) -> anyhow::Result<String> {
 	let syzarch = match &build.target.arch {
 		BuildArch::Aarch64 => syzlang_parser::parser::Arch::Aarch64,
 		BuildArch::X86_64 => syzlang_parser::parser::Arch::X86_64,
@@ -233,6 +231,17 @@ fn main() -> anyhow::Result<()> {
 	data.remove_structs();
 
 	let out = serde_json::to_string(&data)?;
+	Ok(out)
+}
+fn main() -> anyhow::Result<()> {
+	let build = get_build_info()?;
+	compile_testdata(&build)?;
+
+	#[cfg(feature = "syscalls")]
+	let out = get_syscall_data(&build)?;
+	#[cfg(not(feature = "syscalls"))]
+	let out = String::from("");
+
 	let outname = std::env::var_os("OUT_DIR").expect("unable to find OUT_DIR env variable");
 	let mut outname = PathBuf::from(outname);
 

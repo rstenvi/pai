@@ -401,6 +401,7 @@ impl Client<Command, Response> {
 		let v: Option<Args> = serde_json::from_value(v)?;
 		Ok(v)
 	}
+	#[cfg(feature = "syscalls")]
 	pub fn resolve_syscall<S: Into<String>>(&mut self, name: S) -> Result<TargetPtr> {
 		let name: String = name.into();
 		let cmd = Command::resolve_syscall(name);
@@ -411,6 +412,10 @@ impl Client<Command, Response> {
 		};
 		let r = r.ok_or(crate::Error::NotFound)?;
 		Ok(r)
+	}
+	#[cfg(not(feature = "syscalls"))]
+	pub fn resolve_syscall<S: Into<String>>(&mut self, _name: S) -> Result<TargetPtr> {
+		Err(crate::Error::Unknown)
 	}
 	pub fn remove_client(&mut self, cid: usize) -> Result<()> {
 		let cmd = Command::remove_client(cid);
