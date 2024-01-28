@@ -1,0 +1,7 @@
+threads
+traceme
+waitpid
+forkwait
+sleep
+*.so
+.environ

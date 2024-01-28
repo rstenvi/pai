@@ -7,8 +7,79 @@ description = "Process Analyzer and Instrumenter"
 readme = "README.md"
 homepage = "https://github.com/rstenvi/pai"
 repository = "https://github.com/rstenvi/pai"
-keywords = ["instrumentation", "debugging", "analysis", "strace", "trace", "syscall"]
+keywords = ["instrumentation", "debugging", "strace", "trace", "syscall"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# We disable all logging below info on release version
+log = {version = "0.4", features = ["release_max_level_info"]}
+thiserror = "1.0"
+
+# Data serialization is based on serde
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"]}
+
+
+# We have added some constants to libc which have yet to be merged
+libc = { git = "https://github.com/rstenvi/libc", branch = "libc-0.2" }
+
+# We use an older one, because we match the one used in pete
+# nix = {version = "0.27.1", features = ["process", "ptrace"]}
+nix = {version = "0.26.2"}
+
+
+# Collection of OS info from dependency sys-info in bugreport is not compiling
+# for Android. For now, only enable the markdown feature and don't collect any
+# OS info.
+bugreport = { version = "0.5.0", default-features = false, features = ["format_markdown"]}
+
+# Used to read data from /proc/<pid>/
+procfs = {version = "0.16.0", features = ["serde1"]}
+
+# Used as a more convenient wrapper around ptrace
+pete = "0.12.0"
+
+# Used to create a bitmap
+bit-vec = "0.6"
+
+# Access extended attributes on files, like SELinux label
+xattr = "1.2.0"
+
+# All communication between threads uses crossbeam
+crossbeam-channel = "0.5.8"
+
+# Syscall specification for all the supported system calls
+syzlang-data = { version = "0.1", features = ["linux"] }
+syzlang-parser = "0.1"
+
+# Used to parse symbols out of ELF files
+elf = "0.7.4"
+
+# To generate names in macros consisting of multipl ident's
+paste = "1.0.14"
+
+# Global data
+lazy_static = "1.4"
+
+# Decompress data stored in build.rs
+flate2 = "1.0.28"
+tar = "0.4.40"
+
+anyhow = "1"
+
+[build-dependencies]
+anyhow = "1"
+syzlang-data = { version = "0.1", features = ["linux"] }
+syzlang-parser = "0.1"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"]}
+uneval = "0.2.4"
+flate2 = "1.0.28"
+paste = "1.0.14"
+toml = "0.8.8"
+tar = "0.4.40"
+
+[dev-dependencies]
+ctor = "0.2.6"
+env_logger = "0.11.1"

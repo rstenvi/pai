@@ -1,0 +1,58 @@
+[env]
+docargs = "doc|--quiet|--no-deps|--target=${@}"
+
+
+# Various fixes which should be executed before publish
+[tasks.fixfmt]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt", "--", "--emit=files"]
+
+[tasks.fixclippy]
+command = "cargo"
+install_crate = "clippy"
+args = ["clippy", "--no-deps", "--quiet", "--all-targets", "--fix"]
+
+
+# Various checks which should be executed before publish
+[tasks.checkfmt]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt", "--quiet", "--check"]
+
+[tasks.checkclippy]
+command = "cargo"
+install_crate = "clippy"
+args = ["clippy", "--no-deps", "--quiet", "--all-targets", "--message-format=json", "--", "-Dwarnings"]
+
+
+# Various tasks which expect target argument(s)
+[tasks.test]
+command = "cargo"
+args = ["test", "--target=${@}"]
+
+[tasks.drytest]
+command = "cargo"
+args = ["test", "--no-run", "--target=${@}"]
+
+[tasks.build]
+command = "cargo"
+args = ["build", "--target=${@}"]
+
+[tasks.release]
+command = "cargo"
+args = ["build", "--release", "--target=${@}"]
+
+# Doc also expects target argument
+[tasks.docpublic]
+command = "cargo"
+args = ["@@split(docargs,|)"]
+
+[tasks.docprivate]
+command = "cargo"
+args = ["@@split(docargs,|)", "--document-private-items"]
+
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
