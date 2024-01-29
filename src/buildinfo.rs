@@ -131,7 +131,7 @@ impl BuildInfo {
 			githash,
 		}
 	}
-	fn linker(&self) -> &str {
-		&self.linker
-	}
+	// fn linker(&self) -> &str {
+	// 	&self.linker
+	// }
 }

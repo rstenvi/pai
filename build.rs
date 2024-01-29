@@ -1,6 +1,6 @@
 use std::os::fd::AsRawFd;
 use std::{fs::File, io::Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 #[cfg(feature = "syscalls")]
@@ -47,7 +47,6 @@ fn target_cross_compile(target: &BuildTarget) -> String {
 }
 
 fn get_build_info() -> anyhow::Result<BuildInfo> {
-	use toml::Table;
 	let version = env!("CARGO_PKG_VERSION");
 	let version = BuildVersion::new(version);
 	let manifest = env!("CARGO_MANIFEST_DIR");
@@ -70,31 +69,13 @@ fn get_build_info() -> anyhow::Result<BuildInfo> {
 	let hash = std::env::var("CARGO_MAKE_GIT_HEAD_LAST_COMMIT_HASH_PREFIX");
 
 	let hash: Option<String> = hash.ok();
+	let triple = target_triple();
 
-	if buf.is_file() {
-		let data = std::fs::read(buf).unwrap();
-		let data = std::str::from_utf8(&data).unwrap();
-		let data = data.parse::<Table>().unwrap();
-		let d: &toml::Value = &data["target"];
-		println!("d = {d:?}");
-
-		let triple = target_triple();
-		let linker = if let Some(target) = d.get(&triple) {
-			if let toml::Value::String(n) = &target["linker"] {
-				n.clone()
-			} else {
-				panic!("");
-			}
-		} else {
-			String::from("gcc")
-		};
-		Ok(BuildInfo::new(linker, version, btarget, triple, hash))
-	} else {
-		panic!("unable to find config.toml");
-	}
+	let linker = format!("{}{}", target_cross_compile(&btarget), target_cc(&btarget));
+	Ok(BuildInfo::new(linker, version, btarget, triple, hash))
 }
 
-fn compile_testdata(scratch: &PathBuf, info: &BuildInfo) -> anyhow::Result<PathBuf> {
+fn compile_testdata(scratch: &Path, info: &BuildInfo) -> anyhow::Result<PathBuf> {
 	// for (key, value) in std::env::vars() {
 	// 	if key.starts_with("CARGO_") {
 	// 		println!("{}: {:?}", key, value);
@@ -104,9 +85,8 @@ fn compile_testdata(scratch: &PathBuf, info: &BuildInfo) -> anyhow::Result<PathB
 	let cc = target_cc(&info.target);
 	let cross_compile = target_cross_compile(&info.target);
 
-	let mut out = scratch.clone();
+	let mut out = scratch.to_path_buf();
 	out.push("testdata");
-	// let mut out = scratch::path("testdata");
 	out.push(&info.triple);
 	if ! out.exists() {
 		std::fs::create_dir_all(&out)?;
