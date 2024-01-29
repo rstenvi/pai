@@ -165,7 +165,16 @@ impl Tracer {
 	fn _detach(&mut self, tracee: Tracee) -> Result<()> {
 		let Tracee { pid, pending, .. } = tracee;
 		let signal = pending.unwrap_or(Signal::SIGCONT);
-		nix::sys::ptrace::detach(pid, signal)?;
+
+		// TODO:
+		// - If we update to newer nix crate, this is one way to bypass type
+		//   check.
+		// - This is really ugly, but the problem is that we use Pid and Signal
+		//   re-exported from Pete and this is detected as a different type than
+		//   the actual ones in nix crate let pid = unsafe {
+		// std::mem::transmute(pid) }; let signal: nix::sys::signal::Signal =
+		// unsafe { std::mem::transmute(signal) };
+		nix::sys::ptrace::detach(pid, Some(signal))?;
 		Ok(())
 	}
 

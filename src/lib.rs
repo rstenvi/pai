@@ -351,9 +351,35 @@ fn global_test_setup() {
 
 #[cfg(test)]
 pub mod tests {
-	use std::path::PathBuf;
+	use std::{collections::HashMap, path::PathBuf};
 
 	use super::*;
+
+	pub fn get_all_tar_files() -> Result<HashMap<String, Vec<u8>>> {
+		let testdata = TESTDATA.read().expect("").clone();
+		let dec = flate2::bufread::GzDecoder::new(testdata.as_slice());
+		let mut tar = tar::Archive::new(dec);
+		let ret = tar.entries()?
+			.filter_map(|x| x.ok())
+			.map(|mut x| -> Result<(String, Vec<u8>)> {
+				let path = x.path()?.to_path_buf();
+				let fname = path.file_name()
+					.expect("uanble to get file_name")
+					.to_str().expect("unable to convert OsStr to str");
+				let mut buf = Vec::new();
+				x.read_to_end(&mut buf)?;
+				Ok((fname.to_string(), buf))
+			})
+			.filter_map(|x| x.ok())
+			.collect::<HashMap<_, _>>();
+		Ok(ret)
+	}
+
+	#[test]
+	fn extract_tar_files() {
+		let maps = get_all_tar_files().unwrap();
+		assert!(maps.get("waitpid").is_some());
+	}
 
 	pub fn develop_equal_test() -> bool {
 		testdata_unpack().is_none()

@@ -1,6 +1,9 @@
-use std::io::Write;
+use std::os::fd::AsRawFd;
+use std::{fs::File, io::Write};
 use std::path::PathBuf;
 use std::str::FromStr;
+
+#[cfg(feature = "syscalls")]
 use syzlang_parser::parser::{
 	Arch, ArgOpt, ArgType, Argument, Const, Direction, Flag, Function, Parsed, Value,
 };
@@ -10,25 +13,37 @@ include!("src/buildinfo.rs");
 fn target_triple() -> String {
 	let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 	let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
-	let triple = match arch.as_str() {
-		"x86_64" => match os.as_str() {
-			"linux" => "x86_64-unknown-linux-gnu",
-			"android" => "x86_64-linux-android",
-			_ => panic!("unsupported os {os} on {arch}"),
-		},
-		"aarch64" => match os.as_str() {
-			"linux" => "aarch64-unknown-linux-gnu",
-			"android" => "aarch64-linux-android",
-			_ => panic!("unsupported os {os} on {arch}"),
-		},
-		"x86" => match os.as_str() {
-			"linux" => "i686-unknown-linux-gnu",
-			"android" => "i686-linux-android",
-			_ => panic!("unsupported os {os} on {arch}"),
-		},
+
+	let os = match os.as_str() {
+		"linux" => "unknown-linux-gnu",
+		"android" => "linux-android",
+		_ => panic!("unsupported os {os}"),
+	};
+	let arch = match arch.as_str() {
+		"x86_64" => "x86_64",
+		"aarch64" => "aarch64",
+		"x86" => "i686",
 		_ => panic!("unsupported arch {arch}"),
 	};
-	triple.to_string()
+	format!("{arch}-{os}")
+}
+fn target_cc(target: &BuildTarget) -> String {
+	match &target.os {
+		BuildOs::Linux => String::from("gcc"),
+		BuildOs::Android => String::from("clang"),
+	}
+}
+fn target_cross_compile(target: &BuildTarget) -> String {
+	let os = match &target.os {
+		BuildOs::Linux => "linux-gnu",
+		BuildOs::Android => "linux-android34",
+	};
+	let arch = match &target.arch {
+		BuildArch::Aarch64 => "aarch64",
+		BuildArch::X86_64 => "x86_64",
+		BuildArch::X86 => "i686",
+	};
+	format!("{arch}-{os}-")
 }
 
 fn get_build_info() -> anyhow::Result<BuildInfo> {
@@ -79,12 +94,24 @@ fn get_build_info() -> anyhow::Result<BuildInfo> {
 	}
 }
 
-fn compile_testdata(info: &BuildInfo) -> anyhow::Result<()> {
-	for (key, value) in std::env::vars() {
-		if key.starts_with("CARGO_") {
-			println!("{}: {:?}", key, value);
-		}
+fn compile_testdata(scratch: &PathBuf, info: &BuildInfo) -> anyhow::Result<PathBuf> {
+	// for (key, value) in std::env::vars() {
+	// 	if key.starts_with("CARGO_") {
+	// 		println!("{}: {:?}", key, value);
+	// 	}
+	// }
+
+	let cc = target_cc(&info.target);
+	let cross_compile = target_cross_compile(&info.target);
+
+	let mut out = scratch.clone();
+	out.push("testdata");
+	// let mut out = scratch::path("testdata");
+	out.push(&info.triple);
+	if ! out.exists() {
+		std::fs::create_dir_all(&out)?;
 	}
+
 	let manifest = env!("CARGO_MANIFEST_DIR");
 	let mut manifest = std::path::PathBuf::from(manifest);
 	manifest.push("testdata");
@@ -93,15 +120,18 @@ fn compile_testdata(info: &BuildInfo) -> anyhow::Result<()> {
 	let s = manifest.as_os_str();
 	let s = s.to_str().expect("");
 	cmd.args(["-C", s, "all"]);
-	cmd.env("CC", info.linker());
+	cmd.env("CC", cc);
+	cmd.env("CROSS_COMPILE", cross_compile);
+	cmd.env("OUT", &out);
 	println!("cmd {cmd:?}");
 
 	let mut child = cmd.spawn().expect("make command failed");
 	let r = child.wait().expect("wait on child failed");
 	assert!(r.success());
-	Ok(())
+	Ok(out)
 }
 
+#[cfg(feature = "syscalls")]
 fn add_functions(parsed: &mut Parsed) {
 	let args = vec![
 		Argument::new("option", "int32", vec![]),
@@ -233,9 +263,29 @@ fn get_syscall_data(build: &BuildInfo) -> anyhow::Result<String> {
 	let out = serde_json::to_string(&data)?;
 	Ok(out)
 }
+
+fn acquire_lock(scratch: &PathBuf) -> anyhow::Result<File> {
+	let mut lock = scratch.clone();
+	lock.push("build.lock");
+	let lock = std::fs::OpenOptions::new()
+		.create(true)
+		.write(true)
+		.open(lock)
+		.unwrap();
+	let fd = lock.as_raw_fd();
+	nix::fcntl::flock(fd, nix::fcntl::FlockArg::LockExclusive)?;
+	Ok(lock)
+}
+
 fn main() -> anyhow::Result<()> {
+	let scratch = scratch::path("pai");
+
+	// For now, we do exclusive access of whole thing
+	let lock = acquire_lock(&scratch)?;
+
 	let build = get_build_info()?;
-	compile_testdata(&build)?;
+	let testdata = compile_testdata(&scratch, &build)?;
+	println!("wroute testdata to {testdata:?}");
 
 	#[cfg(feature = "syscalls")]
 	let out = get_syscall_data(&build)?;
@@ -261,10 +311,6 @@ fn main() -> anyhow::Result<()> {
 	std::fs::write(&outname, info)?;
 
 	// <https://rust-lang-nursery.github.io/rust-cookbook/compression/tar.html>
-	let testdata = env!("CARGO_MANIFEST_DIR");
-	let mut testdata = PathBuf::from(testdata);
-	testdata.push("testdata");
-
 	outname.pop();
 	outname.push("testdata.tar.gz");
 
@@ -272,6 +318,8 @@ fn main() -> anyhow::Result<()> {
 	let enc = flate2::write::GzEncoder::new(tar_gz, flate2::Compression::default());
 	let mut tar = tar::Builder::new(enc);
 	tar.append_dir_all("testdata", testdata)?;
+
+	drop(lock);
 
 	println!("cargo:rerun-if-changed=build.rs");
 	println!("cargo:rerun-if-env-changed=CARGO_CFG_FEATURE");

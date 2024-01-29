@@ -29,6 +29,8 @@ args = ["clippy", "--no-deps", "--quiet", "--all-targets", "--message-format=jso
 # Various tasks which expect target argument(s)
 [tasks.test]
 command = "cargo"
+# Going to need this in the future
+install_crate = "rust-script"
 args = ["test", "--target=${@}"]
 
 [tasks.drytest]

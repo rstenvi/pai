@@ -1,5 +1,20 @@
+# Env variables to pass us to control
+# - compiler used
+# - Output directory
+# - If we should strip binaries
+# - Override strip command
+#   - Android NDK does not provide strip binary, but a generic one for the arch
+#   will work
+
+### -------------- Configurable vars --------------- ###
+
+CROSS_COMPILE ?=
 CC ?= gcc
-OCC=$(shell cat ./.environ)
+OUT ?= ./
+DO_STRIP ?= 0
+STRIP ?= $(CROSS_COMPILE)strip
+
+### -------------- Object files ------------ ###
 
 OBJ += traceme
 OBJ += threads
@@ -9,19 +24,59 @@ OBJ += sleep
 
 SO += sofile.so
 
-all: condclean $(OBJ) $(SO) finally
+### --------------- Compile flags -------------------- ###
 
+CFLAGS += -Wall
+CFLAGS += -Werror
+CFLAGS += -g
+CFLAGS += -std=c90
+
+SOFLAGS += -shared
+SOFLAGS += -fPIC
+
+
+### -------------- Non-configurable vars --------------- ###
+
+GCC= $(CROSS_COMPILE)$(CC)
+CDIR = $(shell pwd)
+
+# Normalize output to be relative with an appending slash
+ROUT = $(shell realpath --relative-to=${CDIR} ${OUT})/
+
+# Keep track if which compiler we used last time and delete all if we use a new
+# compiler this time.
+ENVIRON = $(ROUT).environ
+$(shell touch $(ENVIRON))	# To ensure it exists
+OCC=$(shell cat $(ENVIRON))
+
+
+OBJS=$(patsubst %, $(ROUT)%, $(OBJ))
+SOS=$(patsubst %, $(ROUT)%, $(SO))
+
+
+
+### ---------- Targets -------------------- ###
+
+
+all: condclean $(OBJS) $(SOS) finally
+
+# Delete all if we have a new compiler
+# Create $(ROUT) directory if it doesn't exist
 condclean:
-	if [ "$(OCC)" != "$(CC)" ]; then rm -f $(OBJ) $(SO); fi
+	if [ "$(OCC)" != "$(CROSS_COMPILE)" ]; then rm -f $(OBJ) $(SO) $(ENVIRON); fi
+	if [ ! -d $(ROUT) ]; then mkdir $(ROUT); fi
 
-%: %.c
-	$(CC) -Wall -Werror -std=gnu17 -g -o $@ $<
+$(ROUT)%: %.c
+	$(GCC) $(CFLAGS) -o $@ $<
+ifeq ($(DO_STRIP),1)
+	$(STRIP) $@
+endif
 
-%.so: %.c Makefile
-	$(CC) -Wall -Werror -g -shared -fPIC -o $@ $<
+$(ROUT)%.so: %.c Makefile
+	$(GCC) $(CFLAGS) $(SOFLAGS) -o $@ $<
 
 finally:
-	echo $(CC) > ./.environ
+	echo $(CROSS_COMPILE) > $(ENVIRON)
 
 clean:
-	-rm -f $(OBJ) $(SO) ./.environ
+	-rm -f $(OBJS) $(SOS) $(ENVIRON)

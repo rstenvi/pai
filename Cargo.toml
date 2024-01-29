@@ -26,7 +26,7 @@ libc = { git = "https://github.com/rstenvi/libc", branch = "libc-0.2", version =
 
 # We use an older one, because we match the one used in pete
 # nix = {version = "0.27.1", features = ["process", "ptrace"]}
-nix = {version = "0.26.2"}
+nix = "0.26.2"
 
 
 # Collection of OS info from dependency sys-info in bugreport is not compiling
@@ -69,6 +69,9 @@ tar = "0.4.40"
 anyhow = "1"
 
 [build-dependencies]
+# Used to create files in target directory which contains the data
+scratch = "1"
+
 anyhow = "1"
 syzlang-data = { version = "0.1" }
 syzlang-parser = "0.1"
@@ -79,10 +82,13 @@ flate2 = "1.0.28"
 paste = "1.0.14"
 toml = "0.8.8"
 tar = "0.4.40"
+nix = { version = "0.27.1", features = ["fs"] }
 
 [dev-dependencies]
 ctor = "0.2.6"
 env_logger = "0.11.1"
+# Maybe use this for testdata/ binaries
+# memfd-exec = "0.2.1"
 
 [features]
 std = []

@@ -47,17 +47,17 @@ pub struct user_regs_struct {
 	pub gs: libc::c_ulonglong,
 }
 
-impl From<libc::user_regs_struct> for user_regs_struct {
-	fn from(value: libc::user_regs_struct) -> user_regs_struct {
-		unsafe { std::mem::transmute(value) }
-	}
-}
+// impl From<libc::user_regs_struct> for user_regs_struct {
+// 	fn from(value: libc::user_regs_struct) -> user_regs_struct {
+// 		unsafe { std::mem::transmute(value) }
+// 	}
+// }
 
-impl From<user_regs_struct> for libc::user_regs_struct {
-	fn from(value: user_regs_struct) -> libc::user_regs_struct {
-		unsafe { std::mem::transmute(value) }
-	}
-}
+// impl From<user_regs_struct> for libc::user_regs_struct {
+// 	fn from(value: user_regs_struct) -> libc::user_regs_struct {
+// 		unsafe { std::mem::transmute(value) }
+// 	}
+// }
 impl From<user_regs_struct> for nix::libc::user_regs_struct {
 	fn from(value: user_regs_struct) -> nix::libc::user_regs_struct {
 		unsafe { std::mem::transmute(value) }
