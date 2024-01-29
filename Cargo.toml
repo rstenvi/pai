@@ -9,6 +9,11 @@ homepage = "https://github.com/rstenvi/pai"
 repository = "https://github.com/rstenvi/pai"
 keywords = ["instrumentation", "debugging", "strace", "trace", "syscall"]
 
+exclude = [
+    "scripts/*",
+]
+
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
