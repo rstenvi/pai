@@ -164,7 +164,7 @@ impl std::fmt::Display for Value {
 				optional: _,
 			} => f.write_fmt(format_args!("ptr({value:x})")),
 			Self::Vma { value, bits: _ } => f.write_fmt(format_args!("vma(0x{value:x})")),
-			Self::Len { of, len } => f.write_fmt(format_args!("lenof(({of}), {len})")),
+			Self::Len { of, len } => f.write_fmt(format_args!("lenof({of}, {len})")),
 			Self::Void { value } => f.write_fmt(format_args!("void(0x{value:x})")),
 			Self::Flag { set } => {
 				let s = set.join("|");

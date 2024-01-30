@@ -68,7 +68,7 @@ pub mod utils;
 
 pub(crate) mod ctrl;
 pub mod exe;
-pub(crate) mod trace;
+pub mod trace;
 
 #[cfg(target_pointer_width = "64")]
 pub type TargetPtr = u64;
@@ -201,6 +201,9 @@ pub enum Error {
 
 	#[error("errno")]
 	Errno(#[from] nix::errno::Errno),
+
+	#[error("anyhow")]
+	Anyhow(#[from] anyhow::Error),
 
 	#[error("not found")]
 	NotFound,
