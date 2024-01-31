@@ -62,6 +62,7 @@ impl ArgsBuilder {
 	builder_set_bool! { transform_syscalls }
 	builder_set_bool! { enrich_all_syscalls }
 	builder_set_bool! { only_notify_syscall_exit }
+	builder_set_bool! { handle_steps }
 
 	builder_push_val! { syscall_traced, sysno, TargetPtr }
 	builder_push_val! { signal_traced, signal, i32 }
@@ -77,6 +78,8 @@ pub struct Args {
 	syscall_traced: Vec<TargetPtr>,
 
 	signal_traced: Vec<i32>,
+
+	handle_steps: bool,
 
 	/// If we should transform [Stop::SyscallEnter] and [Stop::SyscallExit] to
 	/// [Event::Syscall]
@@ -154,6 +157,7 @@ impl Args {
 			Stop::Attach => Some(self.registered.contains(&RegEvent::Attached)),
 			Stop::Breakpoint { pc: _, clients: _ } => None,
 			Stop::Fork { newpid: _ } => Some(self.registered.contains(&RegEvent::Fork)),
+			Stop::Step { pc: _ } => Some(self.handle_steps),
 		};
 		log::debug!("handles stop {stop:?} => {r:?}");
 		r
@@ -216,7 +220,7 @@ impl ClientArgs {
 		self.global.handles_regevent(reg)
 	}
 
-	pub fn handles_stop(&self, tid: Tid, stop: &Stop) -> bool {
+	pub fn handles_stop(&mut self, tid: Tid, stop: &Stop) -> bool {
 		let handles = if let Some(args) = self.threads.get(&tid) {
 			log::trace!("checking for tid {tid}");
 			args.handles_stop(stop)

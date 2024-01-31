@@ -3,5 +3,6 @@ traceme
 waitpid
 forkwait
 sleep
+getpid
 *.so
 .environ

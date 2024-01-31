@@ -14,27 +14,35 @@ mod tests {
 	use super::*;
 	use crate::{
 		api::{
-			messages::{EventInner, RegEvent},
-			ArgsBuilder,
+			messages::{EventInner, RegEvent}, ArgsBuilder, Response
 		},
 		exe::elf::SymbolType,
 		plugin::Plugin,
 		syscalls::{Direction, Syscalls},
-		trace::Stop,
+		trace::{Stop, Stopped},
 		utils::{self, process::Tid},
 		Result, TargetPtr,
 	};
 	use std::{path::PathBuf, str::FromStr};
 
-	fn _set_up<T>(cmd: std::process::Command, data: T) -> Result<Main<T>> {
+	fn __set_up<T>(cmd: std::process::Command, data: T) -> Result<Main<T>> {
 		let mut ctx = Main::spawn(cmd, data)?;
 		ctx.secondary_mut().client_mut().init_done()?;
 		Ok(ctx)
 	}
 
-	fn set_up() -> Result<Main<()>> {
+	// Regular set is to have an int as the state, this allows us to modify the
+	// int and test the int's value after the program exits.
+	fn set_up_int(init: usize) -> Result<Main<usize>> {
 		let cmd = std::process::Command::new("true");
-		_set_up(cmd, ())
+		__set_up(cmd, init)
+	}
+	fn set_up() -> Result<Main<usize>> {
+		let cmd = std::process::Command::new("true");
+		__set_up(cmd, 0)
+	}
+	fn set_up_cmd(cmd: std::process::Command) -> Result<Main<usize>> {
+		__set_up(cmd, 0)
 	}
 
 	/// Exec the program and trace, but no
@@ -95,9 +103,55 @@ mod tests {
 
 	#[test]
 	fn clientmgr_basic() {
-		let ctx = set_up().unwrap();
+		let ctx = set_up_int(0).unwrap();
 		ctx.loop_until_exit().unwrap();
 	}
+
+	#[test]
+	fn clientmgr_step0() {
+		let mut ctx = set_up_int(0).unwrap();
+
+		let tid = ctx.secondary_mut().get_first_stopped().unwrap();
+
+		// We haven't registered for the step, so, we will take a step
+		// (hopefully), but we don't get any indication.
+		ctx.secondary_mut().client_mut().step_ins(tid, 1).unwrap();
+		let (rsp, _) = ctx.loop_until_exit().unwrap();
+		assert_eq!(rsp, Response::TargetExit);
+	}
+
+	#[test]
+	fn clientmgr_step1() {
+		let mut ctx = set_up_int(42).unwrap();
+		let args = ArgsBuilder::new()
+			.handle_steps()
+			.finish().unwrap();
+
+		let tid = ctx.secondary_mut().get_first_stopped().unwrap();
+		ctx.secondary_mut().set_step_handler(|cl, tid, _pc| {
+			let c = cl.data_mut();
+			if *c > 0 {
+				*c -= 1;
+
+				// We must notify about step each time
+				cl.client_mut().step_ins(tid, 1).unwrap();
+			}
+			Ok(())
+		});
+		let client = ctx.secondary_mut().client_mut();
+		client.set_config(args).unwrap();
+		client.step_ins(tid, 1).unwrap();
+
+
+		// Finally run until exit
+		let (rsp, cnt) = ctx.loop_until_exit().unwrap();
+		log::debug!("rsp {rsp:?} {cnt}");
+		assert_eq!(rsp, Response::TargetExit);
+
+		// Ensure that we hit the expected number of steps
+		assert_eq!(cnt, 0);
+	}
+
 
 	#[test]
 	fn clientmgr_strace() {
@@ -107,9 +161,9 @@ mod tests {
 			.finish()
 			.unwrap();
 
-		let mut ctx = set_up().unwrap();
+		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
-		sec.set_generic_syscall_handler(|cl, mut sys| {
+		sec.set_generic_syscall_handler(|_cl, sys| {
 			if sys.is_exit() {
 				format!("{sys}");
 				// sys.enrich_values().unwrap();
@@ -141,7 +195,7 @@ mod tests {
 		name.push("waitpid");
 		let mut cmd = std::process::Command::new(name);
 		cmd.arg(format!("{numclones}"));
-		let mut ctx = _set_up(cmd, 0_usize).unwrap();
+		let mut ctx = __set_up(cmd, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 		sec.set_generic_syscall_handler(|_cl, sys| {
 			if sys.is_exit() {
@@ -185,7 +239,7 @@ mod tests {
 		name.push("forkwait");
 		let mut cmd = std::process::Command::new(name);
 		cmd.arg(format!("{numclones}"));
-		let mut ctx = _set_up(cmd, 0_usize).unwrap();
+		let mut ctx = __set_up(cmd, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 		sec.set_generic_syscall_handler(|_cl, sys| {
 			if sys.is_exit() {
@@ -213,9 +267,80 @@ mod tests {
 		assert_eq!(r, (7 + 11) * numclones);
 	}
 
+	// Insert single breakpoint at entry and verify that we hit it
 	#[test]
-	fn clientmgr_bp() {
-		let mut ctx = Main::spawn(std::process::Command::new("true"), 0_usize).unwrap();
+	fn clientmgr_bp0() {
+		let mut ctx = set_up().unwrap();
+		let sec = ctx.secondary_mut();
+
+		sec.client_mut().init_done().unwrap();
+		let tid = sec.get_first_stopped().unwrap();
+		let entry = sec.resolve_entry().unwrap();
+
+		sec.register_breakpoint_handler(tid, entry, |cl, _tid, _addr| {
+			*(cl.data_mut()) += 1;
+			Ok(false)
+		})
+		.unwrap();
+
+		let (rsp, res) = ctx.loop_until_exit().unwrap();
+		assert_eq!(rsp, Response::TargetExit);
+		assert_eq!(res, 1);
+	}
+
+	// Insert bp at entry and re-insert after we continue, it will never be hit
+	// again (hopefully), but tests that insertion again doesn't cause problems.
+	#[test]
+	fn clientmgr_bp1() {
+		let mut ctx = set_up().unwrap();
+		let sec = ctx.secondary_mut();
+
+		let tid = sec.get_first_stopped().unwrap();
+		let entry = sec.resolve_entry().unwrap();
+		sec.register_breakpoint_handler(tid, entry, |cl, _tid, _addr| {
+			*(cl.data_mut()) += 1;
+			Ok(true)
+		}).unwrap();
+
+		let (rsp, res) = ctx.loop_until_exit().unwrap();
+		assert_eq!(rsp, Response::TargetExit);
+		assert_eq!(res, 1);
+	}
+
+	// Insert BP at entry, when hit we resolve a function and insert breakpoint
+	// at that function. Verifies that all breakpoints are hit the correct
+	// number of times.
+	#[test]
+	fn clientmgr_bp2() {
+		let count = 2;
+		let mut cmd = std::process::Command::new("./testdata/getpid");
+		cmd.arg(format!("{count}"));
+		let mut ctx = set_up_cmd(cmd).unwrap();
+		let sec = ctx.secondary_mut();
+
+		let tid = sec.get_first_stopped().unwrap();
+		let entry = sec.resolve_entry().unwrap();
+		sec.register_breakpoint_handler(tid, entry, |cl, tid, _addr| {
+			*(cl.data_mut()) += 3;
+			if let Some(sym) = cl.lookup_symbol("getpid")? {
+				cl.register_breakpoint_handler(tid, sym.value, |cl, _tid, addr| {
+					log::trace!("hit our bp {addr:x}");
+					*(cl.data_mut()) += 7;
+					Ok(true)
+				})?;
+			}
+			Ok(true)
+		}).unwrap();
+
+		let (rsp, res) = ctx.loop_until_exit().unwrap();
+		assert_eq!(rsp, Response::TargetExit);
+		assert_eq!(res, 3 + (count * 7));
+	}
+
+	// Breakpoint at entry and call a function when bp is hit
+	#[test]
+	fn clientmgr_bp3() {
+		let mut ctx = set_up().unwrap();
 		let sec = ctx.secondary_mut();
 
 		sec.client_mut().init_done().unwrap();
@@ -232,15 +357,13 @@ mod tests {
 			} else {
 				panic!("unable to find 'getpid'");
 			}
-
 			let _v = cl.client_mut().read_u32(tid, addr).unwrap();
-
 			*(cl.data_mut()) += 1;
-			Ok(false)
+			Ok(true)
 		})
 		.unwrap();
 
-		let res = ctx.loop_until_exit().unwrap();
+		let (_, res) = ctx.loop_until_exit().unwrap();
 
 		// Check that we actually hit our breakpoint
 		assert_eq!(res, 1);

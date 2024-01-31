@@ -24,6 +24,7 @@ pub type BreakpointCb<T> = fn(&mut Secondary<T>, Tid, TargetPtr) -> Result<bool>
 pub type EventCb<T> = fn(&mut Secondary<T>, Event) -> Result<()>;
 pub type StoppedCb<T> = fn(&mut Secondary<T>, Stopped) -> Result<()>;
 pub type RawSyscallCb<T> = fn(&mut Secondary<T>, Tid, bool) -> Result<()>;
+pub type StepCb<T> = fn(&mut Secondary<T>, Tid, TargetPtr) -> Result<()>;
 
 pub struct Secondary<T> {
 	client: Client<Command, Response>,
@@ -35,6 +36,7 @@ pub struct Secondary<T> {
 	signalcbs: HashMap<i32, SignalCb<T>>,
 	syscallcb: Option<SyscallCb<T>>,
 	eventcb: Option<EventCb<T>>,
+	stepcb: Option<StepCb<T>>,
 	bpcbs: HashMap<TargetPtr, BreakpointCb<T>>,
 	syscallcbs: HashMap<TargetPtr, SyscallCb<T>>,
 
@@ -72,6 +74,7 @@ impl<T> Secondary<T> {
 			resolved,
 			stoppedcb: None,
 			raw_syscall_cb: None,
+			stepcb: None,
 		};
 		Ok(r)
 	}
@@ -402,6 +405,9 @@ impl<T> Secondary<T> {
 
 		Ok(entry + mainmod.loc.addr())
 	}
+	pub fn set_step_handler(&mut self, cb: StepCb<T>) {
+		self.stepcb = Some(cb);
+	}
 	pub fn set_specific_syscall_handler(&mut self, sysno: TargetPtr, cb: SyscallCb<T>) {
 		self.syscallcbs.insert(sysno, cb);
 	}
@@ -461,7 +467,14 @@ impl<T> Secondary<T> {
 			let r = cb(self, tid, addr);
 			match r {
 				Ok(true) => {
-					log::debug!("breakpoint will be reinserted again");
+					// We need to do a single step and insert breakpoint after
+					// that. These steps will not actually happen the way it
+					// looks here. The tracer will detect that we're trying to
+					// insert a BP at the current location we've hit. It will
+					// then set it as a pending breakpoint to be inserted at the
+					// next stop. When we set a step here, we don't actually do
+					// a step, we just mark that a step should be done next.
+					self.client.step_ins(tid, 1)?;
 					self.client.insert_bp(tid, addr)?;
 					self.bpcbs.insert(addr, cb);
 				}
@@ -469,13 +482,22 @@ impl<T> Secondary<T> {
 					log::debug!("bp has already been removed");
 				}
 				Err(e) => {
-					log::error!("bp callback triggered error: '{e:?}' | will be removed");
+					log::error!("bp callback triggered error: '{e:?}' | bp will be removed");
 				}
 			}
 		}
 		Ok(())
 	}
 
+	fn handle_step(&mut self, tid: Tid, pc: TargetPtr) -> Result<()> {
+		if let Some(cb) = self.stepcb {
+			match cb(self, tid, pc) {
+				Ok(_) => log::trace!("callback for step succeeeded"),
+				Err(e) => log::error!("callback step resulted in error: '{e:?}'"),
+			}
+		}
+		Ok(())
+	}
 	fn handle_event(&mut self, evt: Event) -> Result<()> {
 		if let Some(cb) = self.eventcb {
 			// To print proper error we must either clone Event or create error
@@ -499,6 +521,7 @@ impl<T> Secondary<T> {
 			}
 			Stop::Signal { signal, group: _ } => self.event_signal(signal)?,
 			Stop::Breakpoint { pc, clients: _ } => self.event_breakpoint(stopped.tid, pc)?,
+			Stop::Step { pc } => self.handle_step(stopped.tid, pc)?,
 			_ => {
 				if let Some(cb) = self.stoppedcb {
 					cb(self, stopped)?;
@@ -507,30 +530,104 @@ impl<T> Secondary<T> {
 		}
 		Ok(())
 	}
-	pub fn loop_until_exit(&mut self) -> Result<()> {
-		log::info!("looping until exit");
-		loop {
+
+	fn loop_until_empty_cb(_rsp: &Response) -> Result<bool> {
+		Ok(false)
+	}
+	fn loop_until_exit_cb(rsp: &Response) -> Result<bool> {
+		let r = matches!(rsp, Response::TargetExit | Response::Removed);
+		Ok(r)
+	}
+
+	/// Run until, ether `cb` returns `true`, the target exits or we are
+	/// detached.
+	pub fn loop_until(&mut self, cb: impl Fn(&Response) -> Result<bool>) -> Result<Response> {
+		let mut ret = None;
+		while ret.is_none() {
 			let rsp = self.client.wait()?;
 			log::debug!("response {rsp:?}");
-			match rsp {
-				Response::Event(evt) => {
-					self.handle_event(evt)?;
+			let mut done = match cb(&rsp) {
+				Ok(n) => n,
+				Err(err) => {
+					log::error!("loop_until callback returned error: {err:?}");
+					true
+				},
+			};
+
+			// We always need to check for exit
+			if !done {
+				done = Self::loop_until_exit_cb(&rsp)?;
+			}
+
+			// Still not done, we do all the callback
+			if !done {
+				match rsp {
+					Response::Event(evt) => self.handle_event(evt)?,
+					Response::Stopped(stopped) => self.handle_stopped(stopped)?,
+					Response::Syscall(syscall) => self.handle_syscall(syscall)?,
+					Response::TargetExit => panic!("TargetExit was not handled by callback"),
+					Response::Removed => panic!("Removed was not handled by callback"),
+					_ => crate::bug!(
+						"unexpected response {rsp:?} in loop, client probably forgot to read something"
+					),
 				}
-				Response::TargetExit => {
-					log::info!("target exited");
-					break;
-				}
-				Response::Removed => {
-					log::info!("we were removed");
-					break;
-				}
-				Response::Stopped(stopped) => self.handle_stopped(stopped)?,
-				Response::Syscall(syscall) => self.handle_syscall(syscall)?,
-				_ => crate::bug!(
-					"unexpected response {rsp:?} in loop, client probably forgot to read something"
-				),
+			} else {
+				ret = Some(rsp);
 			}
 		}
-		Ok(())
+		Ok(ret.expect("impossible"))
+	}
+
+	/// Run until a given address has been hit
+	pub fn run_until_addr(&mut self, addr: TargetPtr) -> Result<Option<TargetPtr>> {
+		let tid = self.get_first_stopped()?;
+		self.client.insert_bp(tid, addr)?;
+		let ret = self.loop_until(|rsp| {
+			let ret = if let Response::Stopped(stopped) = rsp {
+				if let Stop::Breakpoint { pc, clients: _ } = &stopped.stop {
+					*pc == addr
+				} else {
+					false
+				}
+			} else {
+				false
+			};
+			Ok(ret)
+		})?;
+		let ret = if let Response::Stopped(stopped) = ret {
+			if let Stop::Breakpoint { pc, clients: _ } = stopped.stop {
+				Some(pc)
+			} else {
+				None
+			}
+		} else {
+			None
+		};
+		Ok(ret)
+	}
+	pub fn run_until_entry(&mut self) -> Result<Option<TargetPtr>> {
+		let entry = self.resolve_entry()?;
+		self.run_until_addr(entry)
+	}
+
+	/// Run until a given syscall number has been hit
+	/// 
+	/// **NB!** This assumes that syscall transformation has been configured.
+	pub fn run_until_sysno(&mut self, sysno: TargetPtr) -> Result<Response> {
+		let ret = self.loop_until(|rsp| {
+			let ret = if let Response::Syscall(sys) = rsp {
+				sys.sysno == sysno
+			} else {
+				false
+			};
+			Ok(ret)
+		})?;
+		Ok(ret)
+	}
+
+	/// Run until program exits or the tracer is detached.
+	pub fn loop_until_exit(&mut self) -> Result<Response> {
+		log::info!("looping until exit");
+		self.loop_until(Self::loop_until_empty_cb)
 	}
 }

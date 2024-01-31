@@ -512,7 +512,6 @@ impl SyscallItem {
 					let (head, body, _tail) = unsafe { bytes.align_to::<libc_stat>() };
 					assert!(head.is_empty(), "Data was not aligned");
 					let stat = body[0].clone();
-					// log::error!("stat {stat:?}");
 					Some(Value::Stat { stat })
 				}
 				_ => None,

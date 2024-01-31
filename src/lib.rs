@@ -1,12 +1,76 @@
 //! # Process Analyzer and Instrumenter
 //!
+//! ## Architecture
+//!
+//! The crate is logically separated into 4 different components:
+//!
+//! 1. [trace] - currently only `ptrace` in supported
+//! 2. ctrl - controls the tracer
+//! 3. Script - program which decides on tracing actions is called client
+//! 4. [ctx] - each client holds a context object to manage the tracee
+//!
+//! ### Tracer
+//!
+//! This is fairly simple and has various low-level operations to read/write
+//! memory, get registers, etc.
+//!
+//! ### Control
+//!
+//! - One control `tracer` which must run on the same thread as the tracer (this
+//!   is a requirement in `ptrace`).
+//! - One control `thread` which is started for each script connected. Since we
+//!   can only have one `main` thread, we offload some work to control `thread`.
+//!
+//! ### Script
+//!
+//! There is generally one main script which is written by the analyst. This is
+//! typically written specifically for a single target to accomplish a specific
+//! purpose. When there are other scripts attached, they are generally referred
+//! to as plugins.
+//!
+//! There are for instance a plugin to detect when `dlopen()` is called. This is
+//! a generic script which could be used in several analysis scenarios.
+//!
+//! ### Context
+//!
+//! This is the interface a script has to control the tracee. It has three
+//! layers:
+//!
+//! 1. **main** - the first context created, there will only be one of these
+//!    created during the session.
+//! 2. **secondary** - each connected script get their own `secondary` context.
+//! 3. **client** - access to send messages to threads controlling the tracee.
+//!
+//! ## Design of scripts
+//!
+//! The scripts are generally designed to be event-driven. So you register the
+//! different events you are interested and provide callbacks for those events.
+//! The callback can then also register new events to monitor. This can be a bit
+//! cumbersome in the beginning, so there is also a mechanism to run until some
+//! event has happened and continue with the script as usual from there on. See
+//! the example scripts for more details.
+//!
+//! ## Features
+//!
+//! - Syscall tracing
+//!   - Get details about each syscall argument, include `syscalls` feature
+//! - Manage breakpoints
+//! - Single stepping
+//! - Call function / system call
+//! - Resolve symbols in ELF-files
+//! - Read/write memory to process
+//! - Allocate memory in process
+//! - Multiple clients can trace a process, unaware of eachother
+//!
 //! ## Examples
 //!
 //! **minimal.rs**
 //!
 //! Below is a minimal example spawning a program and tracing it. Since no
 //! handlers are registered, it doesn't do anything useful.
-//! This is the example [minimal.rs](https://github.com/rstenvi/pai/examples/minimal.rs)
+//!
+//! This is the example
+//! [minimal.rs](https://github.com/rstenvi/pai/examples/minimal.rs)
 //!
 //! ```rust
 #![doc = include_str!("../examples/minimal.rs")]
@@ -15,13 +79,14 @@
 //! **strace.rs**
 //!
 //! A slightly more complicated example is the strace-like program below.
+//!
 //! This is the example [strace.rs](https://github.com/rstenvi/pai/examples/strace.rs)
 //!
 //! ```rust
 #![doc = include_str!("../examples/strace.rs")]
 //! ```
 //!
-//! **state.r**
+//! **state.rs**
 //!
 //! The second argument passed in [ctx::Main::spawn] is a state which
 //! the caller can access on each callback. The following example is very
@@ -38,14 +103,24 @@
 //!
 //! This shows an example of inserting a breakpoint.
 //!
-//! This is the example [state.rs](https://github.com/rstenvi/pai/examples/breakpoint.rs)
+//! This is the example [breakpoint.rs](https://github.com/rstenvi/pai/examples/breakpoint.rs)
 //!
 //! ```rust
 #![doc = include_str!("../examples/breakpoint.rs")]
 //! ```
+//! **breakpoint-noevent.rs**
+//!
+//! This shows an example of inserting breakpoint without using the event-driven method.
+//!
+//! This is the example [breakpoint-noevent.rs](https://github.com/rstenvi/pai/examples/breakpoint-noevent.rs)
+//!
+//! ```rust
+#![doc = include_str!("../examples/breakpoint-noevent.rs")]
+//! ```
 
 #![feature(extract_if)]
 #![feature(hash_extract_if)]
+// #![feature(trait_alias)]
 #![allow(clippy::result_large_err)]
 #![allow(clippy::redundant_closure)]
 // TODO: Remove before prod

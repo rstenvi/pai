@@ -265,6 +265,9 @@ pub enum ThreadCmd {
 	/// Get all registers
 	GetLibcRegs,
 
+	/// Step one single instruction
+	StepIns { count: usize },
+
 	/// Read memory address as a NULL-terminated C-string
 	ReadCString {
 		addr: TargetPtr,

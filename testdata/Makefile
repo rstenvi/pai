@@ -20,7 +20,8 @@ OBJ += traceme
 OBJ += threads
 OBJ += waitpid
 OBJ += forkwait
-OBJ += sleep 
+OBJ += sleep
+OBJ += getpid
 
 SO += sofile.so
 

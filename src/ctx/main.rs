@@ -96,11 +96,11 @@ impl<T> Main<T> {
 		}
 	}
 
-	pub fn loop_until_exit(mut self) -> Result<T> {
+	pub fn loop_until_exit(mut self) -> Result<(Response, T)> {
 		log::info!("looping until exit");
-		self.ctx.loop_until_exit()?;
-
-		self.join()
+		let rsp = self.ctx.loop_until_exit()?;
+		let t = self.join()?;
+		Ok((rsp, t))
 	}
 
 	pub fn join(self) -> Result<T> {

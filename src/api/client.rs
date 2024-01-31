@@ -12,8 +12,7 @@ use crate::{
 use crossbeam_channel::{Receiver, Sender};
 
 use super::{
-	messages::{Event, MasterComm, Thread},
-	Args, ManagerCmd, RemoteCmd, Response,
+	messages::{Event, MasterComm, Thread}, Args, ManagerCmd, RemoteCmd, Response, ThreadCmd
 };
 
 macro_rules! client_read_int {
@@ -359,6 +358,24 @@ impl Client<Command, Response> {
 	pub fn prepare_load_client(&mut self) -> Result<()> {
 		let cmd = Command::prepare_load_client();
 		self.wr_ack(cmd)
+	}
+
+	/// Step one instruction forward, one time.
+	///
+	/// Because single-stepping is so slow, this should not be used as a
+	/// solution to search for a program state. This should only be used when we
+	/// need to advance one instruction and then take some steps. Re-inserting a
+	/// SW breakpoint is one example; on break we must write original
+	/// instruction, advance one step, and write back breakpoint instruction.
+	///
+	/// **NB!** The caller will not receive a callback from this unless they
+	/// have registered for `SIGTRAP` signals.
+	pub fn step_ins(&mut self, tid: Tid, count: usize) -> Result<()> {
+		let cmd = ThreadCmd::StepIns { count };
+		let cmd = RemoteCmd::Thread { tid, cmd };
+		let cmd = Command::Tracer { cmd };
+		self.wr_ack(cmd)?;
+		Ok(())
 	}
 	pub fn send_event(&mut self, event: Event) -> Result<()> {
 		log::debug!("sending event {event:?}");

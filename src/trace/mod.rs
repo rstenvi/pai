@@ -16,6 +16,7 @@ pub enum Stop {
 	Attach,
 	Breakpoint { pc: u64, clients: Vec<usize> },
 	Fork { newpid: Tid },
+	Step { pc: TargetPtr },
 }
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]

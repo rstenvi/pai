@@ -7,6 +7,8 @@ use crate::{
 };
 use std::{collections::HashMap, process::Command};
 
+use memfd_exec::MemFdExecutable;
+use nix::{sys::ptrace, unistd::ForkResult};
 use pete::{Restart, Signal, Tracee};
 use procfs::process::MMPermissions;
 
@@ -95,6 +97,8 @@ pub struct Tracer {
 	tramps: HashMap<TrampType, TargetPtr>,
 	tracee: HashMap<Tid, TraceStop>,
 	scratch: HashMap<Perms, AllocedMemory>,
+	lastaction: HashMap<Tid, Cont>,
+	pendingswbps: HashMap<Tid, SwBp>,
 }
 
 impl Tracer {
@@ -107,6 +111,8 @@ impl Tracer {
 		let tramps = HashMap::new();
 		let mmapped = Vec::new();
 		let scratch = HashMap::new();
+		let lastaction = HashMap::new();
+		let pendingswbps = HashMap::new();
 		let s = Self {
 			proc,
 			tracer,
@@ -115,12 +121,15 @@ impl Tracer {
 			tramps,
 			mmapped,
 			scratch,
+			lastaction,
+			pendingswbps,
 		};
 		Ok(s)
 	}
 	pub fn cont(&mut self, tid: Tid, cont: Cont) -> UntrackedResult<()> {
 		log::debug!("cont {tid} {cont:?}");
 		let restart = cont.into();
+		self.lastaction.insert(tid, cont);
 		if let Some(mut tracee) = self.tracee.remove(&tid) {
 			log::trace!("setting options");
 			tracee.tracee.set_options(
@@ -261,6 +270,30 @@ impl Tracer {
 		let proc = Process::from_pid(pid)?;
 		Self::new(proc, tracer)
 	}
+	fn spawn_in_mem(name: &str, data: Vec<u8>) -> Result<(Self, Tid)> {
+		match unsafe{nix::unistd::fork()} {
+			Ok(ForkResult::Child) => {
+				let mut memfd = MemFdExecutable::new(name, &data);
+				ptrace::traceme().unwrap();
+				let err = memfd.exec(memfd_exec::Stdio::inherit());
+				panic!("should never return from exec {err:?}");
+			}
+			Ok(ForkResult::Parent {child}) => {
+				log::debug!("child {child:?}");
+				let tid: Tid = child.as_raw() as Tid;
+				let mut tracer = pete::Ptracer::new();
+				*tracer.poll_delay_mut() = std::time::Duration::ZERO;
+				tracer.attach(child)?;
+				let proc = Process::from_pid(child.as_raw() as u32)?;
+				let r = Self::new(proc, tracer)?;
+				Ok((r, tid))
+			}
+			
+			Err(err) => {
+				panic!("fork() failed: {err}");
+			}
+		}
+	}
 	pub fn get_modules(&self) -> UntrackedResult<Vec<MemoryMap>> {
 		Ok(self
 			.proc
@@ -292,7 +325,11 @@ impl Tracer {
 
 			let pc = tracee.regs.pc();
 			let stop = tracee.tracee.stop;
-			let stop = self.handle_wait(&mut tracee, stop)?;
+			let stop = self.handle_wait(&mut tracee, stop, tid)?;
+			if let Some(swbp) = self.pendingswbps.remove(&tid) {
+				log::debug!("insering previously set pending {tid}");
+				self._insert_single_sw_bp(&mut tracee, swbp)?;
+			}
 
 			self.tracee.insert(tid, tracee);
 			let ret = Stopped::new(pc, stop, tid);
@@ -307,6 +344,7 @@ impl Tracer {
 		&mut self,
 		tracee: &mut TraceStop,
 		signal: pete::Signal,
+		tid: Tid,
 	) -> UntrackedResult<Stop> {
 		if signal == pete::Signal::SIGTRAP {
 			let pc = tracee.regs.pc();
@@ -324,6 +362,9 @@ impl Tracer {
 					clients: swbp.clients,
 				};
 				return Ok(stop);
+			} else if let Some(Cont::Step) = self.lastaction.get(&tid) {
+				let ret = Stop::Step { pc };
+				return Ok(ret);
 			}
 		}
 		let signal = signal as i32;
@@ -332,20 +373,20 @@ impl Tracer {
 			group: false,
 		})
 	}
-	fn handle_wait(&mut self, tracee: &mut TraceStop, stop: pete::Stop) -> UntrackedResult<Stop> {
+	fn handle_wait(&mut self, tracee: &mut TraceStop, stop: pete::Stop, tid: Tid) -> UntrackedResult<Stop> {
 		log::trace!("handle wait {stop:?}");
 		match stop {
-			pete::Stop::SignalDelivery { signal } => self.handle_wait_signal(tracee, signal),
+			pete::Stop::SignalDelivery { signal } => self.handle_wait_signal(tracee, signal, tid),
 			pete::Stop::Signaling {
 				signal,
 				core_dumped: _,
-			} => self.handle_wait_signal(tracee, signal),
+			} => self.handle_wait_signal(tracee, signal, tid),
 			_ => Ok(stop.into()),
 		}
 	}
 	pub fn insert_single_bp(&mut self, cid: usize, tid: Tid, pc: TargetPtr) -> UntrackedResult<()> {
 		if let Some(mut tracee) = self.tracee.remove(&tid) {
-			self.insert_single_sw_bp(cid, &mut tracee.tracee, pc)?;
+			self.insert_single_sw_bp(cid, tid, &mut tracee, pc)?;
 			self.tracee.insert(tid, tracee);
 			Ok(())
 		} else {
@@ -414,29 +455,46 @@ impl Tracer {
 			arch::aarch64::SW_BP.len()
 		}
 	}
+	fn _insert_single_sw_bp(
+		&mut self,
+		tracee: &mut TraceStop,
+		bp: SwBp,
+	) -> UntrackedResult<()> {
+		let code = arch::bp_code();
+
+		tracee.tracee.write_memory(bp.addr, &code)?;
+		self.swbps.insert(bp.addr, bp);
+		Ok(())
+	}
 
 	fn insert_single_sw_bp(
 		&mut self,
 		cid: usize,
-		tracee: &mut Tracee,
+		tid: Tid,
+		tracee: &mut TraceStop,
 		addr: TargetPtr,
 	) -> UntrackedResult<()> {
-		#[cfg(target_arch = "aarch64")]
-		let code = crate::arch::aarch64::SW_BP;
-		#[cfg(target_arch = "x86_64")]
-		let code = crate::arch::x86_64::SW_BP;
-		#[cfg(target_arch = "x86")]
-		let code = crate::arch::x86::SW_BP;
+		let code = arch::bp_code();
+		// #[cfg(target_arch = "aarch64")]
+		// let code = crate::arch::aarch64::SW_BP;
+		// #[cfg(target_arch = "x86_64")]
+		// let code = crate::arch::x86_64::SW_BP;
+		// #[cfg(target_arch = "x86")]
+		// let code = crate::arch::x86::SW_BP;
 
 		if let Some(bp) = self.swbps.get_mut(&addr) {
 			bp.add_client(cid);
 		} else {
 			log::debug!("writing SWBP {code:?}");
-			let oldcode = tracee.read_memory(addr, code.len())?;
-			tracee.write_memory(addr, &code)?;
+			let oldcode = tracee.tracee.read_memory(addr, code.len())?;
 			let mut bp = SwBp::new_limit(addr, oldcode, 1);
 			bp.add_client(cid);
-			self.swbps.insert(addr, bp);
+			if tracee.regs.pc() == addr {
+				log::debug!("setting BP as pending");
+				self.pendingswbps.insert(tid, bp);
+			} else {
+				self._insert_single_sw_bp(tracee, bp)?;
+			}
 		}
 		Ok(())
 	}
@@ -779,7 +837,7 @@ impl Tracer {
 mod test {
 	use super::*;
 	use ::test::Bencher;
-	use std::path::PathBuf;
+	use std::{fs::OpenOptions, io::Read, path::PathBuf};
 
 	const PROGNAME: &str = "true";
 
@@ -859,13 +917,7 @@ mod test {
 			tracer.cont(tid, Cont::Step).unwrap();
 			let stop = tracer.wait().unwrap();
 
-			assert!(matches!(
-				stop.stop,
-				Stop::Signal {
-					signal: _,
-					group: _
-				}
-			));
+			assert!(matches!(stop.stop, Stop::Step { pc: _ }));
 			assert!(stop.pc != lastpc);
 			lastpc = stop.pc;
 		}
@@ -884,15 +936,19 @@ mod test {
 		loop {
 			tracer.cont(tid, Cont::Syscall).unwrap();
 			let stop = tracer.wait();
-
-			if stop.is_err() {
-				break;
+			match stop {
+				Ok(stop) => {
+					assert!(
+						matches!(stop.stop, Stop::SyscallEnter) || matches!(stop.stop, Stop::SyscallExit)
+					);
+					let w = format!("{stop}");
+					log::trace!("STOP: {w}");
+				},
+				Err(err) => {
+					assert!(matches!(err, Error::TargetStopped));
+					break;
+				}
 			}
-			let stop = stop.unwrap();
-			assert!(
-				matches!(stop.stop, Stop::SyscallEnter) || matches!(stop.stop, Stop::SyscallExit)
-			);
-			let _ = format!("{stop}");
 		}
 	}
 
@@ -974,5 +1030,44 @@ mod test {
 		assert!(tracer.call_func(t, 42, &[]).is_err());
 
 		tracer.detach(tid).unwrap();
+	}
+
+	fn setup_in_mem(p: &str) -> Result<(Tracer, Tid)> {
+		let mut file = OpenOptions::new().read(true).open(p)?;
+		let mut data = Vec::new();
+		file.read_to_end(&mut data)?;
+		let (mut tracer, tid) = Tracer::spawn_in_mem(p, data)?;
+		let stop = tracer.wait().unwrap();
+		log::debug!("stop {stop:?}");
+		Ok((tracer, tid))
+	}
+
+	#[test]
+	fn trace_in_mem0() {
+		let (mut tracer, tid) = setup_in_mem("/usr/bin/true").unwrap();
+		tracer.detach(tid).unwrap();
+	}
+
+	#[test]
+	fn trace_in_mem1() {
+		let (mut tracer, tid) = setup_in_mem("/usr/bin/true").unwrap();
+
+		loop {
+			tracer.cont(tid, Cont::Syscall).unwrap();
+			let stop = tracer.wait();
+			match stop {
+				Ok(stop) => {
+					assert!(
+						matches!(stop.stop, Stop::SyscallEnter) || matches!(stop.stop, Stop::SyscallExit)
+					);
+					let w = format!("{stop}");
+					log::trace!("STOP: {w}");
+				},
+				Err(err) => {
+					assert!(matches!(err, Error::TargetStopped));
+					break;
+				}
+			}
+		}
 	}
 }

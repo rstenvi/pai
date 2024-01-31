@@ -219,9 +219,9 @@ impl CtrlTracer {
 		}
 		Ok(())
 	}
-	fn find_cont(&self, tid: Tid) -> Cont {
+	fn find_cont(&mut self, tid: Tid) -> Cont {
 		let mut ret = Cont::Cont;
-		for (key, client) in self.clients.iter() {
+		for (key, client) in self.clients.iter_mut() {
 			let c: Cont = client.get_cont(tid);
 			log::debug!("cont {key} {tid} {c:?}");
 			if c > ret {
@@ -397,6 +397,11 @@ impl CtrlTracer {
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
+			ThreadCmd::StepIns { count } => {
+				log::debug!("setting step for {tid}");
+				client.set_step_ins(tid, count);
+				Response::Ack
+			},
 			ThreadCmd::ExecSyscall { syscall } => {
 				let val = match syscall {
 					ExecSyscall::Getpid => {
@@ -567,6 +572,7 @@ pub struct ClientMaster {
 	pending: Vec<Response>,
 	handle: JoinHandle<Result<()>>,
 	args: ClientArgs,
+	single_cont: HashMap<Tid, (Cont, usize)>,
 }
 
 impl ClientMaster {
@@ -580,6 +586,7 @@ impl ClientMaster {
 		let args = ClientArgs::default();
 		let state = ctype.initial_state();
 		let pending = Vec::new();
+		let single_cont = HashMap::new();
 		Self {
 			id,
 			ctype,
@@ -588,6 +595,7 @@ impl ClientMaster {
 			args,
 			state,
 			pending,
+			single_cont,
 		}
 	}
 	pub fn detach_thread(&mut self, tid: Tid) {
@@ -633,11 +641,29 @@ impl ClientMaster {
 		}
 	}
 
-	pub fn get_cont(&self, tid: Tid) -> Cont {
+	pub fn set_step_ins(&mut self, tid: Tid, count: usize) {
+		self.single_cont.insert(tid, (Cont::Step, count));
+	}
+	fn _get_cont(&mut self, tid: Tid) -> Cont {
 		match self.state {
 			ClientState::Detaching => Cont::default(),
 			_ => self.args.get_cont(tid),
 		}
+	}
+	pub fn get_cont(&mut self, tid: Tid) -> Cont {
+		let ret = if let Some((c, mut count)) = self.single_cont.remove(&tid) {
+			count -= 1;
+			if count == 0 {
+				c
+			} else {
+				self.single_cont.insert(tid, (c, count));
+				self._get_cont(tid)
+			}
+		} else {
+			self._get_cont(tid)
+		};
+		log::debug!("{tid}: cont {ret:?}");
+		ret
 	}
 	pub fn send_event(&mut self, event: Event) -> Result<()> {
 		self.send(Response::Event(event))?;

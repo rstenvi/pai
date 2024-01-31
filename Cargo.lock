@@ -369,6 +369,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
 
 [[package]]
+name = "memfd-exec"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e627eb44f3789e87dccac3f4c7279a608cbf14ff71f2c54f122f44a07e2ca338"
+dependencies = [
+ "libc 0.2.152 (registry+https://github.com/rust-lang/crates.io-index)",
+ "nix 0.26.4",
+]
+
+[[package]]
 name = "memoffset"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -449,6 +459,7 @@ dependencies = [
  "lazy_static",
  "libc 0.2.152 (git+https://github.com/rstenvi/libc?branch=libc-0.2)",
  "log",
+ "memfd-exec",
  "nix 0.26.4",
  "nix 0.27.1",
  "paste",

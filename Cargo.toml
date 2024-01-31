@@ -13,9 +13,6 @@ exclude = [
     "scripts/*",
 ]
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 # We disable all logging below info on release version
 log = {version = "0.4", features = ["release_max_level_info"]}
@@ -73,6 +70,10 @@ tar = "0.4.40"
 
 anyhow = "1"
 
+# Spawn child from in-memory ELF-file
+# Used for testing, but also a feature for users
+memfd-exec = "0.2.1"
+
 [build-dependencies]
 # Used to create files in target directory which contains the data
 scratch = "1"
@@ -91,8 +92,6 @@ nix = { version = "0.27.1", features = ["fs"] }
 [dev-dependencies]
 ctor = "0.2.6"
 env_logger = "0.11.1"
-# Maybe use this for testdata/ binaries
-# memfd-exec = "0.2.1"
 
 [features]
 std = []

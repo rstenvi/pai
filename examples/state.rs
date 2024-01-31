@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
 
 	ctx.secondary_mut().client_mut().set_config(args)?;
 
-	let count = ctx.loop_until_exit()?;
+	let (_, count) = ctx.loop_until_exit()?;
 	println!("hit {count} syscalls");
 	Ok(())
 }

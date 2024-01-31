@@ -38,7 +38,6 @@ impl Prctl {
 		ctx.set_specific_syscall_handler(prctl, |cl, sys| {
 			if sys.args.len() < 5 {
 				let msg = format!("too few arguments for prctl {:?}", sys.args);
-				log::error!("{msg}");
 				return Err(Error::msg(msg).into());
 			}
 			let tid = sys.tid;

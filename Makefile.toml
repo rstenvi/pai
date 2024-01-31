@@ -31,7 +31,7 @@ args = ["clippy", "--no-deps", "--quiet", "--all-targets", "--message-format=jso
 command = "cargo"
 # Going to need this in the future
 install_crate = "rust-script"
-args = ["test", "--target=${@}"]
+args = ["test", "--features=syscalls", "--target=${@}"]
 
 [tasks.drytest]
 command = "cargo"
