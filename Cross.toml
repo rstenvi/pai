@@ -1,0 +1,8 @@
+
+[build.env]
+passthrough = [ 
+	"RUST_LOG",
+]
+[target.aarch64-unknown-linux-gnu]
+# Unsure if we need this
+pre-build = ["echo 0 | tee /proc/sys/kernel/yama/ptrace_scope"]

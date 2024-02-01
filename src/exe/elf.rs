@@ -1,6 +1,6 @@
 //! Parsing of ELF
 
-use crate::{Error, Result};
+use crate::{Error, Result, TargetPtr};
 use elf::{
 	endian::AnyEndian,
 	string_table::StringTable,
@@ -80,8 +80,8 @@ impl IntElfSymbol {
 		let st = self.sym.st_bind();
 		st.into()
 	}
-	pub fn value(&self) -> u64 {
-		self.sym.st_value
+	pub fn value(&self) -> Result<TargetPtr> {
+		Ok(self.sym.st_value.try_into()?)
 	}
 }
 
@@ -89,7 +89,7 @@ impl IntElfSymbol {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ElfSymbol {
 	pub name: String,
-	pub value: u64,
+	pub value: TargetPtr,
 	pub stype: SymbolType,
 	pub bind: SymbolBind,
 }
@@ -106,7 +106,7 @@ impl std::fmt::Debug for ElfSymbol {
 }
 
 impl ElfSymbol {
-	pub fn add_value(&mut self, val: u64) {
+	pub fn add_value(&mut self, val: TargetPtr) {
 		self.value += val;
 	}
 }
@@ -115,7 +115,7 @@ impl From<IntElfSymbol> for ElfSymbol {
 	fn from(value: IntElfSymbol) -> Self {
 		Self {
 			name: value.name.clone(),
-			value: value.value(),
+			value: value.value().expect("unable to convert value to target size"),
 			stype: value.symtype(),
 			bind: value.symbind(),
 		}
@@ -123,7 +123,7 @@ impl From<IntElfSymbol> for ElfSymbol {
 }
 
 pub(crate) struct ElfData {
-	entry: u64,
+	entry: TargetPtr,
 	symbols: Vec<IntElfSymbol>,
 }
 
@@ -149,7 +149,7 @@ impl ElfData {
 			Vec::new()
 		};
 
-		let entry = file.ehdr.e_entry;
+		let entry = file.ehdr.e_entry.try_into()?;
 		let r = Self { symbols, entry };
 		Ok(r)
 	}
@@ -192,7 +192,7 @@ impl Elf {
 		let data = ElfData::from_bytes(data)?;
 		Ok(Self { _path: path, data })
 	}
-	pub fn entry(&self) -> u64 {
+	pub fn entry(&self) -> TargetPtr {
 		self.data.entry
 	}
 	pub fn parse(self) -> Result<Self> {

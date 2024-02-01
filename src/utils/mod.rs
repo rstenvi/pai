@@ -97,7 +97,7 @@ impl Location {
 	pub fn size(&self) -> usize {
 		(self.end - self.start) as usize
 	}
-	pub fn addr(&self) -> u64 {
+	pub fn addr(&self) -> TargetPtr {
 		self.start
 	}
 }
@@ -313,17 +313,22 @@ impl FileAccess {
 	}
 }
 
-pub(crate) fn twos_complement(num: u64) -> i64 {
-	if num & (1 << 63) != 0 {
-		if num == i64::MIN as u64 {
-			i64::MIN
+pub(crate) fn twos_complement(num: TargetPtr) -> isize {
+	#[cfg(target_pointer_width = "32")]
+	let and = 1<<31;
+	#[cfg(target_pointer_width = "64")]
+	let and = 1<<63;
+
+	if num & and != 0 {
+		if num == isize::MIN as TargetPtr {
+			isize::MIN
 		} else {
-			let twos = -(num as i64) as u64;
-			let twos = twos as i64;
+			let twos = -(num as isize) as TargetPtr;
+			let twos = twos as isize;
 			-twos
 		}
 	} else {
-		num as i64
+		num as isize
 	}
 }
 
@@ -416,7 +421,10 @@ mod tests {
 	#[test]
 	fn test_twos() {
 		assert_eq!(twos_complement(1), 1);
+		#[cfg(target_pointer_width = "32")]
+		assert_eq!(twos_complement(0xffffffff), -1);
+		#[cfg(target_pointer_width = "64")]
 		assert_eq!(twos_complement(0xffffffffffffffff), -1);
-		assert_eq!(twos_complement(i64::MIN as u64), i64::MIN);
+		assert_eq!(twos_complement(isize::MIN as TargetPtr), isize::MIN);
 	}
 }

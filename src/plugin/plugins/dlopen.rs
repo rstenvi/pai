@@ -26,11 +26,11 @@ use std::collections::HashMap;
 
 struct State {
 	name: String,
-	_fd: i64,
+	_fd: isize,
 	mmapped: usize,
 }
 impl State {
-	pub fn new(name: String, fd: i64) -> Self {
+	pub fn new(name: String, fd: isize) -> Self {
 		Self {
 			name,
 			_fd: fd,
@@ -55,7 +55,7 @@ impl State {
 }
 
 pub(crate) struct DlopenDetect {
-	mmapped: HashMap<i64, State>,
+	mmapped: HashMap<isize, State>,
 }
 impl DlopenDetect {
 	fn new() -> Self {

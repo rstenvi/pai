@@ -24,28 +24,40 @@ pub struct user_regs_struct {
 	pub pstate: u64,
 }
 
-impl From<libc::user_regs_struct> for user_regs_struct {
-	fn from(value: libc::user_regs_struct) -> user_regs_struct {
+// impl From<libc::user_regs_struct> for user_regs_struct {
+// 	fn from(value: libc::user_regs_struct) -> user_regs_struct {
+// 		unsafe { std::mem::transmute(value) }
+// 	}
+// }
+
+// impl From<user_regs_struct> for libc::user_regs_struct {
+// 	fn from(value: user_regs_struct) -> libc::user_regs_struct {
+// 		unsafe { std::mem::transmute(value) }
+// 	}
+// }
+
+// impl From<pete::aarch64::user_pt_regs> for user_regs_struct {
+// 	fn from(value: pete::aarch64::user_pt_regs) -> user_regs_struct {
+// 		unsafe { std::mem::transmute(value) }
+// 	}
+// }
+// impl From<user_regs_struct> for pete::aarch64::user_pt_regs {
+// 	fn from(value: user_regs_struct) -> pete::aarch64::user_pt_regs {
+// 		unsafe { std::mem::transmute(value) }
+// 	}
+// }
+
+impl From<pete::Registers> for user_regs_struct {
+	fn from(value: pete::Registers) -> user_regs_struct {
+		unsafe { std::mem::transmute(value) }
+	}
+}
+impl From<user_regs_struct> for pete::Registers {
+	fn from(value: user_regs_struct) -> pete::Registers {
 		unsafe { std::mem::transmute(value) }
 	}
 }
 
-impl From<user_regs_struct> for libc::user_regs_struct {
-	fn from(value: user_regs_struct) -> libc::user_regs_struct {
-		unsafe { std::mem::transmute(value) }
-	}
-}
-
-impl From<pete::aarch64::user_pt_regs> for user_regs_struct {
-	fn from(value: pete::aarch64::user_pt_regs) -> user_regs_struct {
-		unsafe { std::mem::transmute(value) }
-	}
-}
-impl From<user_regs_struct> for pete::aarch64::user_pt_regs {
-	fn from(value: user_regs_struct) -> pete::aarch64::user_pt_regs {
-		unsafe { std::mem::transmute(value) }
-	}
-}
 impl crate::arch::ReadRegisters for user_regs_struct {
 	fn pc(&self) -> TargetPtr {
 		self.pc
@@ -120,6 +132,6 @@ pub fn call_shellcode(code: &mut Vec<u8>) {
 	code.extend_from_slice(&CALL_TRAMP);
 	code.extend_from_slice(&SW_BP);
 }
-pub fn as_our_regs(regs: pete::aarch64::user_pt_regs) -> user_regs_struct {
+pub fn as_our_regs(regs: pete::Registers) -> user_regs_struct {
 	regs.into()
 }

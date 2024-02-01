@@ -640,16 +640,16 @@ impl SyscallItem {
 					.unwrap_or_else(|_| panic!("unable to get size of int {atype:?})"));
 				let value = match atype {
 					ArgType::Intptr => raw.into(),
-					ArgType::Int64 => utils::twos_complement(raw as i64 as u64).into(),
-					ArgType::Int32 => utils::twos_complement(raw as i32 as u64).into(),
-					ArgType::Int16 => utils::twos_complement(raw as i16 as u64).into(),
-					ArgType::Int8 => utils::twos_complement(raw as i8 as u64).into(),
-					ArgType::Int64be => utils::twos_complement(u64::from_be(raw)).into(),
+					ArgType::Int64 => utils::twos_complement(raw as isize as TargetPtr).into(),
+					ArgType::Int32 => utils::twos_complement(raw as i32 as TargetPtr).into(),
+					ArgType::Int16 => utils::twos_complement(raw as i16 as TargetPtr).into(),
+					ArgType::Int8 => utils::twos_complement(raw as i8 as TargetPtr).into(),
+					ArgType::Int64be => utils::twos_complement(TargetPtr::from_be(raw)).into(),
 					ArgType::Int32be => {
-						utils::twos_complement(u64::from_be(raw) as i32 as u64).into()
+						utils::twos_complement(TargetPtr::from_be(raw) as i32 as TargetPtr).into()
 					}
 					ArgType::Int16be => {
-						utils::twos_complement(u64::from_be(raw) as i16 as u64).into()
+						utils::twos_complement(TargetPtr::from_be(raw) as i16 as TargetPtr).into()
 					}
 					_ => panic!(""),
 				};
@@ -866,7 +866,7 @@ impl SyscallItem {
 					parser::Value::Int(_v) => todo!(),
 					parser::Value::Ident(n) => {
 						let v = Self::resolve_const_ident(&n.name);
-						let ones = u64::count_ones(v);
+						let ones = TargetPtr::count_ones(v);
 						if ones > 1 {
 							if v == raw {
 								ret.push(n.name.clone());
@@ -1032,7 +1032,7 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 			// .filter(|x| {x.name.subname.is_empty() /*&& value.consts.find_sysno(&x.name.name, &syzarch).is_some() */ })
 			.map(|func| {
 				if let Some(sysno) = value.consts.find_sysno(&func.name.name, &crate::syzarch()) {
-					let ins = Syscall::new(func.name.name, sysno as u64, func.args, func.output);
+					let ins = Syscall::new(func.name.name, sysno as TargetPtr, func.args, func.output);
 					Some((sysno, ins))
 				} else {
 					None
@@ -1041,7 +1041,7 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 			.filter(|x| x.is_some())
 			.map(|x| {
 				let r = x.expect("impossible");
-				(r.0 as u64, r.1)
+				(r.0 as TargetPtr, r.1)
 			})
 			.collect::<HashMap<_, _>>();
 		Ok(Self { syscalls })

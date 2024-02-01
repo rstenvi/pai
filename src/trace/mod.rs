@@ -14,7 +14,7 @@ pub enum Stop {
 	Signal { signal: i32, group: bool },
 	Clone { pid: Tid },
 	Attach,
-	Breakpoint { pc: u64, clients: Vec<usize> },
+	Breakpoint { pc: TargetPtr, clients: Vec<usize> },
 	Fork { newpid: Tid },
 	Step { pc: TargetPtr },
 }

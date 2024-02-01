@@ -32,6 +32,9 @@ CFLAGS += -Werror
 CFLAGS += -g
 CFLAGS += -std=c90
 
+LDFLAGS ?= 
+LDFLAGS += -ldl
+
 SOFLAGS += -shared
 SOFLAGS += -fPIC
 
@@ -68,7 +71,7 @@ condclean:
 	if [ ! -d $(ROUT) ]; then mkdir $(ROUT); fi
 
 $(ROUT)%: %.c
-	$(GCC) $(CFLAGS) -o $@ $<
+	$(GCC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 ifeq ($(DO_STRIP),1)
 	$(STRIP) $@
 endif

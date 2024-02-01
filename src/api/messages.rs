@@ -121,11 +121,11 @@ impl Event {
 pub enum EventInner {
 	FileOpened {
 		fname: String,
-		fd: i64,
+		fd: isize,
 	},
 	FileClosed {
 		fname: String,
-		fd: i64,
+		fd: isize,
 	},
 	PluginLoad {
 		ptype: Plugin,

@@ -16,6 +16,12 @@ runner = ["./scripts/aarch64-android.sh"]
 linker = "i686-linux-android34-clang"
 runner = ["./scripts/x86_64-android.sh"]
 
+# [target.arm-unknown-linux-gnueabihf]
+# linker = "arm-linux-gnueabihf-gcc"
+
+# [target.arm-unknown-linux-gnueabi]
+# linker = "arm-linux-gnueabi-gcc"
+
 [target.x86_64-linux-android]
 linker = "x86_64-linux-android34-clang"
 runner = ["./scripts/x86_64-android.sh"]

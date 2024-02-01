@@ -22,6 +22,8 @@ use super::{Stop, Stopped, SwBp};
 
 #[cfg(target_arch = "aarch64")]
 use crate::arch::aarch64::{as_our_regs, call_shellcode, syscall_shellcode};
+#[cfg(target_arch = "arm")]
+use crate::arch::aarch32::{as_our_regs, call_shellcode, syscall_shellcode};
 #[cfg(target_arch = "x86")]
 use crate::arch::x86::{as_our_regs, call_shellcode, syscall_shellcode};
 #[cfg(target_arch = "x86_64")]
@@ -73,6 +75,8 @@ pub struct TraceStop {
 	pub regs: arch::x86::user_regs_struct,
 	#[cfg(target_arch = "aarch64")]
 	pub regs: arch::aarch64::user_regs_struct,
+	#[cfg(target_arch = "arm")]
+	pub regs: arch::aarch32::user_regs_struct,
 }
 
 impl TraceStop {
@@ -348,13 +352,13 @@ impl Tracer {
 	) -> UntrackedResult<Stop> {
 		if signal == pete::Signal::SIGTRAP {
 			let pc = tracee.regs.pc();
-			let pc = pc - Self::sw_bp_len() as u64;
+			let pc = pc - Self::sw_bp_len() as TargetPtr;
 
 			if let Some(mut swbp) = self.swbps.remove(&pc) {
 				swbp.hit();
 				tracee.regs.set_pc(pc);
 				tracee.tracee.set_registers(tracee.regs.clone().into())?;
-				tracee.tracee.write_memory(swbp.addr, &swbp.oldcode)?;
+				tracee.tracee.write_memory(swbp.addr as u64, &swbp.oldcode)?;
 
 				assert!(swbp.should_remove());
 				let stop = Stop::Breakpoint {
@@ -407,24 +411,24 @@ impl Tracer {
 		}
 	}
 
-	pub fn write_memory(&mut self, tid: Tid, addr: u64, data: &[u8]) -> UntrackedResult<usize> {
+	pub fn write_memory(&mut self, tid: Tid, addr: TargetPtr, data: &[u8]) -> UntrackedResult<usize> {
 		if let Some(tracee) = self.tracee.get_mut(&tid) {
-			let r = tracee.tracee.write_memory(addr, data)?;
+			let r = tracee.tracee.write_memory(addr as u64, data)?;
 			Ok(r)
 		} else {
 			Err(Error::TidNotFound { tid })
 		}
 	}
-	pub fn read_memory(&mut self, tid: Tid, addr: u64, len: usize) -> UntrackedResult<Vec<u8>> {
+	pub fn read_memory(&mut self, tid: Tid, addr: TargetPtr, len: usize) -> UntrackedResult<Vec<u8>> {
 		log::trace!("reading {addr:x} {len}");
 		if let Some(tracee) = self.tracee.get_mut(&tid) {
-			let r = tracee.tracee.read_memory(addr, len)?;
+			let r = tracee.tracee.read_memory(addr as u64, len)?;
 			Ok(r)
 		} else {
 			Err(Error::TidNotFound { tid })
 		}
 	}
-	pub fn read_c_string(&mut self, tid: Tid, addr: u64) -> UntrackedResult<String> {
+	pub fn read_c_string(&mut self, tid: Tid, addr: TargetPtr) -> UntrackedResult<String> {
 		// TODO Really slow, should do better
 		let mut ret = String::from("");
 		let mut off = 0;
@@ -441,19 +445,7 @@ impl Tracer {
 	}
 
 	fn sw_bp_len() -> usize {
-		#[cfg(target_arch = "x86_64")]
-		{
-			arch::x86_64::SW_BP.len()
-		}
-		#[cfg(target_arch = "x86")]
-		{
-			arch::x86::SW_BP.len()
-		}
-
-		#[cfg(target_arch = "aarch64")]
-		{
-			arch::aarch64::SW_BP.len()
-		}
+		arch::bp_code().len()
 	}
 	fn _insert_single_sw_bp(
 		&mut self,
@@ -462,7 +454,7 @@ impl Tracer {
 	) -> UntrackedResult<()> {
 		let code = arch::bp_code();
 
-		tracee.tracee.write_memory(bp.addr, &code)?;
+		tracee.tracee.write_memory(bp.addr as u64, &code)?;
 		self.swbps.insert(bp.addr, bp);
 		Ok(())
 	}
@@ -475,18 +467,12 @@ impl Tracer {
 		addr: TargetPtr,
 	) -> UntrackedResult<()> {
 		let code = arch::bp_code();
-		// #[cfg(target_arch = "aarch64")]
-		// let code = crate::arch::aarch64::SW_BP;
-		// #[cfg(target_arch = "x86_64")]
-		// let code = crate::arch::x86_64::SW_BP;
-		// #[cfg(target_arch = "x86")]
-		// let code = crate::arch::x86::SW_BP;
 
 		if let Some(bp) = self.swbps.get_mut(&addr) {
 			bp.add_client(cid);
 		} else {
 			log::debug!("writing SWBP {code:?}");
-			let oldcode = tracee.tracee.read_memory(addr, code.len())?;
+			let oldcode = tracee.tracee.read_memory(addr as u64, code.len())?;
 			let mut bp = SwBp::new_limit(addr, oldcode, 1);
 			bp.add_client(cid);
 			if tracee.regs.pc() == addr {
@@ -508,7 +494,7 @@ impl Tracer {
 		if let Some(pc) = self.tramps.get(&TrampType::Call) {
 			log::info!("calling with tramp at {pc:x}");
 			let oregs = tracee.registers()?;
-			let mut regs = as_our_regs(oregs);
+			let mut regs = as_our_regs(oregs.clone());
 			regs.set_pc(*pc + 4);
 			for (i, arg) in args.iter().enumerate() {
 				log::debug!("arg[{i}]: = {arg:x}");
@@ -536,7 +522,7 @@ impl Tracer {
 			self._call_func(tracee, addr, args, maxattempts - 1)
 		} else {
 			log::error!("unable to call function, returning error");
-			Ok((u64::MAX, tracee))
+			Ok((TargetPtr::MAX, tracee))
 		}
 	}
 	pub fn call_func(
@@ -591,6 +577,7 @@ impl Tracer {
 		let r = self.exec_syscall(tid, libc::SYS_getpid as TargetPtr, &[])?;
 		Ok(r as libc::pid_t)
 	}
+	#[cfg(not(target_arch = "arm"))]
 	pub fn exec_sys_anon_mmap(
 		&mut self,
 		tid: Tid,
@@ -607,6 +594,16 @@ impl Tracer {
 			Err(Error::Unknown.into())
 		}
 	}
+	#[cfg(target_arch = "arm")]
+	pub fn exec_sys_anon_mmap(
+		&mut self,
+		tid: Tid,
+		size: usize,
+		prot: Perms,
+	) -> UntrackedResult<TargetPtr> {
+		Err(Error::msg("mmap not implemented yet on the target architecture"))
+	}
+	
 	fn __exec_syscall(
 		&mut self,
 		mut tracee: Tracee,
@@ -616,7 +613,7 @@ impl Tracer {
 		_maxattempts: usize,
 	) -> UntrackedResult<(TargetPtr, Tracee)> {
 		let oregs = tracee.registers()?;
-		let mut regs = as_our_regs(oregs);
+		let mut regs = as_our_regs(oregs.clone());
 		regs.set_pc(tramp);
 		prep_syscall(&mut regs, sysno, args)?;
 		tracee.set_registers(regs.into())?;
@@ -647,7 +644,7 @@ impl Tracer {
 			self._exec_syscall(tracee, sysno, args, maxattempts)
 		} else {
 			log::error!("unable to call function, returning error");
-			Ok((u64::MAX, tracee))
+			Ok((TargetPtr::MAX, tracee))
 		}
 	}
 
@@ -670,7 +667,7 @@ impl Tracer {
 		}
 	}
 	fn remove_swbp(&self, tracee: &mut Tracee, bp: &SwBp) -> UntrackedResult<()> {
-		tracee.write_memory(bp.addr, &bp.oldcode)?;
+		tracee.write_memory(bp.addr as u64, &bp.oldcode)?;
 		Ok(())
 	}
 	fn run_until(
@@ -682,7 +679,7 @@ impl Tracer {
 		while let Some(tracee) = self.tracer.wait()? {
 			let regs = tracee.registers()?;
 			log::trace!("got stop {:?} {:?}", tracee.pid, tracee.stop);
-			log::trace!("regs {regs:?}");
+			// log::trace!("regs {regs:?}");
 			if dostop(&tracee.stop) {
 				return Ok((tracee, None));
 			} else {
@@ -709,7 +706,7 @@ impl Tracer {
 			_ => false,
 		}
 	}
-	fn find_executable_space(&self) -> UntrackedResult<u64> {
+	fn find_executable_space(&self) -> UntrackedResult<TargetPtr> {
 		let r = self
 			.proc
 			.proc
@@ -718,9 +715,16 @@ impl Tracer {
 			.find(|m| m.perms.contains(MMPermissions::EXECUTE))
 			.map(|m| m.address.0)
 			.ok_or(crate::Error::Unknown)?;
-		Ok(r)
+		Ok(r.try_into()?)
 	}
 
+	
+	#[cfg(target_arch = "arm")]
+	fn init_tramps(&mut self, _tracee: Tracee) -> Result<Tracee> {
+		Err(Error::msg("init_tramps not supported on target architecture"))
+	}
+
+	#[cfg(not(target_arch = "arm"))]
 	// Initialize some executable memory where we can place our trampolines
 	fn init_tramps(&mut self, mut tracee: Tracee) -> Result<Tracee> {
 		log::info!("initializing tramps");
@@ -730,8 +734,8 @@ impl Tracer {
 		let mut code = Vec::new();
 		syscall_shellcode(&mut code);
 		let len = code.len();
-		let orig = tracee.read_memory(exespace, len)?;
-		tracee.write_memory(exespace, &code)?;
+		let orig = tracee.read_memory(exespace as u64, len)?;
+		tracee.write_memory(exespace as u64, &code)?;
 		log::debug!("wrote executable memory");
 
 		// Get the registers, both so we can modify them to run our syscall
@@ -740,7 +744,7 @@ impl Tracer {
 		let oregs = tracee.registers()?;
 
 		// Get registers we can modify and prepare mmap() syscall
-		let mut svc_regs = as_our_regs(oregs);
+		let mut svc_regs = as_our_regs(oregs.clone());
 
 		let psize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as TargetPtr;
 		svc_regs.set_pc(exespace + 4);
@@ -749,7 +753,7 @@ impl Tracer {
 			psize, // len
 			(libc::PROT_READ | libc::PROT_WRITE) as TargetPtr,
 			(libc::MAP_ANONYMOUS | libc::MAP_PRIVATE) as TargetPtr,
-			u64::MAX, // fd
+			TargetPtr::MAX, // fd
 			0,        // offset
 		];
 		prep_syscall(&mut svc_regs, libc::SYS_mmap as TargetPtr, &mmap_args)?;
@@ -780,18 +784,18 @@ impl Tracer {
 			let syscalltramp = addr;
 			let mut inscode = Vec::new();
 			syscall_shellcode(&mut inscode);
-			let calltramp = addr + inscode.len() as u64;
+			let calltramp = addr + inscode.len() as TargetPtr;
 			call_shellcode(&mut inscode);
 
 			// Write the tramps to memory
 			log::debug!("writing real tramps to {addr:x} | {inscode:?}");
-			tracee.write_memory(addr, &inscode)?;
+			tracee.write_memory(addr as u64, &inscode)?;
 
 			// The code is now written, no we need to make the memory executable
 			// This is done in two steps, because some systems may complain
 			// about writable and executable memory regions.
 			svc_regs.set_pc(exespace + 4);
-			let mprotect_args = vec![addr, psize, (libc::PROT_READ | libc::PROT_EXEC) as u64];
+			let mprotect_args = vec![addr, psize, (libc::PROT_READ | libc::PROT_EXEC) as TargetPtr];
 			prep_syscall(
 				&mut svc_regs,
 				libc::SYS_mprotect as TargetPtr,
@@ -827,7 +831,7 @@ impl Tracer {
 		// Regardless of whether we succeed or not, we should write back
 		// original code and set the registers back to original.
 		log::info!("init_tramps over, restoring state");
-		tracee.write_memory(exespace, &orig)?;
+		tracee.write_memory(exespace as u64, &orig)?;
 		tracee.set_registers(oregs)?;
 		Ok(tracee)
 	}
@@ -836,7 +840,8 @@ impl Tracer {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use ::test::Bencher;
+	use serial_test::serial;
+use ::test::Bencher;
 	use std::{fs::OpenOptions, io::Read, path::PathBuf};
 
 	const PROGNAME: &str = "true";
@@ -996,7 +1001,7 @@ mod test {
 		let pid = tracer
 			.exec_syscall(tid, libc::SYS_getpid as TargetPtr, &[])
 			.unwrap();
-		assert_eq!(pid, tid as u64);
+		assert_eq!(pid, tid as TargetPtr);
 
 		// Try and allocate some memory
 		let _addr = tracer
@@ -1042,12 +1047,14 @@ mod test {
 		Ok((tracer, tid))
 	}
 
+	#[serial]
 	#[test]
 	fn trace_in_mem0() {
 		let (mut tracer, tid) = setup_in_mem("/usr/bin/true").unwrap();
 		tracer.detach(tid).unwrap();
 	}
 
+	#[serial]
 	#[test]
 	fn trace_in_mem1() {
 		let (mut tracer, tid) = setup_in_mem("/usr/bin/true").unwrap();

@@ -32,6 +32,7 @@ impl BuildVersion {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum BuildArch {
 	Aarch64,
+	Aarch32,
 	X86_64,
 	X86,
 }
@@ -42,14 +43,15 @@ impl std::str::FromStr for BuildArch {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s.to_lowercase().as_str() {
 			"aarch64" => Ok(Self::Aarch64),
+			"arm" => Ok(Self::Aarch32),
 			"x86_64" => Ok(Self::X86_64),
 			"x86" => Ok(Self::X86),
-			_ => Err(anyhow::Error::msg("unknown arch")),
+			_ => Err(anyhow::Error::msg(format!("unknown arch {s}"))),
 		}
 	}
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BuildOs {
 	Linux,
 	Android,
@@ -80,7 +82,50 @@ impl std::str::FromStr for BuildEndian {
 		match s.to_lowercase().as_str() {
 			"little" => Ok(Self::Little),
 			"big" => Ok(Self::Big),
-			_ => Err(anyhow::Error::msg("unknown endian")),
+			_ => Err(anyhow::Error::msg(format!("unknown endian {s}"))),
+		}
+	}
+}
+
+#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+pub enum BuildEnv {
+	#[default]
+	Undefined,
+	Gnu,
+	Musl,
+}
+
+impl std::str::FromStr for BuildEnv {
+	type Err = anyhow::Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s.to_lowercase().as_str() {
+			"" => Ok(Self::Undefined),
+			"gnu" => Ok(Self::Gnu),
+			"musl" => Ok(Self::Musl),
+			_ => Err(anyhow::Error::msg(format!("unknown env {s}"))),
+		}
+	}
+}
+
+
+#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+pub enum BuildAbi {
+	#[default]
+	Undefined,
+	Eabi,
+	Eabihf,
+}
+
+impl std::str::FromStr for BuildAbi {
+	type Err = anyhow::Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s.to_lowercase().as_str() {
+			"" => Ok(Self::Undefined),
+			"eabi" => Ok(Self::Eabi),
+			"eabihf" => Ok(Self::Eabihf),
+			_ => Err(anyhow::Error::msg(format!("unknown abi {s}"))),
 		}
 	}
 }
@@ -91,14 +136,18 @@ pub struct BuildTarget {
 	os: BuildOs,
 	endian: BuildEndian,
 	ptrwidth: usize,
+	abi: BuildAbi,
+	env: BuildEnv,
 }
 impl BuildTarget {
-	pub fn new(arch: BuildArch, os: BuildOs, endian: BuildEndian, ptrwidth: usize) -> Self {
+	pub fn new(arch: BuildArch, os: BuildOs, endian: BuildEndian, ptrwidth: usize, abi: BuildAbi, env: BuildEnv) -> Self {
 		Self {
 			arch,
 			os,
 			endian,
 			ptrwidth,
+			abi,
+			env,
 		}
 	}
 }

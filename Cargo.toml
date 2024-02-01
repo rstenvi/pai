@@ -40,7 +40,9 @@ bugreport = { version = "0.5.0", default-features = false, features = ["format_m
 procfs = {version = "0.16.0", features = ["serde1"]}
 
 # Used as a more convenient wrapper around ptrace
-pete = "0.12.0"
+# It currently has some changes to support extra targets
+pete = { version = "0.12.0", git = "https://github.com/rstenvi/pete" }
+# pete = { version = "0.12.0" }
 
 # Used to create a bitmap
 bit-vec = "0.6"
@@ -92,6 +94,9 @@ nix = { version = "0.27.1", features = ["fs"] }
 [dev-dependencies]
 ctor = "0.2.6"
 env_logger = "0.11.1"
+
+# Some ptrace(2) tests don't play nice with eachother
+serial_test = "3.0.0"
 
 [features]
 std = []

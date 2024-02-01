@@ -10,6 +10,43 @@ use syzlang_parser::parser::{
 
 include!("src/buildinfo.rs");
 
+impl BuildTarget {
+	fn cross_compile(&self) -> String {
+		let os = match &self.os {
+			BuildOs::Linux => "linux-",
+			BuildOs::Android => "linux-android",
+		};
+		let env = if self.os == BuildOs::Linux {
+			match self.env {
+				BuildEnv::Undefined => "",
+				BuildEnv::Gnu => "gnu",
+				BuildEnv::Musl => "musl",
+			}
+		} else { "" };
+
+		let arch = match &self.arch {
+			BuildArch::Aarch64 => "aarch64",
+			BuildArch::Aarch32 => {
+				match &self.os {
+					BuildOs::Linux => "arm",
+					BuildOs::Android => "armv7a",
+				}
+			},
+			BuildArch::X86_64 => "x86_64",
+			BuildArch::X86 => "i686",
+		};
+		let abi = match &self.abi {
+			BuildAbi::Undefined => "",
+			BuildAbi::Eabi => "eabi",
+			BuildAbi::Eabihf => "eabihf",
+		};
+		let sdklevel = if self.os == BuildOs::Android {
+			""
+		} else { "" };
+		format!("{arch}-{os}{env}{abi}{sdklevel}-")
+	}
+}
+
 fn target_triple() -> String {
 	let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 	let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
@@ -22,6 +59,7 @@ fn target_triple() -> String {
 	let arch = match arch.as_str() {
 		"x86_64" => "x86_64",
 		"aarch64" => "aarch64",
+		"arm" => "aarch32",
 		"x86" => "i686",
 		_ => panic!("unsupported arch {arch}"),
 	};
@@ -32,18 +70,6 @@ fn target_cc(target: &BuildTarget) -> String {
 		BuildOs::Linux => String::from("gcc"),
 		BuildOs::Android => String::from("clang"),
 	}
-}
-fn target_cross_compile(target: &BuildTarget) -> String {
-	let os = match &target.os {
-		BuildOs::Linux => "linux-gnu",
-		BuildOs::Android => "linux-android34",
-	};
-	let arch = match &target.arch {
-		BuildArch::Aarch64 => "aarch64",
-		BuildArch::X86_64 => "x86_64",
-		BuildArch::X86 => "i686",
-	};
-	format!("{arch}-{os}-")
 }
 
 fn get_build_info() -> anyhow::Result<BuildInfo> {
@@ -62,28 +88,29 @@ fn get_build_info() -> anyhow::Result<BuildInfo> {
 	let os = BuildOs::from_str(&os).unwrap();
 	let endian = std::env::var("CARGO_CFG_TARGET_ENDIAN").unwrap();
 	let endian = BuildEndian::from_str(&endian).unwrap();
+
+	let abi = std::env::var("CARGO_CFG_TARGET_ABI").unwrap();
+	let abi = BuildAbi::from_str(&abi).unwrap();
+
+	let env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap();
+	let env = BuildEnv::from_str(&env).unwrap();
+
 	let ptrwidth = std::env::var("CARGO_CFG_TARGET_POINTER_WIDTH").unwrap();
 	let ptrwidth = ptrwidth.parse::<usize>().unwrap();
-	let btarget = BuildTarget::new(arch, os, endian, ptrwidth);
+	let btarget = BuildTarget::new(arch, os, endian, ptrwidth, abi, env);
 
 	let hash = std::env::var("CARGO_MAKE_GIT_HEAD_LAST_COMMIT_HASH_PREFIX");
 
 	let hash: Option<String> = hash.ok();
 	let triple = target_triple();
 
-	let linker = format!("{}{}", target_cross_compile(&btarget), target_cc(&btarget));
+	let linker = format!("{}{}", btarget.cross_compile(), target_cc(&btarget));
 	Ok(BuildInfo::new(linker, version, btarget, triple, hash))
 }
 
 fn compile_testdata(scratch: &Path, info: &BuildInfo) -> anyhow::Result<PathBuf> {
-	// for (key, value) in std::env::vars() {
-	// 	if key.starts_with("CARGO_") {
-	// 		println!("{}: {:?}", key, value);
-	// 	}
-	// }
-
 	let cc = target_cc(&info.target);
-	let cross_compile = target_cross_compile(&info.target);
+	let cross_compile = info.target.cross_compile();
 
 	let mut out = scratch.to_path_buf();
 	out.push("testdata");
@@ -96,6 +123,9 @@ fn compile_testdata(scratch: &Path, info: &BuildInfo) -> anyhow::Result<PathBuf>
 	let mut manifest = std::path::PathBuf::from(manifest);
 	manifest.push("testdata");
 
+	let ldflags = if info.target.os == BuildOs::Linux {
+		"-lpthread"
+	} else { "" };
 	let mut cmd = std::process::Command::new("make");
 	let s = manifest.as_os_str();
 	let s = s.to_str().expect("");
@@ -103,11 +133,17 @@ fn compile_testdata(scratch: &Path, info: &BuildInfo) -> anyhow::Result<PathBuf>
 	cmd.env("CC", cc);
 	cmd.env("CROSS_COMPILE", cross_compile);
 	cmd.env("OUT", &out);
+	cmd.env("LDFLAGS", ldflags);
 	println!("cmd {cmd:?}");
 
 	let mut child = cmd.spawn().expect("make command failed");
 	let r = child.wait().expect("wait on child failed");
-	assert!(r.success());
+	if !r.success() {
+		// Ignore the error here because we don't want to fail compilation when
+		// the user doesn't care about the tests. The actual tests will
+		// eventually fail because the necessary files didn't exist.
+		println!("WARN: failed to run make command, some tests might fail");
+	}
 	Ok(out)
 }
 
@@ -216,6 +252,7 @@ fn add_functions(parsed: &mut Parsed) {
 fn get_syscall_data(build: &BuildInfo) -> anyhow::Result<String> {
 	let syzarch = match &build.target.arch {
 		BuildArch::Aarch64 => syzlang_parser::parser::Arch::Aarch64,
+		BuildArch::Aarch32 => syzlang_parser::parser::Arch::Aarch32,
 		BuildArch::X86_64 => syzlang_parser::parser::Arch::X86_64,
 		BuildArch::X86 => syzlang_parser::parser::Arch::X86,
 	};
@@ -259,6 +296,11 @@ fn acquire_lock(scratch: &PathBuf) -> anyhow::Result<File> {
 
 fn main() -> anyhow::Result<()> {
 	let scratch = scratch::path("pai");
+	// for (key, value) in std::env::vars() {
+	// 	if key.starts_with("CARGO_") {
+	// 		println!("{}: {:?}", key, value);
+	// 	}
+	// }
 
 	// For now, we do exclusive access of whole thing
 	let lock = acquire_lock(&scratch)?;

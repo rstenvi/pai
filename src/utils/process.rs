@@ -68,7 +68,7 @@ impl TryFrom<procfs::process::MemoryMap> for MemoryMap {
 
 	fn try_from(value: procfs::process::MemoryMap) -> std::result::Result<Self, Self::Error> {
 		let r = Self {
-			loc: Location::new(value.address.0, value.address.1),
+			loc: Location::new(value.address.0.try_into()?, value.address.1.try_into()?),
 			perms: value.perms.into(),
 			path: value.pathname,
 			offset: value.offset,

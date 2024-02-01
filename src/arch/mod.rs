@@ -4,6 +4,10 @@ use crate::{Result, TargetPtr};
 #[cfg(target_arch = "aarch64")]
 pub mod aarch64;
 
+#[cfg(target_arch = "arm")]
+pub mod aarch32;
+
+
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64;
 
@@ -32,7 +36,7 @@ pub trait WriteRegisters {
 	fn set_call_func(&mut self, addr: TargetPtr);
 }
 
-pub(crate) fn prep_syscall<T>(regs: &mut T, sysno: u64, args: &[u64]) -> Result<()>
+pub(crate) fn prep_syscall<T>(regs: &mut T, sysno: TargetPtr, args: &[TargetPtr]) -> Result<()>
 where
 	T: WriteRegisters,
 {
@@ -47,11 +51,14 @@ pub fn bp_code() -> &'static [u8] {
 	#[cfg(target_arch = "aarch64")]
 	{ &crate::arch::aarch64::SW_BP }
 
+	#[cfg(target_arch = "arm")]
+	{ &crate::arch::aarch32::SW_BP }
+
 	#[cfg(target_arch = "x86_64")]
 	{ &crate::arch::x86_64::SW_BP }
 
 	#[cfg(target_arch = "x86")]
-	{ crate::arch::x86::SW_BP }
+	{ &crate::arch::x86::SW_BP }
 }
 
 #[cfg(test)]
@@ -69,6 +76,9 @@ mod test {
 
 		#[cfg(target_arch = "aarch64")]
 		let mut r = aarch64::user_regs_struct::default();
+
+		#[cfg(target_arch = "arm")]
+		let mut r = aarch32::user_regs_struct::default();
 
 		assert_eq!(r.pc(), 0);
 		r.set_pc(42);

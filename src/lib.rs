@@ -173,6 +173,9 @@ pub type Registers = crate::arch::x86::user_regs_struct;
 #[cfg(target_arch = "aarch64")]
 pub type Registers = crate::arch::aarch64::user_regs_struct;
 
+#[cfg(target_arch = "arm")]
+pub type Registers = crate::arch::aarch32::user_regs_struct;
+
 /// Non-fatal error occured during operation.
 ///
 /// [enum@Error] is not safe to send across threads, so [enum@Error] is serialized into
@@ -347,6 +350,11 @@ pub(crate) fn syzarch() -> syzlang_parser::parser::Arch {
 	#[cfg(target_arch = "aarch64")]
 	{
 		syzlang_parser::parser::Arch::Aarch64
+	}
+
+	#[cfg(target_arch = "arm")]
+	{
+		syzlang_parser::parser::Arch::Aarch32
 	}
 }
 

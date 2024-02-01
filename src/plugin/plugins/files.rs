@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct Files {
-	opened: HashMap<i64, String>,
+	opened: HashMap<isize, String>,
 }
 impl Files {
 	fn new() -> Self {
