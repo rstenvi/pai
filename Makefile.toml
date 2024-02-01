@@ -28,22 +28,22 @@ args = ["clippy", "--no-deps", "--quiet", "--all-targets", "--message-format=jso
 
 # Various tasks which expect target argument(s)
 [tasks.test]
-command = "cargo"
+command = "cross"
 # Going to need this in the future
 install_crate = "rust-script"
 args = ["test", "--features=syscalls", "--target=${@}"]
 
 [tasks.drytest]
-command = "cargo"
-args = ["test", "--no-run", "--target=${@}"]
+command = "cross"
+args = ["test", "--target-dir=crosstarget", "--no-run", "--target=${@}"]
 
 [tasks.build]
-command = "cargo"
-args = ["build", "--target=${@}"]
+command = "cross"
+args = ["build", "--target-dir=crosstarget", "--target=${@}"]
 
 [tasks.release]
-command = "cargo"
-args = ["build", "--release", "--target=${@}"]
+command = "cross"
+args = ["build", "--target-dir=crosstarget", "--release", "--target=${@}"]
 
 # Doc also expects target argument
 [tasks.docpublic]

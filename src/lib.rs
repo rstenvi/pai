@@ -123,6 +123,7 @@
 // #![feature(trait_alias)]
 #![allow(clippy::result_large_err)]
 #![allow(clippy::redundant_closure)]
+#![allow(clippy::unnecessary_cast)]
 // TODO: Remove before prod
 #![allow(dead_code)]
 #![allow(unused_imports)]

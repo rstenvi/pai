@@ -40,9 +40,10 @@ impl BuildTarget {
 			BuildAbi::Eabi => "eabi",
 			BuildAbi::Eabihf => "eabihf",
 		};
-		let sdklevel = if self.os == BuildOs::Android {
-			""
-		} else { "" };
+		let sdklevel = "";
+		//  = if self.os == BuildOs::Android {
+		// 	""
+		// } else { "" };
 		format!("{arch}-{os}{env}{abi}{sdklevel}-")
 	}
 }
@@ -281,8 +282,8 @@ fn get_syscall_data(build: &BuildInfo) -> anyhow::Result<String> {
 	Ok(out)
 }
 
-fn acquire_lock(scratch: &PathBuf) -> anyhow::Result<File> {
-	let mut lock = scratch.clone();
+fn acquire_lock(scratch: &Path) -> anyhow::Result<File> {
+	let mut lock = PathBuf::from(scratch);
 	lock.push("build.lock");
 	let lock = std::fs::OpenOptions::new()
 		.create(true)

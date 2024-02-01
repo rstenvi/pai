@@ -454,7 +454,7 @@ impl Tracer {
 	) -> UntrackedResult<()> {
 		let code = arch::bp_code();
 
-		tracee.tracee.write_memory(bp.addr as u64, &code)?;
+		tracee.tracee.write_memory(bp.addr as u64, code)?;
 		self.swbps.insert(bp.addr, bp);
 		Ok(())
 	}
@@ -677,9 +677,7 @@ impl Tracer {
 	) -> Result<(Tracee, Option<crate::Error>)> {
 		self.tracer.restart(tracee, Restart::Continue)?;
 		while let Some(tracee) = self.tracer.wait()? {
-			let regs = tracee.registers()?;
 			log::trace!("got stop {:?} {:?}", tracee.pid, tracee.stop);
-			// log::trace!("regs {regs:?}");
 			if dostop(&tracee.stop) {
 				return Ok((tracee, None));
 			} else {
