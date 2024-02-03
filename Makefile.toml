@@ -1,5 +1,7 @@
 [env]
-docargs = "doc|--quiet|--no-deps|--target=${@}"
+docargs = "--target-dir=output|--quiet|--no-deps|--target=${@}"
+buildargs = "--target-dir=output|--features=plugins|--target=${@}"
+clippyargs = "--target-dir=output|--no-deps|--all-targets|--all-features|--target=${@}"
 
 
 # Various fixes which should be executed before publish
@@ -9,9 +11,9 @@ command = "cargo"
 args = ["fmt", "--", "--emit=files"]
 
 [tasks.fixclippy]
-command = "cargo"
+command = "cross"
 install_crate = "clippy"
-args = ["clippy", "--no-deps", "--quiet", "--all-targets", "--fix"]
+args = ["clippy", "@@split(clippyargs,|)", "--fix"]
 
 
 # Various checks which should be executed before publish
@@ -20,10 +22,16 @@ install_crate = "rustfmt"
 command = "cargo"
 args = ["fmt", "--quiet", "--check"]
 
+
 [tasks.checkclippy]
-command = "cargo"
+command = "cross"
 install_crate = "clippy"
-args = ["clippy", "--no-deps", "--quiet", "--all-targets", "--message-format=json", "--", "-Dwarnings"]
+args = ["clippy", "@@split(clippyargs,|)", "--message-format=json", "--", "-Dwarnings"]
+
+[tasks.clippy]
+command = "cross"
+install_crate = "clippy"
+args = ["clippy", "@@split(clippyargs,|)"]
 
 
 # Various tasks which expect target argument(s)
@@ -31,28 +39,28 @@ args = ["clippy", "--no-deps", "--quiet", "--all-targets", "--message-format=jso
 command = "cross"
 # Going to need this in the future
 install_crate = "rust-script"
-args = ["test", "--features=syscalls", "--target=${@}"]
+args = ["test", "@@split(buildargs,|)", "--features=syscalls"]
 
 [tasks.drytest]
 command = "cross"
-args = ["test", "--target-dir=crosstarget", "--no-run", "--target=${@}"]
+args = ["test", "@@split(buildargs,|)", "--no-run"]
 
 [tasks.build]
 command = "cross"
-args = ["build", "--target-dir=crosstarget", "--target=${@}"]
+args = ["build", "@@split(buildargs,|)"]
 
 [tasks.release]
 command = "cross"
-args = ["build", "--target-dir=crosstarget", "--release", "--target=${@}"]
+args = ["build", "@@split(buildargs,|)", "--release"]
 
 # Doc also expects target argument
 [tasks.docpublic]
-command = "cargo"
-args = ["@@split(docargs,|)"]
+command = "cross"
+args = ["doc", "@@split(docargs,|)"]
 
 [tasks.docprivate]
-command = "cargo"
-args = ["@@split(docargs,|)", "--document-private-items"]
+command = "cross"
+args = ["doc", "@@split(docargs,|)", "--document-private-items"]
 
 
 [tasks.clean]

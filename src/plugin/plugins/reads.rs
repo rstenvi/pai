@@ -9,16 +9,16 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct Prctl;
+pub struct Reads;
 
-impl Prctl {
+impl Reads {
 	fn new() -> Self {
 		Self
 	}
 	pub fn dependecies() -> Vec<Plugin> {
 		vec![Plugin::Files]
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self>> {
+	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self, crate::Error>> {
 		log::error!("read plugin is not finished and will not give expected results");
 		let data = Self::new();
 

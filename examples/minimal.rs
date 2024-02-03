@@ -4,7 +4,7 @@ fn main() -> anyhow::Result<()> {
 	let cmd = std::process::Command::new("true");
 
 	// To start, one would typically use ctx::Main::{spawn|attach]
-	let ctx = ctx::Main::spawn(cmd, ())?;
+	let ctx: ctx::Main<(), pai::Error> = ctx::Main::new_spawn(cmd, ())?;
 
 	// Here we would typically register callback
 

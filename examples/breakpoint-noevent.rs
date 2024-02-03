@@ -2,7 +2,7 @@ use pai::{api::Response, ctx};
 fn main() -> anyhow::Result<()> {
 	env_logger::init();
 	let cmd = std::process::Command::new("true");
-	let mut ctx = ctx::Main::spawn(cmd, 0_usize)?;
+	let mut ctx: ctx::Main<usize, pai::Error> = ctx::Main::new_spawn(cmd, 0_usize)?;
 	let sec = ctx.secondary_mut();
 	let entry = sec.resolve_entry()?;
 	let stopped = sec.run_until_entry()?;

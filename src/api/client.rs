@@ -1,3 +1,5 @@
+//! Code relevant to sending a command to a different thread/process/machine.
+
 use std::{
 	io::{BufReader, BufWriter, Write},
 	net::TcpStream,
@@ -7,22 +9,23 @@ use crate::{
 	api::Command,
 	bug_assert,
 	utils::process::{Pid, Tid},
-	RemoteResult, Result, TargetPtr,
+	Error, Result, TargetPtr,
 };
 use crossbeam_channel::{Receiver, Sender};
 
 use super::{
-	messages::{Event, MasterComm, Thread}, Args, ManagerCmd, RemoteCmd, Response, ThreadCmd
+	messages::{Event, MasterComm, Thread},
+	Args, ManagerCmd, RemoteCmd, Response, ThreadCmd,
 };
 
 macro_rules! client_read_int {
 	($name:ident, $val:ty) => {
-		pub fn $name(&mut self, tid: Tid, addr: TargetPtr) -> RemoteResult<$val> {
+		pub fn $name(&mut self, tid: Tid, addr: TargetPtr) -> Result<$val> {
 			let bytes = std::mem::size_of::<$val>();
 			let cmd = RemoteCmd::read_bytes(tid, addr, bytes);
 			let r = self.write_remote(cmd)?;
 			let v = TryInto::<serde_json::Value>::try_into(r)?;
-			let v: RemoteResult<Vec<u8>> = serde_json::from_value(v)?;
+			let v: Result<Vec<u8>> = serde_json::from_value(v)?;
 			match v {
 				Ok(vec) => {
 					let slice = vec.try_into().expect(&format!(
@@ -37,13 +40,13 @@ macro_rules! client_read_int {
 	};
 }
 
-pub trait ApiWrapper<S, T> {
+pub(crate) trait ApiWrapper<S, T> {
 	fn wrap(&self, cmd: RemoteCmd) -> (usize, S);
 	fn is_match(&self, id: usize, rsp: &T) -> bool;
 	fn unwrap(&self, rsp: T) -> Response;
 }
 #[derive(Default)]
-pub struct ClientGen;
+pub(crate) struct ClientGen;
 
 impl ApiWrapper<Command, Response> for ClientGen {
 	fn wrap(&self, cmd: RemoteCmd) -> (usize, Command) {
@@ -57,13 +60,13 @@ impl ApiWrapper<Command, Response> for ClientGen {
 	}
 }
 
-pub trait ClientApi<TX, RX> {
+trait ClientApi<TX, RX> {
 	fn write(&mut self, tx: TX) -> Result<()>;
 	fn read(&mut self) -> Result<RX>;
 	fn write_read(&mut self, tx: TX) -> Result<RX>;
 }
 
-pub struct ClientTcpStream {
+pub(crate) struct ClientTcpStream {
 	stream:
 		serde_json::Deserializer<serde_json::de::IoRead<std::io::BufReader<std::net::TcpStream>>>,
 	writer: BufWriter<TcpStream>,
@@ -166,8 +169,13 @@ impl<
 	}
 }
 
+/// Object to send [Command] to different thread/process/machine where the
+/// tracer is running.
+///
+/// You should not construct this directly, access is provided through
+/// [crate::ctx::Secondary].
 pub struct Client<TX: Send, RX: Send> {
-	pub id: usize,
+	id: usize,
 	wrap: Box<dyn ApiWrapper<TX, RX> + Send>,
 	stream: Box<dyn ClientApi<TX, RX> + Send>,
 }
@@ -175,7 +183,7 @@ impl<TX: Send + 'static, RX: Send + 'static> Client<TX, RX>
 where
 	crate::Error: From<crossbeam_channel::SendError<TX>>,
 {
-	pub fn new(
+	pub(crate) fn new(
 		id: usize,
 		tx: Sender<TX>,
 		rx: Receiver<RX>,
@@ -184,10 +192,15 @@ where
 		let stream = Box::new(ClientThread::new(tx, rx));
 		Self { id, wrap, stream }
 	}
-	pub fn read(&mut self) -> Result<RX> {
+
+	/// The ID which this client has been given by the trace controller.
+	pub fn id(&self) -> usize {
+		self.id
+	}
+	pub(crate) fn read(&mut self) -> Result<RX> {
 		self.stream.read()
 	}
-	pub fn write(&mut self, val: TX) -> Result<()> {
+	pub(crate) fn write(&mut self, val: TX) -> Result<()> {
 		self.stream.write(val)
 	}
 	fn write_remote(&mut self, cmd: RemoteCmd) -> crate::Result<Response> {
@@ -200,7 +213,7 @@ where
 			}
 		}
 	}
-	pub fn write_read(&mut self, cmd: TX) -> crate::Result<RX> {
+	pub(crate) fn write_read(&mut self, cmd: TX) -> crate::Result<RX> {
 		self.stream.write(cmd)?;
 		log::trace!("{}: reading response", self.id);
 		let r = self.stream.read()?;
@@ -212,19 +225,16 @@ impl<TX: Send + 'static> Client<TX, Response>
 where
 	crate::Error: From<crossbeam_channel::SendError<TX>>,
 {
-	fn wr_value<R: serde::de::DeserializeOwned>(&mut self, cmd: TX) -> RemoteResult<R> {
-		let r = self.write_read(cmd)?;
-		let v = TryInto::<serde_json::Value>::try_into(r)?;
-		let v: RemoteResult<R> = serde_json::from_value(v)?;
-		v
-	}
-	fn wr_value_remote<R: serde::de::DeserializeOwned>(
-		&mut self,
-		cmd: RemoteCmd,
-	) -> RemoteResult<R> {
+	// fn wr_value<R: serde::de::DeserializeOwned>(&mut self, cmd: TX) -> Result<R> {
+	// 	let r = self.write_read(cmd)?;
+	// 	let v = TryInto::<serde_json::Value>::try_into(r)?;
+	// 	let v: Result<R> = serde_json::from_value(v)?;
+	// 	v
+	// }
+	fn wr_value_remote<R: serde::de::DeserializeOwned>(&mut self, cmd: RemoteCmd) -> Result<R> {
 		let r = self.write_remote(cmd)?;
 		let v = TryInto::<serde_json::Value>::try_into(r)?;
-		let v: RemoteResult<R> = serde_json::from_value(v)?;
+		let v: Result<R> = serde_json::from_value(v)?;
 		v
 	}
 	fn wr_ack(&mut self, cmd: TX) -> Result<()> {
@@ -232,39 +242,41 @@ where
 		bug_assert!(r == Response::Ack);
 		Ok(())
 	}
+
+	/// Execute a syscall with the given `sysno` and `args`
 	pub fn exec_raw_syscall<S: Into<Vec<TargetPtr>>>(
 		&mut self,
 		tid: Tid,
 		sysno: TargetPtr,
 		args: S,
-	) -> RemoteResult<TargetPtr> {
+	) -> Result<TargetPtr> {
 		let cmd = RemoteCmd::syscall(tid, sysno, args.into());
 		self.wr_value_remote(cmd)
 	}
-	pub fn get_libc_regs(&mut self, tid: Tid) -> RemoteResult<crate::Registers> {
+	pub fn get_libc_regs(&mut self, tid: Tid) -> Result<crate::Registers> {
 		let cmd = RemoteCmd::get_libc_regs(tid);
 		self.wr_value_remote(cmd)
 	}
-	pub fn get_pid(&mut self) -> RemoteResult<Pid> {
+	pub fn get_pid(&mut self) -> Result<Pid> {
 		log::info!("get_pid started");
 		let cmd = RemoteCmd::get_pid();
 		let v = self.wr_value_remote(cmd);
 		log::info!("get_pid over");
 		v
 	}
-	pub fn get_tids(&mut self) -> RemoteResult<Vec<Tid>> {
+	pub fn get_tids(&mut self) -> Result<Vec<Tid>> {
 		let cmd = RemoteCmd::get_tids();
 		self.wr_value_remote(cmd)
 	}
-	pub fn get_threads_status(&mut self) -> RemoteResult<Vec<Thread>> {
+	pub fn get_threads_status(&mut self) -> Result<Vec<Thread>> {
 		let cmd = RemoteCmd::get_threads_status();
 		self.wr_value_remote(cmd)
 	}
-	pub fn read_c_string(&mut self, tid: Tid, addr: TargetPtr) -> RemoteResult<String> {
+	pub fn read_c_string(&mut self, tid: Tid, addr: TargetPtr) -> Result<String> {
 		let cmd = RemoteCmd::read_c_string(tid, addr);
 		self.wr_value_remote(cmd)
 	}
-	pub fn read_bytes(&mut self, tid: Tid, addr: TargetPtr, bytes: usize) -> RemoteResult<Vec<u8>> {
+	pub fn read_bytes(&mut self, tid: Tid, addr: TargetPtr, bytes: usize) -> Result<Vec<u8>> {
 		let cmd = RemoteCmd::read_bytes(tid, addr, bytes);
 		self.wr_value_remote(cmd)
 	}
@@ -273,7 +285,7 @@ where
 		tid: Tid,
 		addr: TargetPtr,
 		bytes: B,
-	) -> RemoteResult<usize> {
+	) -> Result<usize> {
 		let cmd = RemoteCmd::write_bytes(tid, addr, bytes);
 		self.wr_value_remote(cmd)
 	}
@@ -282,7 +294,7 @@ where
 		tid: Tid,
 		func: TargetPtr,
 		args: T,
-	) -> RemoteResult<TargetPtr> {
+	) -> Result<TargetPtr> {
 		let cmd = RemoteCmd::call_func(tid, func, args.into());
 		self.wr_value_remote(cmd)
 	}
@@ -298,11 +310,11 @@ where
 	client_read_int! { read_u128, u128 }
 	client_read_int! { read_i128, i128 }
 
-	pub fn insert_bp(&mut self, tid: Tid, addr: TargetPtr) -> RemoteResult<()> {
+	pub fn insert_bp(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {
 		let cmd = RemoteCmd::insert_bp(tid, addr);
 		self.wr_value_remote(cmd)
 	}
-	pub fn remove_bp(&mut self, tid: Tid, addr: TargetPtr) -> RemoteResult<()> {
+	pub fn remove_bp(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {
 		let cmd = RemoteCmd::remove_bp(tid, addr);
 		self.wr_value_remote(cmd)
 	}
@@ -310,7 +322,7 @@ where
 		&mut self,
 		tid: Tid,
 		string: S,
-	) -> RemoteResult<TargetPtr> {
+	) -> Result<TargetPtr> {
 		let cmd = RemoteCmd::write_scratch_string(tid, string);
 		self.wr_value_remote(cmd)
 	}
@@ -318,18 +330,18 @@ where
 		&mut self,
 		tid: Tid,
 		bytes: S,
-	) -> RemoteResult<TargetPtr> {
+	) -> Result<TargetPtr> {
 		let cmd = RemoteCmd::write_scratch_bytes(tid, bytes);
 		self.wr_value_remote(cmd)
 	}
-	pub fn free_scratch_addr(&mut self, tid: Tid, addr: TargetPtr) -> RemoteResult<()> {
+	pub fn free_scratch_addr(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {
 		let cmd = RemoteCmd::free_scratch_addr(tid, addr);
 		self.wr_value_remote(cmd)
 	}
 }
 
 impl Client<MasterComm, Response> {
-	pub fn new_master_comm(
+	pub(crate) fn new_master_comm(
 		tx: Sender<MasterComm>,
 		rx: Receiver<Response>,
 		wrap: Box<dyn ApiWrapper<MasterComm, Response> + Send>,
@@ -339,12 +351,15 @@ impl Client<MasterComm, Response> {
 }
 
 impl Client<Command, Response> {
-	pub fn new_client(id: usize, tx: Sender<Command>, rx: Receiver<Response>) -> Self {
+	pub(crate) fn new_client(id: usize, tx: Sender<Command>, rx: Receiver<Response>) -> Self {
 		let wrap = ClientGen;
 		let wrap = Box::new(wrap);
 		Self::new(id, tx, rx, wrap)
 	}
-	pub fn new_remote<R: std::io::Read + Send + 'static, W: std::io::Write + Send + 'static>(
+	pub(crate) fn new_remote<
+		R: std::io::Read + Send + 'static,
+		W: std::io::Write + Send + 'static,
+	>(
 		id: usize,
 		reader: BufReader<R>,
 		writer: BufWriter<W>,
@@ -355,7 +370,7 @@ impl Client<Command, Response> {
 		let stream = Box::new(stream);
 		Self { id, wrap, stream }
 	}
-	pub fn prepare_load_client(&mut self) -> Result<()> {
+	pub(crate) fn prepare_load_client(&mut self) -> Result<()> {
 		let cmd = Command::prepare_load_client();
 		self.wr_ack(cmd)
 	}
@@ -427,14 +442,14 @@ impl Client<Command, Response> {
 			Response::Value(v) => serde_json::from_value(v)?,
 			_ => todo!(),
 		};
-		let r = r.ok_or(crate::Error::NotFound)?;
+		let r = r.ok_or(Error::NotFound)?;
 		Ok(r)
 	}
 	#[cfg(not(feature = "syscalls"))]
 	pub fn resolve_syscall<S: Into<String>>(&mut self, _name: S) -> Result<TargetPtr> {
-		Err(crate::Error::Unknown)
+		Err(Error::unsupported())
 	}
-	pub fn remove_client(&mut self, cid: usize) -> Result<()> {
+	pub(crate) fn remove_client(&mut self, cid: usize) -> Result<()> {
 		let cmd = Command::remove_client(cid);
 		self.wr_ack(cmd)
 	}
@@ -447,7 +462,7 @@ impl Client<Command, Response> {
 	}
 }
 
-pub struct IdWrapper {
+pub(crate) struct IdWrapper {
 	id: usize,
 }
 impl IdWrapper {

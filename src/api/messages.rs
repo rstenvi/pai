@@ -1,11 +1,95 @@
+//! A collection of `struct`'s and `enum`'s which can be serialized/deserialized
+//! and sent over a channel.
 use std::path::PathBuf;
 
 use crate::{
-	exe::elf::SymbolType, plugin::Plugin, syscalls::SyscallItem, trace::{Stop, Stopped}, utils::{process::Tid, Perms}, TargetPtr
+	utils::{process::Tid, Perms},
+	TargetPtr,
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "syscalls")]
+use crate::syscalls::SyscallItem;
+
 use super::Args;
+
+/// Type of symbol, read ELF-specification for more details
+#[repr(u8)]
+#[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub enum SymbolType {
+	NoType = 0,
+	Object = 1,
+	Func = 2,
+	Section = 3,
+	File = 4,
+	Common = 5,
+	Tls = 6,
+	Unknown = 255,
+}
+impl From<u8> for SymbolType {
+	fn from(value: u8) -> Self {
+		match value {
+			0 => Self::NoType,
+			1 => Self::Object,
+			2 => Self::Func,
+			3 => Self::Section,
+			4 => Self::File,
+			5 => Self::Common,
+			6 => Self::Tls,
+			_ => Self::Unknown,
+		}
+	}
+}
+impl From<SymbolType> for u8 {
+	fn from(value: SymbolType) -> Self {
+		value as u8
+	}
+}
+
+/// Details about one resolved symbol
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ElfSymbol {
+	pub name: String,
+	pub value: TargetPtr,
+	pub stype: SymbolType,
+	pub bind: SymbolBind,
+}
+
+impl std::fmt::Debug for ElfSymbol {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ElfSymbol")
+			.field("name", &self.name)
+			.field("value", &format_args!("{:x}", self.value))
+			.field("stype", &self.stype)
+			.field("bind", &self.bind)
+			.finish()
+	}
+}
+
+impl ElfSymbol {
+	pub fn add_value(&mut self, val: TargetPtr) {
+		self.value += val;
+	}
+}
+
+/// Symbol binding, read ELF-specification for more details
+#[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub enum SymbolBind {
+	Local = 0,
+	Global = 1,
+	Weak = 2,
+	Unknown = 255,
+}
+impl From<u8> for SymbolBind {
+	fn from(value: u8) -> Self {
+		match value {
+			0 => Self::Local,
+			1 => Self::Global,
+			2 => Self::Weak,
+			_ => Self::Unknown,
+		}
+	}
+}
 
 #[derive(Debug)]
 pub struct MasterComm {
@@ -45,6 +129,7 @@ impl RegEvent {
 		match event {
 			EventInner::FileOpened { fname: _, fd: _ } => Self::Files,
 			EventInner::FileClosed { fname: _, fd: _ } => Self::Files,
+			#[cfg(feature = "plugins")]
 			EventInner::PluginLoad { ptype: _, id: _ } => Self::PluinLoad,
 			EventInner::Dlopen { fname: _ } => Self::Dlopen,
 			EventInner::Prctl { event: _ } => Self::Prctl,
@@ -96,6 +181,52 @@ impl std::fmt::Display for EventPrctl {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub enum Stop {
+	SyscallEnter,
+	SyscallExit,
+
+	// SyscallDone { sysno: usize, ret: TargetPtr },
+	Exit { code: i32 },
+	Signal { signal: i32, group: bool },
+	Clone { pid: Tid },
+	Attach,
+	Breakpoint { pc: TargetPtr, clients: Vec<usize> },
+	Fork { newpid: Tid },
+	Step { pc: TargetPtr },
+	Exec { old: Tid },
+}
+
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct Stopped {
+	pub pc: TargetPtr,
+	pub stop: Stop,
+	pub tid: Tid,
+}
+impl std::fmt::Debug for Stopped {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Stopped")
+			.field("pc", &format_args!("0x{:x}", self.pc))
+			.field("stop", &self.stop)
+			.field("tid", &self.tid)
+			.finish()
+	}
+}
+impl std::fmt::Display for Stopped {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_fmt(format_args!(
+			"[{}]: {:?} @ 0x{:x}",
+			self.tid, self.stop, self.pc
+		))
+	}
+}
+
+impl Stopped {
+	pub fn new(pc: TargetPtr, stop: Stop, tid: Tid) -> Self {
+		Self { pc, stop, tid }
+	}
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct Event {
 	pub tid: Option<Tid>,
 	pub event: EventInner,
@@ -127,8 +258,9 @@ pub enum EventInner {
 		fname: String,
 		fd: isize,
 	},
+	#[cfg(feature = "plugins")]
 	PluginLoad {
-		ptype: Plugin,
+		ptype: crate::plugin::Plugin,
 		id: usize,
 	},
 	Dlopen {
@@ -162,9 +294,8 @@ impl std::fmt::Display for EventInner {
 			EventInner::FileClosed { fname, fd } => {
 				f.write_fmt(format_args!("FileClosed({fname}) -> {fd}"))
 			}
-			EventInner::PluginLoad { ptype, id } => {
-				f.write_fmt(format_args!("PluginLoad({ptype}) -> {id}"))
-			}
+			#[cfg(feature = "plugins")]
+			EventInner::PluginLoad { ptype, id } => f.write_fmt(format_args!("PluginLoad({ptype}) -> {id}")),
 			EventInner::Dlopen { fname } => f.write_fmt(format_args!("Dlopen({fname})")),
 			EventInner::Prctl { event } => f.write_fmt(format_args!("Prctl({event})")),
 			EventInner::Read {
@@ -266,7 +397,9 @@ pub enum ThreadCmd {
 	GetLibcRegs,
 
 	/// Step one single instruction
-	StepIns { count: usize },
+	StepIns {
+		count: usize,
+	},
 
 	/// Read memory address as a NULL-terminated C-string
 	ReadCString {
@@ -445,10 +578,17 @@ pub enum NewClientReq {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ClientProxy {
-	SetConfig { config: Args },
-	SetConfigThread { tid: Tid, config: Args },
+	SetConfig {
+		config: Args,
+	},
+	SetConfigThread {
+		tid: Tid,
+		config: Args,
+	},
 	GetConfig,
-	GetConfigThread { tid: Tid },
+	GetConfigThread {
+		tid: Tid,
+	},
 	#[cfg(feature = "syscalls")]
 	ResolveSyscall(String),
 	Detach,
@@ -546,6 +686,7 @@ pub enum Response {
 	Ack,
 	Value(serde_json::Value),
 	Event(Event),
+	#[cfg(feature = "syscalls")]
 	Syscall(SyscallItem),
 	Stopped(Stopped),
 	TargetExit,

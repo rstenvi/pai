@@ -67,8 +67,15 @@ impl TryFrom<procfs::process::MemoryMap> for MemoryMap {
 	type Error = crate::Error;
 
 	fn try_from(value: procfs::process::MemoryMap) -> std::result::Result<Self, Self::Error> {
+		let start = value.address.0;
+		let end = value.address.1;
+		#[cfg(target_pointer_width = "32")]
+		let start = start.try_into()?;
+		#[cfg(target_pointer_width = "32")]
+		let end = end.try_into()?;
+
 		let r = Self {
-			loc: Location::new(value.address.0.try_into()?, value.address.1.try_into()?),
+			loc: Location::new(start, end),
 			perms: value.perms.into(),
 			path: value.pathname,
 			offset: value.offset,
@@ -129,7 +136,7 @@ impl Process {
 			.map(|x| x.pid())
 			.collect();
 		let Some(pid) = r.first() else {
-			return Err(Error::Unknown.into());
+			return Err(Error::Unknown);
 		};
 		let proc = Process::from_pid(*pid as u32)?;
 		Ok(proc)
@@ -168,7 +175,7 @@ impl Process {
 		if r.len() == 1 {
 			Ok(r.remove(0))
 		} else {
-			Err(Error::msg("exe module not found").into())
+			Err(Error::msg("exe module not found"))
 		}
 	}
 

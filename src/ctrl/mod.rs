@@ -1,14 +1,9 @@
 use crate::{
-	api::{
-		messages::{Cont, Event, ExecSyscall, MasterComm, NewClientReq, RegEvent},
-		Client, Command, ManagerCmd, ProcessCmd, RemoteCmd, Response, ThreadCmd,
-	},
-	trace::{ptrace::Tracer, Stopped},
-	utils::process::Tid,
-	Error, Result,
+	api::{messages::NewClientReq, Client, Command, Response},
+	Result,
 };
 use crossbeam_channel::{unbounded, Receiver, RecvTimeoutError, Sender};
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 pub mod thread;
 pub mod tracer;
@@ -82,10 +77,10 @@ impl ClientType {
 			ClientType::Regular => ClientState::Blocking,
 		}
 	}
-	pub fn sends_ack(&self) -> bool {
-		*self == Self::Regular
-	}
-	pub fn no_ack(&self) -> bool {
-		!self.sends_ack()
-	}
+	// pub fn sends_ack(&self) -> bool {
+	// 	*self == Self::Regular
+	// }
+	// pub fn no_ack(&self) -> bool {
+	// 	!self.sends_ack()
+	// }
 }

@@ -2,52 +2,77 @@ use std::io::{BufReader, BufWriter};
 use std::thread::JoinHandle;
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::api::messages::{ElfSymbol, Stop, Stopped, SymbolType};
+use crate::exe::elf::Elf;
+#[cfg(feature = "plugins")]
+use crate::plugin::{plugins::*, Plugin};
+
+#[cfg(feature = "plugins")]
+use crate::utils::{LoadDependency, LoadedPlugin};
+
+#[cfg(feature = "syscalls")]
+use crate::syscalls::SyscallItem;
+
+#[cfg(feature = "plugins")]
 use crate::api::messages::EventInner;
-use crate::exe::elf::{Elf, SymbolType};
-use crate::plugin::plugins::*;
-use crate::trace::Stop;
-use crate::utils::{LoadDependency, LoadedPlugin, ModuleSymbols};
+
+use crate::utils::ModuleSymbols;
 use crate::{
 	api::{messages::Event, Client, ClientCmd, Command, Response},
 	ctrl::ReqNewClient,
-	exe::elf::ElfSymbol,
-	plugin::Plugin,
-	syscalls::SyscallItem,
-	trace::Stopped,
 	utils::process::{MemoryMap, Process, Tid},
 	Error, Result, TargetPtr,
 };
 
-pub type SignalCb<T> = fn(&mut Secondary<T>, nix::sys::signal::Signal);
-pub type SyscallCb<T> = fn(&mut Secondary<T>, SyscallItem) -> Result<()>;
-pub type BreakpointCb<T> = fn(&mut Secondary<T>, Tid, TargetPtr) -> Result<bool>;
-pub type EventCb<T> = fn(&mut Secondary<T>, Event) -> Result<()>;
-pub type StoppedCb<T> = fn(&mut Secondary<T>, Stopped) -> Result<()>;
-pub type RawSyscallCb<T> = fn(&mut Secondary<T>, Tid, bool) -> Result<()>;
-pub type StepCb<T> = fn(&mut Secondary<T>, Tid, TargetPtr) -> Result<()>;
+pub type SignalCb<T, Err> = fn(&mut Secondary<T, Err>, nix::sys::signal::Signal);
+#[cfg(feature = "syscalls")]
+pub type SyscallCb<T, Err> = fn(&mut Secondary<T, Err>, SyscallItem) -> Result<()>;
 
-pub struct Secondary<T> {
-	client: Client<Command, Response>,
+pub type BreakpointCb<T, Err> = fn(&mut Secondary<T, Err>, Tid, TargetPtr) -> Result<bool>;
+pub type EventCb<T, Err> = fn(&mut Secondary<T, Err>, Event) -> Result<()>;
+pub type StoppedCb<T, Err> = fn(&mut Secondary<T, Err>, Stopped) -> Result<()>;
+pub type RawSyscallCb<T, Err> = fn(&mut Secondary<T, Err>, Tid, bool) -> Result<()>;
+pub type StepCb<T, Err> =
+	fn(&mut Secondary<T, Err>, Tid, TargetPtr) -> std::result::Result<(), Err>;
+
+/// Each connected client will get access  to this context object.
+///
+/// This object will always belong to a [super::Main] and will never be created
+/// on its own.
+pub struct Secondary<T, Err>
+where
+	Err: Into<crate::Error>,
+{
+	/// Can be used to query information from OS about the process.
 	pub proc: Process,
-	pub(crate) plugins: HashMap<Plugin, LoadedPlugin>,
+	client: Client<Command, Response>,
 
-	pub data: T,
+	#[cfg(feature = "plugins")]
+	pub(crate) plugins: HashMap<Plugin, crate::utils::LoadedPlugin>,
 
-	signalcbs: HashMap<i32, SignalCb<T>>,
-	syscallcb: Option<SyscallCb<T>>,
-	eventcb: Option<EventCb<T>>,
-	stepcb: Option<StepCb<T>>,
-	bpcbs: HashMap<TargetPtr, BreakpointCb<T>>,
-	syscallcbs: HashMap<TargetPtr, SyscallCb<T>>,
+	pub(crate) data: T,
 
-	stoppedcb: Option<StoppedCb<T>>,
+	signalcbs: HashMap<i32, SignalCb<T, Err>>,
+	#[cfg(feature = "syscalls")]
+	syscallcb: Option<SyscallCb<T, Err>>,
+	eventcb: Option<EventCb<T, Err>>,
+	stepcb: Option<StepCb<T, Err>>,
+	bpcbs: HashMap<TargetPtr, BreakpointCb<T, Err>>,
 
-	raw_syscall_cb: Option<RawSyscallCb<T>>,
+	#[cfg(feature = "syscalls")]
+	syscallcbs: HashMap<TargetPtr, SyscallCb<T, Err>>,
+
+	stoppedcb: Option<StoppedCb<T, Err>>,
+
+	raw_syscall_cb: Option<RawSyscallCb<T, Err>>,
 
 	resolved: HashMap<PathBuf, ModuleSymbols>,
 	pub(crate) req: Option<ReqNewClient>,
 }
-impl<T> Secondary<T> {
+impl<T, Err> Secondary<T, Err>
+where
+	Err: Into<crate::Error>,
+{
 	pub(crate) fn new(
 		mut client: Client<Command, Response>,
 		data: T,
@@ -55,21 +80,22 @@ impl<T> Secondary<T> {
 	) -> Result<Self> {
 		let signalcbs = HashMap::new();
 		let bpcbs = HashMap::new();
-		let syscallcbs = HashMap::new();
 		let pid = client.get_pid()?;
 		let proc = Process::from_pid(pid as u32)?;
-		let plugins = HashMap::new();
 		let resolved = HashMap::new();
 		let r = Self {
 			data,
 			client,
 			eventcb: None,
 			signalcbs,
+			#[cfg(feature = "syscalls")]
 			syscallcb: None,
 			proc,
 			bpcbs,
-			syscallcbs,
-			plugins,
+			#[cfg(feature = "syscalls")]
+			syscallcbs: HashMap::new(),
+			#[cfg(feature = "plugins")]
+			plugins: HashMap::new(),
 			req,
 			resolved,
 			stoppedcb: None,
@@ -78,16 +104,30 @@ impl<T> Secondary<T> {
 		};
 		Ok(r)
 	}
+
+	/// Get a reference to [Client]
 	pub fn client(&self) -> &Client<Command, Response> {
 		&self.client
 	}
+
+	/// Get a mutable reference to [Client]
 	pub fn client_mut(&mut self) -> &mut Client<Command, Response> {
 		&mut self.client
 	}
-	pub fn new_second(client: Client<Command, Response>, data: T) -> Result<Self> {
+
+	/// Get a reference to stored data
+	pub fn data(&self) -> &T {
+		&self.data
+	}
+
+	/// Get a mutable reference to stored data
+	pub fn data_mut(&mut self) -> &mut T {
+		&mut self.data
+	}
+	pub(crate) fn new_second(client: Client<Command, Response>, data: T) -> Result<Self> {
 		Self::new(client, data, None)
 	}
-	pub fn new_remote_plugin(data: T) -> Result<Self> {
+	pub(crate) fn new_remote_plugin(data: T) -> Result<Self> {
 		let stdin = std::io::stdin();
 		let stdin = BufReader::new(stdin);
 		let stdout = std::io::stdout();
@@ -104,14 +144,12 @@ impl<T> Secondary<T> {
 		Self::new(client, data, Some(req))
 	}
 	fn all_symbols_mod(&self, module: &MemoryMap) -> Result<Vec<ElfSymbol>> {
-		if let Some(p) = module.path() {
-			let elf = Elf::new(p.clone())?;
-			let r = elf.all_symbols();
-			Ok(r)
-		} else {
-			log::warn!("unable to find path in module");
-			Err(Error::Unknown.into())
-		}
+		let p = module
+			.path()
+			.ok_or(Error::msg("unable to find path in module"))?;
+		let elf = Elf::new(p)?;
+		let r = elf.all_symbols();
+		Ok(r)
 	}
 	fn store_symbols(&mut self, path: PathBuf, base: TargetPtr, symbols: Vec<ElfSymbol>) {
 		let mods = ModuleSymbols::new(path.clone(), base, symbols);
@@ -126,7 +164,9 @@ impl<T> Secondary<T> {
 		if mods.len() == 1 {
 			Ok(mods.remove(0).clone())
 		} else {
-			Err(Error::msg(format!("found incorrect modules matching {pbuf:?}")).into())
+			Err(Error::msg(format!(
+				"found incorrect modules matching {pbuf:?}"
+			)))
 		}
 	}
 	fn symbols_init(&mut self, pbuf: &PathBuf) -> Result<()> {
@@ -145,7 +185,7 @@ impl<T> Secondary<T> {
 				Ok(())
 			} else {
 				let msg = format!("found no modules matching {pbuf:?}");
-				Err(Error::msg(msg).into())
+				Err(Error::msg(msg))
 			}
 		}
 	}
@@ -172,20 +212,21 @@ impl<T> Secondary<T> {
 		}
 		Ok(None)
 	}
+	fn resolve_pathbuf(&self, path: &PathBuf) -> Result<&ModuleSymbols> {
+		self.resolved
+			.get(path)
+			.ok_or(Error::msg(format!("found no modules matching '{path:?}'")))
+	}
 
 	/// Resolve a given symbol `name` in a given module with path `pbuf`
 	pub fn resolve_symbol(&mut self, pbuf: &PathBuf, name: &str) -> Result<Option<ElfSymbol>> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		log::info!("resolving  in {pbuf:?}");
 		self.symbols_init(&pbuf)?;
-		if let Some(res) = self.resolved.get(&pbuf) {
-			log::info!("already gathered symbols for '{pbuf:?}'");
-			let sym = res.resolve(name).cloned();
-			Ok(sym)
-		} else {
-			log::info!("symbols for '{pbuf:?}' not retrieved, gathering");
-			Err(Error::msg(format!("found no modules matching '{pbuf:?}'")).into())
-		}
+		let res = self.resolve_pathbuf(&pbuf)?;
+		log::info!("already gathered symbols for '{pbuf:?}'");
+		let sym = res.resolve(name).cloned();
+		Ok(sym)
 	}
 
 	/// Enumerate all symbols of the given type. See [SymbolType] for more
@@ -197,22 +238,21 @@ impl<T> Secondary<T> {
 	) -> Result<Vec<ElfSymbol>> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		self.symbols_init(&pbuf)?;
-		if let Some(res) = self.resolved.get(&pbuf) {
-			let r: Vec<_> = res
-				.symbols
-				.values()
-				.filter(|x| x.stype == symtype)
-				.cloned()
-				.collect();
-			Ok(r)
-		} else {
-			Err(Error::msg(format!("found no modules matching '{pbuf:?}'")).into())
-		}
+		let res = self.resolve_pathbuf(&pbuf)?;
+		let r: Vec<_> = res
+			.symbols
+			.values()
+			.filter(|x| x.stype == symtype)
+			.cloned()
+			.collect();
+		Ok(r)
 	}
 	pub fn symbols_functions(&mut self, pbuf: &PathBuf) -> Result<Vec<ElfSymbol>> {
 		self.symbols_of_type(pbuf, SymbolType::Func)
 	}
-	fn start_plugin<X: Send + 'static>(mut plugin: Secondary<X>) -> Result<JoinHandle<Result<()>>> {
+	fn start_plugin<X: Send + 'static>(
+		mut plugin: Secondary<X, crate::Error>,
+	) -> Result<JoinHandle<Result<()>>> {
 		let handle = std::thread::spawn(move || -> Result<()> {
 			log::info!("Creating plugin and entering loop");
 			plugin.loop_until_exit()?;
@@ -220,7 +260,8 @@ impl<T> Secondary<T> {
 		});
 		Ok(handle)
 	}
-	pub fn load_dependencies(&mut self, plugins: &[Plugin], id: usize) -> Result<()> {
+	#[cfg(feature = "plugins")]
+	fn load_dependencies(&mut self, plugins: &[Plugin], id: usize) -> Result<()> {
 		for plugin in plugins.iter() {
 			if let Some(pl) = self.plugins.get_mut(plugin) {
 				pl.add_dependency(id);
@@ -233,43 +274,48 @@ impl<T> Secondary<T> {
 	}
 	fn new_regular(&self) -> Result<Client<Command, Response>> {
 		log::debug!("req {:?}", self.req);
-		if let Some(req) = &self.req {
-			req.new_regular()
-		} else {
-			Err(Error::Unknown.into())
-		}
+		let req = self.req.as_ref().ok_or(Error::msg("req was not set"))?;
+		req.new_regular()
 	}
+	#[cfg(feature = "plugins")]
 	fn _new_plugin(&mut self, plugin: &Plugin, dep: LoadDependency) -> Result<()> {
 		log::info!("creating plugin for {plugin:?}");
 		self.client.prepare_load_client()?;
 		if let Some(pl) = self.plugins.get_mut(plugin) {
 			pl.update_dependency(&dep);
-			Err(Error::msg(format!("tried to double-register plugin {plugin:?}")).into())
+			Err(Error::msg(format!(
+				"tried to double-register plugin {plugin:?}"
+			)))
 		} else {
 			let client = self.new_regular()?;
-			let nid = client.id;
+			let nid = client.id();
 			log::info!("Created new client");
 			let h = match plugin {
+				#[cfg(feature = "syscalls")]
 				Plugin::DlopenDetect => {
 					self.load_dependencies(DlopenDetect::dependecies(), nid)?;
 					let dl = DlopenDetect::init(client)?;
 					Self::start_plugin(dl)?
 				}
+				#[cfg(feature = "syscalls")]
 				Plugin::Files => {
 					self.load_dependencies(Files::dependecies(), nid)?;
 					let dl = Files::init(client)?;
 					Self::start_plugin(dl)?
 				}
+				#[cfg(feature = "syscalls")]
 				Plugin::Mmap => {
 					self.load_dependencies(Mmap::dependecies(), nid)?;
 					let dl = Mmap::init(client)?;
 					Self::start_plugin(dl)?
 				}
+				#[cfg(feature = "syscalls")]
 				Plugin::Prctl => {
 					self.load_dependencies(Prctl::dependecies(), nid)?;
 					let dl = Prctl::init(client)?;
 					Self::start_plugin(dl)?
 				}
+				_ => todo!(),
 			};
 			let event = EventInner::PluginLoad {
 				ptype: plugin.clone(),
@@ -282,8 +328,12 @@ impl<T> Secondary<T> {
 			Ok(())
 		}
 	}
+	#[cfg(feature = "plugins")]
 	pub fn new_plugin(&mut self, plugin: &Plugin, reglisten: bool) -> Result<()> {
 		self._new_plugin(plugin, LoadDependency::Manual)?;
+		if reglisten {
+			log::error!("reqlisten = true is not yet supported");
+		}
 		assert!(!reglisten);
 		// if reglisten {
 		// 	match plugin {
@@ -293,12 +343,9 @@ impl<T> Secondary<T> {
 		// }
 		Ok(())
 	}
-	pub fn data(&self) -> &T {
-		&self.data
-	}
-	pub fn data_mut(&mut self) -> &mut T {
-		&mut self.data
-	}
+
+	/// Remove a plugin with the identifier in `plugin`
+	#[cfg(feature = "plugins")]
 	pub fn remove_plugin(&mut self, plugin: &Plugin) -> Result<()> {
 		log::info!("removing {plugin:?}");
 		if let Some(cid) = self.plugins.remove(plugin) {
@@ -309,6 +356,7 @@ impl<T> Secondary<T> {
 		}
 		Ok(())
 	}
+	#[cfg(feature = "plugins")]
 	fn notify_id_removed(&mut self, id: usize) -> Result<()> {
 		log::info!("removing all plugins which only was needed by {id}");
 		let mut rem = Vec::new();
@@ -322,6 +370,13 @@ impl<T> Secondary<T> {
 		}
 		Ok(())
 	}
+
+	/// Send in an arbitrary [Command] and have it handled at the appropriate
+	/// level.
+	///
+	/// This function is mostly useful when we have a client in a different
+	/// process/thread/machine from this context object. Data must then be
+	/// serialized somehow and the [Command] object is used for this.
 	pub fn handle_cmd(&mut self, cmd: Command) -> Result<Response> {
 		match cmd {
 			Command::Client { tid, cmd } => self.handle_client_cmd(tid, cmd),
@@ -331,48 +386,35 @@ impl<T> Secondary<T> {
 
 	/// Should only be used when the client is fully remote and cannot call the
 	/// functions directly
-	// #[cfg(feature = "unstable")]
-	pub fn handle_client_cmd(&mut self, _tid: Tid, cmd: ClientCmd) -> Result<Response> {
+	fn handle_client_cmd(&mut self, _tid: Tid, cmd: ClientCmd) -> Result<Response> {
 		let ret = match cmd {
 			ClientCmd::ResolveEntry => {
-				let ins = self
-					.resolve_entry()
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.resolve_entry();
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ClientCmd::StoppedTids => {
-				let ins = self
-					.get_stopped_tids()
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.get_stopped_tids();
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ClientCmd::FirstStoppedTid => {
-				let ins = self
-					.get_first_stopped()
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.get_first_stopped();
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ClientCmd::GetModule { path } => {
-				let ins = self
-					.get_module(&path)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.get_module(&path);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ClientCmd::ResolveSymbol { path, symbol } => {
-				let ins = self
-					.resolve_symbol(&path, &symbol)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.resolve_symbol(&path, &symbol);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ClientCmd::SymbolsOfType { path, symtype } => {
-				let ins = self
-					.symbols_of_type(&path, symtype)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.symbols_of_type(&path, symtype);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
@@ -380,6 +422,7 @@ impl<T> Secondary<T> {
 		Ok(ret)
 	}
 
+	/// Get all [Tid]s which have stopped
 	pub fn get_stopped_tids(&mut self) -> Result<Vec<Tid>> {
 		let r: Vec<Tid> = self
 			.client
@@ -390,13 +433,18 @@ impl<T> Secondary<T> {
 			.collect();
 		Ok(r)
 	}
+
+	/// Get a single [Tid] which has stopped.
+	///
+	/// This is useful in the beginning as some commands need to operate on a
+	/// specific [Tid].
 	pub fn get_first_stopped(&mut self) -> Result<Tid> {
-		if let Some(n) = self.get_stopped_tids()?.first() {
-			Ok(*n)
-		} else {
-			Err(Error::msg("No stopped thread").into())
-		}
+		let a = self.get_stopped_tids()?;
+		let n = a.first().ok_or(Error::msg("No stopped thread"))?;
+		Ok(*n)
 	}
+
+	/// Get entry point of program
 	pub fn resolve_entry(&self) -> Result<TargetPtr> {
 		let exe = self.proc.exe_path()?;
 		let elf = Elf::new(exe)?.parse()?;
@@ -405,33 +453,34 @@ impl<T> Secondary<T> {
 
 		Ok(entry + mainmod.loc.addr())
 	}
-	pub fn set_step_handler(&mut self, cb: StepCb<T>) {
+	pub fn set_step_handler(&mut self, cb: StepCb<T, Err>) {
 		self.stepcb = Some(cb);
 	}
-	pub fn set_specific_syscall_handler(&mut self, sysno: TargetPtr, cb: SyscallCb<T>) {
+	#[cfg(feature = "syscalls")]
+	pub fn set_specific_syscall_handler(&mut self, sysno: TargetPtr, cb: SyscallCb<T, Err>) {
 		self.syscallcbs.insert(sysno, cb);
 	}
-	pub fn set_raw_syscall_handler(&mut self, cb: RawSyscallCb<T>) {
+	pub fn set_raw_syscall_handler(&mut self, cb: RawSyscallCb<T, Err>) {
 		self.raw_syscall_cb = Some(cb);
 	}
-	pub fn set_stop_handler(&mut self, cb: StoppedCb<T>) {
+	pub fn set_stop_handler(&mut self, cb: StoppedCb<T, Err>) {
 		self.stoppedcb = Some(cb);
 	}
-	pub fn set_generic_syscall_handler(&mut self, cb: SyscallCb<T>) -> Result<()> {
+	#[cfg(feature = "syscalls")]
+	pub fn set_generic_syscall_handler(&mut self, cb: SyscallCb<T, Err>) {
 		self.syscallcb = Some(cb);
-		Ok(())
 	}
 	pub fn register_breakpoint_handler(
 		&mut self,
 		tid: Tid,
 		addr: TargetPtr,
-		cb: BreakpointCb<T>,
+		cb: BreakpointCb<T, Err>,
 	) -> Result<()> {
 		self.client.insert_bp(tid, addr)?;
 		self.bpcbs.insert(addr, cb);
 		Ok(())
 	}
-	pub fn set_event_handler(&mut self, cb: EventCb<T>) {
+	pub fn set_event_handler(&mut self, cb: EventCb<T, Err>) {
 		self.eventcb = Some(cb);
 	}
 	fn event_signal(&mut self, signal: i32) -> Result<()> {
@@ -443,6 +492,7 @@ impl<T> Secondary<T> {
 		}
 		Ok(())
 	}
+	#[cfg(feature = "syscalls")]
 	fn handle_syscall(&mut self, syscall: SyscallItem) -> Result<()> {
 		let sysno = syscall.sysno;
 		log::debug!("event syscall {sysno} {}", syscall.tid);
@@ -493,7 +543,10 @@ impl<T> Secondary<T> {
 		if let Some(cb) = self.stepcb {
 			match cb(self, tid, pc) {
 				Ok(_) => log::trace!("callback for step succeeeded"),
-				Err(e) => log::error!("callback step resulted in error: '{e:?}'"),
+				Err(e) => {
+					let e: Error = e.into();
+					log::error!("callback step resulted in error: '{e:?}'")
+				}
 			}
 		}
 		Ok(())
@@ -551,7 +604,7 @@ impl<T> Secondary<T> {
 				Err(err) => {
 					log::error!("loop_until callback returned error: {err:?}");
 					true
-				},
+				}
 			};
 
 			// We always need to check for exit
@@ -564,6 +617,7 @@ impl<T> Secondary<T> {
 				match rsp {
 					Response::Event(evt) => self.handle_event(evt)?,
 					Response::Stopped(stopped) => self.handle_stopped(stopped)?,
+					#[cfg(feature = "syscalls")]
 					Response::Syscall(syscall) => self.handle_syscall(syscall)?,
 					Response::TargetExit => panic!("TargetExit was not handled by callback"),
 					Response::Removed => panic!("Removed was not handled by callback"),
@@ -605,14 +659,17 @@ impl<T> Secondary<T> {
 		};
 		Ok(ret)
 	}
+
+	/// Run until we hit program entry and then return control to caller.
 	pub fn run_until_entry(&mut self) -> Result<Option<TargetPtr>> {
 		let entry = self.resolve_entry()?;
 		self.run_until_addr(entry)
 	}
 
 	/// Run until a given syscall number has been hit
-	/// 
+	///
 	/// **NB!** This assumes that syscall transformation has been configured.
+	#[cfg(feature = "syscalls")]
 	pub fn run_until_sysno(&mut self, sysno: TargetPtr) -> Result<Response> {
 		let ret = self.loop_until(|rsp| {
 			let ret = if let Response::Syscall(sys) = rsp {

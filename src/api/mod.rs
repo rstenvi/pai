@@ -1,3 +1,6 @@
+//! Different structures, enums and functions serving as the available API
+//!
+
 pub mod args;
 pub mod client;
 pub mod messages;

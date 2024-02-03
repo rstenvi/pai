@@ -1,2 +1,3 @@
 target/
-crosstarget/
+output/
+core.*

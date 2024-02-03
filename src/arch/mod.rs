@@ -7,7 +7,6 @@ pub mod aarch64;
 #[cfg(target_arch = "arm")]
 pub mod aarch32;
 
-
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64;
 
@@ -47,18 +46,26 @@ where
 	Ok(())
 }
 
-pub fn bp_code() -> &'static [u8] {
+pub(crate) fn bp_code() -> &'static [u8] {
 	#[cfg(target_arch = "aarch64")]
-	{ &crate::arch::aarch64::SW_BP }
+	{
+		&crate::arch::aarch64::SW_BP
+	}
 
 	#[cfg(target_arch = "arm")]
-	{ &crate::arch::aarch32::SW_BP }
+	{
+		&crate::arch::aarch32::SW_BP
+	}
 
 	#[cfg(target_arch = "x86_64")]
-	{ &crate::arch::x86_64::SW_BP }
+	{
+		&crate::arch::x86_64::SW_BP
+	}
 
 	#[cfg(target_arch = "x86")]
-	{ &crate::arch::x86::SW_BP }
+	{
+		&crate::arch::x86::SW_BP
+	}
 }
 
 #[cfg(test)]

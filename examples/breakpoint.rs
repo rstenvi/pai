@@ -1,7 +1,7 @@
 use pai::ctx;
 fn main() -> anyhow::Result<()> {
 	let cmd = std::process::Command::new("true");
-	let mut ctx = ctx::Main::spawn(cmd, 0_usize)?;
+	let mut ctx: ctx::Main<usize, pai::Error> = ctx::Main::new_spawn(cmd, 0_usize)?;
 
 	let tid = ctx.secondary_mut().get_first_stopped()?;
 	let entry = ctx.secondary().resolve_entry()?;

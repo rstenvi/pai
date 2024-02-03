@@ -7,27 +7,6 @@ pub struct BuildVersion {
 	minor: usize,
 	patch: usize,
 }
-impl BuildVersion {
-	// used by build.rs
-	#[allow(unused)]
-	fn new(s: &str) -> Self {
-		let mut vs = Vec::new();
-		for part in s.split('.') {
-			if let Ok(n) = part.parse::<usize>() {
-				vs.push(n);
-			}
-		}
-		assert!(vs.len() == 3);
-		let major = vs.remove(0);
-		let minor = vs.remove(0);
-		let patch = vs.remove(0);
-		Self {
-			major,
-			minor,
-			patch,
-		}
-	}
-}
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum BuildArch {
@@ -108,7 +87,6 @@ impl std::str::FromStr for BuildEnv {
 	}
 }
 
-
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BuildAbi {
 	#[default]
@@ -139,18 +117,6 @@ pub struct BuildTarget {
 	abi: BuildAbi,
 	env: BuildEnv,
 }
-impl BuildTarget {
-	pub fn new(arch: BuildArch, os: BuildOs, endian: BuildEndian, ptrwidth: usize, abi: BuildAbi, env: BuildEnv) -> Self {
-		Self {
-			arch,
-			os,
-			endian,
-			ptrwidth,
-			abi,
-			env,
-		}
-	}
-}
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BuildInfo {
@@ -159,28 +125,4 @@ pub(crate) struct BuildInfo {
 	triple: String,
 	target: BuildTarget,
 	githash: Option<String>,
-}
-
-impl BuildInfo {
-	#[allow(unused)]
-	fn new<S1: Into<String>, S2: Into<String>>(
-		linker: S1,
-		version: BuildVersion,
-		target: BuildTarget,
-		triple: S2,
-		githash: Option<String>,
-	) -> Self {
-		let linker = linker.into();
-		let triple = triple.into();
-		Self {
-			linker,
-			version,
-			target,
-			triple,
-			githash,
-		}
-	}
-	// fn linker(&self) -> &str {
-	// 	&self.linker
-	// }
 }

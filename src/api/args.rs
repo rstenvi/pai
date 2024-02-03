@@ -1,11 +1,12 @@
+//! A client can use and [Args] object to control behaviour in trace controllers
+//! components.
 use crate::api::messages::Cont;
-use crate::trace::Stop;
 use crate::utils::process::Tid;
 use crate::{Result, TargetPtr};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::messages::RegEvent;
+use super::messages::{RegEvent, Stop};
 
 #[derive(Default, Debug)]
 struct Breakpoint {
@@ -46,6 +47,20 @@ macro_rules! builder_push_val {
 	};
 }
 
+/// Construct [Args]
+///
+/// ## Example
+///
+/// Below is an example to intercept all system calls.
+///
+/// ```rust
+/// use pai::api::ArgsBuilder;
+/// let args = ArgsBuilder::new()
+///   .handle_steps()
+///   .finish()
+///   .expect("unable to construct args");
+///
+/// ```
 #[derive(Default)]
 pub struct ArgsBuilder {
 	args: Args,
@@ -58,18 +73,28 @@ impl ArgsBuilder {
 		self.args.sanity_check()?;
 		Ok(self.args)
 	}
+	#[cfg(feature = "syscalls")]
 	builder_set_bool! { intercept_all_syscalls }
+
+	#[cfg(feature = "syscalls")]
 	builder_set_bool! { transform_syscalls }
+
+	#[cfg(feature = "syscalls")]
 	builder_set_bool! { enrich_all_syscalls }
+
 	builder_set_bool! { only_notify_syscall_exit }
 	builder_set_bool! { handle_steps }
 
 	builder_push_val! { syscall_traced, sysno, TargetPtr }
 	builder_push_val! { signal_traced, signal, i32 }
+
+	#[cfg(feature = "syscalls")]
 	builder_push_val! { enrich_syscalls, sysno, TargetPtr }
 	builder_push_val! { registered, reg, RegEvent }
 }
 
+/// Object used by trace controllers to decide behaviour when tracing the
+/// target. Construct with [ArgsBuilder]
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Args {
 	intercept_all_syscalls: bool,
@@ -100,7 +125,7 @@ pub struct Args {
 }
 
 impl Args {
-	pub fn forward_master(mut self) -> Self {
+	pub(crate) fn forward_master(mut self) -> Self {
 		if (self.intercept_all_syscalls || !self.syscall_traced.is_empty())
 			&& self.transform_syscalls
 		{
@@ -110,12 +135,12 @@ impl Args {
 		}
 		self
 	}
-	pub fn sanity_check(&self) -> Result<()> {
+	fn sanity_check(&self) -> Result<()> {
 		if !self.intercept_all_syscalls
 			&& !self.syscall_traced.is_empty()
 			&& !self.transform_syscalls
 		{
-			Err(crate::Error::msg("for us to trace certain syscall we have to transform them to know the syscall number").into())
+			Err(crate::Error::msg("for us to trace certain syscall we have to transform them to know the syscall number"))
 		} else {
 			Ok(())
 		}
@@ -134,6 +159,7 @@ impl Args {
 	fn handles_syscall_exit(&self) -> bool {
 		self.intercept_all_syscalls || !self.syscall_traced.is_empty()
 	}
+	#[cfg(feature = "syscalls")]
 	fn handles_syscall_sysno(&self, sysno: TargetPtr) -> bool {
 		self.syscall_traced.contains(&sysno)
 	}
@@ -141,11 +167,11 @@ impl Args {
 		self.signal_traced.contains(&signal)
 	}
 
-	pub fn handles_regevent(&self, reg: &RegEvent) -> bool {
+	pub(crate) fn handles_regevent(&self, reg: &RegEvent) -> bool {
 		self.registered.contains(reg)
 	}
 
-	pub fn handles_stop(&self, stop: &Stop) -> Option<bool> {
+	pub(crate) fn handles_stop(&self, stop: &Stop) -> Option<bool> {
 		let r = match stop {
 			Stop::SyscallEnter => Some(self.handles_syscall_enter()),
 			Stop::SyscallExit => Some(self.handles_syscall_exit()),
@@ -158,6 +184,7 @@ impl Args {
 			Stop::Breakpoint { pc: _, clients: _ } => None,
 			Stop::Fork { newpid: _ } => Some(self.registered.contains(&RegEvent::Fork)),
 			Stop::Step { pc: _ } => Some(self.handle_steps),
+			Stop::Exec { old: _ } => Some(false),
 		};
 		log::debug!("handles stop {stop:?} => {r:?}");
 		r
@@ -205,10 +232,15 @@ impl ClientArgs {
 		self.threads.insert(tid, config);
 	}
 
+	#[cfg(feature = "syscalls")]
 	bool_access! { intercept_all_syscalls }
+
+	#[cfg(feature = "syscalls")]
 	bool_access! { transform_syscalls }
+
 	bool_access! { only_notify_syscall_exit }
 
+	#[cfg(feature = "syscalls")]
 	pub fn handles_syscall_sysno(&self, tid: Tid, sysno: TargetPtr) -> bool {
 		if let Some(args) = self.threads.get(&tid) {
 			args.handles_syscall_sysno(sysno)

@@ -18,7 +18,7 @@ impl Prctl {
 	pub fn dependecies() -> &'static [Plugin] {
 		&[]
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self>> {
+	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self, crate::Error>> {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
@@ -38,7 +38,7 @@ impl Prctl {
 		ctx.set_specific_syscall_handler(prctl, |cl, sys| {
 			if sys.args.len() < 5 {
 				let msg = format!("too few arguments for prctl {:?}", sys.args);
-				return Err(Error::msg(msg).into());
+				return Err(Error::msg(msg));
 			}
 			let tid = sys.tid;
 			let option = sys.args[0].raw_value();

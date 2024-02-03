@@ -1,7 +1,7 @@
 use std::os::fd::AsRawFd;
-use std::{fs::File, io::Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::{fs::File, io::Write};
 
 #[cfg(feature = "syscalls")]
 use syzlang_parser::parser::{
@@ -10,7 +10,64 @@ use syzlang_parser::parser::{
 
 include!("src/buildinfo.rs");
 
+impl BuildVersion {
+	fn new(s: &str) -> Self {
+		let mut vs = Vec::new();
+		for part in s.split('.') {
+			if let Ok(n) = part.parse::<usize>() {
+				vs.push(n);
+			}
+		}
+		assert!(vs.len() == 3);
+		let major = vs.remove(0);
+		let minor = vs.remove(0);
+		let patch = vs.remove(0);
+		Self {
+			major,
+			minor,
+			patch,
+		}
+	}
+}
+
+impl BuildInfo {
+	fn new<S1: Into<String>, S2: Into<String>>(
+		linker: S1,
+		version: BuildVersion,
+		target: BuildTarget,
+		triple: S2,
+		githash: Option<String>,
+	) -> Self {
+		let linker = linker.into();
+		let triple = triple.into();
+		Self {
+			linker,
+			version,
+			target,
+			triple,
+			githash,
+		}
+	}
+}
+
 impl BuildTarget {
+	pub fn new(
+		arch: BuildArch,
+		os: BuildOs,
+		endian: BuildEndian,
+		ptrwidth: usize,
+		abi: BuildAbi,
+		env: BuildEnv,
+	) -> Self {
+		Self {
+			arch,
+			os,
+			endian,
+			ptrwidth,
+			abi,
+			env,
+		}
+	}
 	fn cross_compile(&self) -> String {
 		let os = match &self.os {
 			BuildOs::Linux => "linux-",
@@ -22,15 +79,15 @@ impl BuildTarget {
 				BuildEnv::Gnu => "gnu",
 				BuildEnv::Musl => "musl",
 			}
-		} else { "" };
+		} else {
+			""
+		};
 
 		let arch = match &self.arch {
 			BuildArch::Aarch64 => "aarch64",
-			BuildArch::Aarch32 => {
-				match &self.os {
-					BuildOs::Linux => "arm",
-					BuildOs::Android => "armv7a",
-				}
+			BuildArch::Aarch32 => match &self.os {
+				BuildOs::Linux => "arm",
+				BuildOs::Android => "armv7a",
 			},
 			BuildArch::X86_64 => "x86_64",
 			BuildArch::X86 => "i686",
@@ -116,7 +173,7 @@ fn compile_testdata(scratch: &Path, info: &BuildInfo) -> anyhow::Result<PathBuf>
 	let mut out = scratch.to_path_buf();
 	out.push("testdata");
 	out.push(&info.triple);
-	if ! out.exists() {
+	if !out.exists() {
 		std::fs::create_dir_all(&out)?;
 	}
 
@@ -126,7 +183,9 @@ fn compile_testdata(scratch: &Path, info: &BuildInfo) -> anyhow::Result<PathBuf>
 
 	let ldflags = if info.target.os == BuildOs::Linux {
 		"-lpthread"
-	} else { "" };
+	} else {
+		""
+	};
 	let mut cmd = std::process::Command::new("make");
 	let s = manifest.as_os_str();
 	let s = s.to_str().expect("");

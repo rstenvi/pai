@@ -6,13 +6,12 @@ use std::{
 	fs::FileType,
 	os::unix::fs::{MetadataExt, PermissionsExt},
 	path::PathBuf,
-	str::FromStr,
 	thread::JoinHandle,
 };
 
 pub mod process;
 
-use crate::{exe::elf::ElfSymbol, Error, Result, TargetPtr};
+use crate::{api::messages::ElfSymbol, Error, Result, TargetPtr};
 
 #[derive(Default)]
 pub(crate) struct MmapBuild {
@@ -134,15 +133,13 @@ impl AllocedMemory {
 		}
 	}
 	pub fn free(&mut self, addr: TargetPtr) -> Result<()> {
-		if let Some(blocks) = self.alloc.remove(&addr) {
-			let off = (addr - self.loc.addr()) as usize;
-			let blkidx = off / Self::blocksize();
-			self.set_idxs(blkidx, blocks, false);
-			Ok(())
-		} else {
-			log::error!("tried to free unallocated memory {addr:x}");
-			Err(Error::NotFound.into())
-		}
+		let blocks = self.alloc.remove(&addr).ok_or(Error::msg(format!(
+			"tried to free unallocated memory {addr:x}"
+		)))?;
+		let off = (addr - self.loc.addr()) as usize;
+		let blkidx = off / Self::blocksize();
+		self.set_idxs(blkidx, blocks, false);
+		Ok(())
 	}
 	pub fn alloc(&mut self, size: usize) -> Result<TargetPtr> {
 		let blocks = Self::num_blocks(size);
@@ -159,15 +156,12 @@ impl AllocedMemory {
 				found_cnt = 0;
 			}
 		}
-		if let Some(start) = found_idx {
-			self.set_idxs(start, blocks, true);
-			let off = start * Self::blocksize();
-			let addr = self.loc.addr() + off as TargetPtr;
-			self.alloc.insert(addr, blocks);
-			Ok(addr)
-		} else {
-			Err(Error::NotFound.into())
-		}
+		let start = found_idx.ok_or(Error::NotFound)?;
+		self.set_idxs(start, blocks, true);
+		let off = start * Self::blocksize();
+		let addr = self.loc.addr() + off as TargetPtr;
+		self.alloc.insert(addr, blocks);
+		Ok(addr)
 	}
 }
 
@@ -315,9 +309,9 @@ impl FileAccess {
 
 pub(crate) fn twos_complement(num: TargetPtr) -> isize {
 	#[cfg(target_pointer_width = "32")]
-	let and = 1<<31;
+	let and = 1 << 31;
 	#[cfg(target_pointer_width = "64")]
-	let and = 1<<63;
+	let and = 1 << 63;
 
 	if num & and != 0 {
 		if num == isize::MIN as TargetPtr {
@@ -352,17 +346,21 @@ impl ModuleSymbols {
 	}
 }
 
+#[cfg(feature = "plugins")]
 #[derive(Debug, Clone)]
-pub enum LoadDependency {
+pub(crate) enum LoadDependency {
 	Manual,
 	Plugins(Vec<usize>),
 }
 
-pub struct LoadedPlugin {
+#[cfg(feature = "plugins")]
+pub(crate) struct LoadedPlugin {
 	pub id: usize,
 	pub load: LoadDependency,
 	pub handle: JoinHandle<Result<()>>,
 }
+
+#[cfg(feature = "plugins")]
 impl LoadedPlugin {
 	pub fn new(id: usize, load: LoadDependency, handle: JoinHandle<Result<()>>) -> Self {
 		Self { id, load, handle }

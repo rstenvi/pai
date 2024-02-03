@@ -1,67 +1,16 @@
 //! Parsing of ELF
 
-use crate::{Error, Result, TargetPtr};
+use crate::{
+	api::messages::{ElfSymbol, SymbolBind, SymbolType},
+	Error, Result, TargetPtr,
+};
 use elf::{
 	endian::AnyEndian,
 	string_table::StringTable,
 	symbol::{Symbol, SymbolTable},
 	ElfBytes,
 };
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
-/// Type of symbol, read ELF-specification for more details
-#[repr(u8)]
-#[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub enum SymbolType {
-	NoType = 0,
-	Object = 1,
-	Func = 2,
-	Section = 3,
-	File = 4,
-	Common = 5,
-	Tls = 6,
-	Unknown = 255,
-}
-
-impl From<u8> for SymbolType {
-	fn from(value: u8) -> Self {
-		match value {
-			0 => Self::NoType,
-			1 => Self::Object,
-			2 => Self::Func,
-			3 => Self::Section,
-			4 => Self::File,
-			5 => Self::Common,
-			6 => Self::Tls,
-			_ => Self::Unknown,
-		}
-	}
-}
-impl From<SymbolType> for u8 {
-	fn from(value: SymbolType) -> Self {
-		value as u8
-	}
-}
-
-/// Symbol binding, read ELF-specification for more details
-#[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
-pub enum SymbolBind {
-	Local = 0,
-	Global = 1,
-	Weak = 2,
-	Unknown = 255,
-}
-impl From<u8> for SymbolBind {
-	fn from(value: u8) -> Self {
-		match value {
-			0 => Self::Local,
-			1 => Self::Global,
-			2 => Self::Weak,
-			_ => Self::Unknown,
-		}
-	}
-}
 
 #[derive(Debug, Clone)]
 struct IntElfSymbol {
@@ -81,33 +30,10 @@ impl IntElfSymbol {
 		st.into()
 	}
 	pub fn value(&self) -> Result<TargetPtr> {
-		Ok(self.sym.st_value.try_into()?)
-	}
-}
-
-/// Details about one resolved symbol
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ElfSymbol {
-	pub name: String,
-	pub value: TargetPtr,
-	pub stype: SymbolType,
-	pub bind: SymbolBind,
-}
-
-impl std::fmt::Debug for ElfSymbol {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("ElfSymbol")
-			.field("name", &self.name)
-			.field("value", &format_args!("{:x}", self.value))
-			.field("stype", &self.stype)
-			.field("bind", &self.bind)
-			.finish()
-	}
-}
-
-impl ElfSymbol {
-	pub fn add_value(&mut self, val: TargetPtr) {
-		self.value += val;
+		let v = self.sym.st_value;
+		#[cfg(target_pointer_width = "32")]
+		let v = v.try_into()?;
+		Ok(v)
 	}
 }
 
@@ -115,7 +41,9 @@ impl From<IntElfSymbol> for ElfSymbol {
 	fn from(value: IntElfSymbol) -> Self {
 		Self {
 			name: value.name.clone(),
-			value: value.value().expect("unable to convert value to target size"),
+			value: value
+				.value()
+				.expect("unable to convert value to target size"),
 			stype: value.symtype(),
 			bind: value.symbind(),
 		}
@@ -136,20 +64,22 @@ impl ElfData {
 				let strtab = file.section_data_as_strtab(&dynstr)?;
 				Self::symbols(&strtab, symtab)?
 			} else {
-				return Err(Error::msg("found no .strtab").into());
+				return Err(Error::msg("found no .strtab"));
 			}
 		} else if let Some(symtab) = &common.dynsyms {
 			if let Some(dynstr) = file.section_header_by_name(".dynstr")? {
 				let strtab = file.section_data_as_strtab(&dynstr)?;
 				Self::symbols(&strtab, symtab)?
 			} else {
-				return Err(Error::msg("found no .dynstr").into());
+				return Err(Error::msg("found no .dynstr"));
 			}
 		} else {
 			Vec::new()
 		};
 
-		let entry = file.ehdr.e_entry.try_into()?;
+		let entry = file.ehdr.e_entry;
+		#[cfg(target_pointer_width = "32")]
+		let entry = entry.try_into()?;
 		let r = Self { symbols, entry };
 		Ok(r)
 	}
@@ -186,7 +116,8 @@ pub(crate) struct Elf {
 }
 
 impl Elf {
-	pub fn new(path: PathBuf) -> Result<Self> {
+	pub fn new<P: Into<PathBuf>>(path: P) -> Result<Self> {
+		let path = path.into();
 		log::info!("creating elf from {path:?}");
 		let data = std::fs::read(&path)?;
 		let data = ElfData::from_bytes(data)?;

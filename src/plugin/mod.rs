@@ -6,10 +6,9 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-	borrow::BorrowMut,
-	io::{BufRead, BufReader, BufWriter, Read, Write},
+	io::{BufReader, BufWriter, Read, Write},
 	net::TcpStream,
-	process::{self, Child, Stdio},
+	process::{self, Stdio},
 	thread::JoinHandle,
 };
 
@@ -18,9 +17,13 @@ pub mod plugins;
 /// The different plugins supported
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub enum Plugin {
+	#[cfg(feature = "syscalls")]
 	DlopenDetect,
+	#[cfg(feature = "syscalls")]
 	Files,
+	#[cfg(feature = "syscalls")]
 	Mmap,
+	#[cfg(feature = "syscalls")]
 	Prctl,
 	// External { name: String },
 }
@@ -29,9 +32,16 @@ impl std::str::FromStr for Plugin {
 
 	fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
 		match s.to_lowercase().as_str() {
+			#[cfg(feature = "syscalls")]
 			"dlopen-detect" => Ok(Self::DlopenDetect),
+
+			#[cfg(feature = "syscalls")]
 			"files" => Ok(Self::Files),
+
+			#[cfg(feature = "syscalls")]
 			"mmap" => Ok(Self::Mmap),
+
+			#[cfg(feature = "syscalls")]
 			"prctl" => Ok(Self::Prctl),
 			_ => Err(crate::Error::msg(format!("unkown plugin {}", s))),
 		}
@@ -72,11 +82,11 @@ macro_rules! plugin_enter_loop {
 struct PluginExtStream {
 	reader: BufReader<TcpStream>,
 	writer: BufWriter<TcpStream>,
-	client: ctx::Secondary<()>,
+	client: ctx::Secondary<(), crate::Error>,
 }
 
 impl PluginExtStream {
-	fn new(stream: TcpStream, client: ctx::Secondary<()>) -> Self {
+	fn new(stream: TcpStream, client: ctx::Secondary<(), crate::Error>) -> Self {
 		// TODO:
 		// - I don't know why this can't be forced to BufReader<Read> and
 		//   BufWriter<Write>, but I can't get it to work
@@ -96,10 +106,14 @@ impl PluginExtStream {
 struct PluginExt<R, W: std::io::Write> {
 	reader: BufReader<R>,
 	writer: BufWriter<W>,
-	client: ctx::Secondary<()>,
+	client: ctx::Secondary<(), crate::Error>,
 }
 impl<R: std::io::Read, W: std::io::Write> PluginExt<R, W> {
-	fn new(reader: BufReader<R>, writer: BufWriter<W>, client: ctx::Secondary<()>) -> Self {
+	fn new(
+		reader: BufReader<R>,
+		writer: BufWriter<W>,
+		client: ctx::Secondary<(), crate::Error>,
+	) -> Self {
 		log::info!("creating plugin mgr");
 		Self {
 			reader,
@@ -163,14 +177,20 @@ impl PluginExec {
 
 #[cfg(test)]
 mod test {
+	#[cfg(feature = "syscalls")]
 	use std::str::FromStr;
 
-	use super::*;
-
 	#[test]
+	#[cfg(feature = "syscalls")]
 	fn plugin_test() {
-		assert_eq!(Plugin::from_str("Files").unwrap(), Plugin::Files);
-		assert_eq!(Plugin::from_str("MMAP").unwrap(), Plugin::Mmap);
-		assert!(Plugin::from_str("qwerttyui").is_err());
+		assert_eq!(
+			crate::plugin::Plugin::from_str("Files").unwrap(),
+			crate::plugin::Plugin::Files
+		);
+		assert_eq!(
+			crate::plugin::Plugin::from_str("MMAP").unwrap(),
+			crate::plugin::Plugin::Mmap
+		);
+		assert!(crate::plugin::Plugin::from_str("qwerttyui").is_err());
 	}
 }

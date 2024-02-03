@@ -101,3 +101,4 @@ serial_test = "3.0.0"
 [features]
 std = []
 syscalls = [ "syzlang-data/linux" ]
+plugins = []

@@ -1,8 +1,8 @@
+use crate::arch::ReadRegisters;
 use crate::{
-	arch::ReadRegisters,
 	ctx,
 	utils::{self, process::Tid},
-	Error, Result, TargetPtr,
+	Result, TargetPtr,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -64,7 +64,7 @@ impl ValueLen {
 	fn new(ltype: LenType, value: TargetPtr) -> Self {
 		Self { ltype, value }
 	}
-	fn bytes(&self, itemsz: usize) -> usize {
+	pub fn bytes(&self, itemsz: usize) -> usize {
 		match self.ltype {
 			LenType::Len => itemsz * self.value as usize,
 			LenType::Bytesize => self.value as usize,
@@ -286,7 +286,7 @@ impl Value {
 	}
 	fn new_resource<S: Into<String>>(name: S, sub: Option<Self>) -> Self {
 		let name = name.into();
-		let sub = sub.map(|x| Box::new(x));
+		let sub = sub.map(Box::new);
 		Self::Resource { name, sub }
 	}
 	fn new_shallow_ptr(value: TargetPtr, arg: ArgType, opts: Vec<ArgOpt>, optional: bool) -> Self {
@@ -329,21 +329,30 @@ pub struct SysValue {
 	pub raw_value: TargetPtr,
 	pub parsed: Option<Value>,
 }
+impl std::fmt::Display for SysValue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if let Some(parsed) = self.parsed.as_ref() {
+			f.write_fmt(format_args!("{parsed}"))
+		} else {
+			f.write_fmt(format_args!("0x{:x}", self.raw_value))
+		}
+	}
+}
 
 impl SysValue {
-	pub fn new(raw_value: TargetPtr, parsed: Option<Value>) -> Self {
+	fn new(raw_value: TargetPtr, parsed: Option<Value>) -> Self {
 		Self { raw_value, parsed }
 	}
 	pub fn is_error(&self) -> Option<bool> {
 		self.parsed.as_ref().map(|parsed| parsed.is_error())
 	}
-	pub fn as_nice_str(&self) -> String {
-		if let Some(parsed) = self.parsed.as_ref() {
-			format!("{parsed}")
-		} else {
-			format!("0x{:x}", self.raw_value)
-		}
-	}
+	// pub fn as_nice_str(&self) -> String {
+	// 	if let Some(parsed) = self.parsed.as_ref() {
+	// 		format!("{parsed}")
+	// 	} else {
+	// 		format!("0x{:x}", self.raw_value)
+	// 	}
+	// }
 	pub fn raw_value(&self) -> TargetPtr {
 		self.raw_value
 	}
@@ -354,6 +363,11 @@ pub struct SysArg {
 	pub name: String,
 	value: SysValue,
 	dir: Direction,
+}
+impl std::fmt::Display for SysArg {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_fmt(format_args!("{}={}", self.name, self.value))
+	}
 }
 
 impl SysArg {
@@ -372,9 +386,9 @@ impl SysArg {
 		let signed = utils::twos_complement(raw);
 		signed as i32
 	}
-	pub fn as_nice_str(&self) -> String {
-		format!("{}={}", self.name, self.value.as_nice_str())
-	}
+	// pub fn as_nice_str(&self) -> String {
+	// 	format!("{}={}", self.name, self.value.as_nice_str())
+	// }
 	pub fn parsed(&self) -> &Option<Value> {
 		&self.value.parsed
 	}
@@ -423,7 +437,29 @@ pub struct SyscallItem {
 
 impl std::fmt::Display for SyscallItem {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_fmt(format_args!("{}", self.as_nice_str()))
+		let mut n = format!("[{}]: ", self.tid);
+		if !self.name.is_empty() {
+			n.push_str(&self.name);
+		} else {
+			n.push_str(&format!("{}", self.sysno));
+		}
+		n.push('(');
+
+		let mut parts = Vec::new();
+		for arg in self.args.iter() {
+			let ins = format!("{arg}");
+			parts.push(ins);
+		}
+
+		n.push_str(&parts.join(", "));
+
+		n.push(')');
+
+		if let Some(v) = &self.output {
+			n.push_str(" = ");
+			n.push_str(&format!("{v}"));
+		}
+		f.write_fmt(format_args!("{n}"))
 	}
 }
 impl SyscallItem {
@@ -458,39 +494,38 @@ impl SyscallItem {
 			panic!("Tried to get output on syscall which is entry");
 		}
 	}
-	pub fn as_nice_str(&self) -> String {
-		let mut n = format!("[{}]: ", self.tid);
-		if !self.name.is_empty() {
-			n.push_str(&self.name);
-		} else {
-			n.push_str(&format!("{}", self.sysno));
-		}
-		n.push('(');
+	// pub fn as_nice_str(&self) -> String {
+	// 	let mut n = format!("[{}]: ", self.tid);
+	// 	if !self.name.is_empty() {
+	// 		n.push_str(&self.name);
+	// 	} else {
+	// 		n.push_str(&format!("{}", self.sysno));
+	// 	}
+	// 	n.push('(');
 
-		let mut parts = Vec::new();
-		for arg in self.args.iter() {
-			let ins = arg.as_nice_str();
-			parts.push(ins);
-		}
+	// 	let mut parts = Vec::new();
+	// 	for arg in self.args.iter() {
+	// 		let ins = arg.as_nice_str();
+	// 		parts.push(ins);
+	// 	}
 
-		n.push_str(&parts.join(", "));
+	// 	n.push_str(&parts.join(", "));
 
-		n.push(')');
+	// 	n.push(')');
 
-		if let Some(v) = &self.output {
-			n.push_str(" = ");
-			n.push_str(&v.as_nice_str());
-		}
-		n
-	}
+	// 	if let Some(v) = &self.output {
+	// 		n.push_str(" = ");
+	// 		n.push_str(&v.as_nice_str());
+	// 	}
+	// 	n
+	// }
 }
 
-#[cfg(feature = "syscalls")]
 impl SyscallItem {
 	fn parse_ptr<T>(
 		raw: TargetPtr,
 		tid: Tid,
-		ctx: &mut ctx::Secondary<T>,
+		ctx: &mut ctx::Secondary<T, crate::Error>,
 		arg: &ArgType,
 		opts: &[ArgOpt],
 		len: Option<&ValueLen>,
@@ -561,7 +596,7 @@ impl SyscallItem {
 	pub fn parse_deep<T>(
 		&mut self,
 		tid: Tid,
-		ctx: &mut ctx::Secondary<T>,
+		ctx: &mut ctx::Secondary<T, crate::Error>,
 		parsedir: Direction,
 	) -> Result<()> {
 		self.enrich_values()?;
@@ -763,7 +798,7 @@ impl SyscallItem {
 	fn parse_arg(raw: TargetPtr, arg: &Argument) -> Option<Value> {
 		Self::parse_arg_type(raw, arg.arg_type(), &arg.opts)
 	}
-	
+
 	pub fn enrich_values(&mut self) -> crate::Result<()> {
 		if let Some(sys) = crate::SYSCALLS
 			.read()
@@ -959,9 +994,6 @@ impl SyscallItem {
 		};
 		(atype, resource)
 	}
-	
-	
-
 }
 
 #[derive(Debug)]
@@ -1032,7 +1064,8 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 			// .filter(|x| {x.name.subname.is_empty() /*&& value.consts.find_sysno(&x.name.name, &syzarch).is_some() */ })
 			.map(|func| {
 				if let Some(sysno) = value.consts.find_sysno(&func.name.name, &crate::syzarch()) {
-					let ins = Syscall::new(func.name.name, sysno as TargetPtr, func.args, func.output);
+					let ins =
+						Syscall::new(func.name.name, sysno as TargetPtr, func.args, func.output);
 					Some((sysno, ins))
 				} else {
 					None
@@ -1051,7 +1084,6 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 #[cfg(test)]
 mod test {
 
-	#[cfg(feature = "syscalls")]
 	#[test]
 	fn test_syscalls() {
 		let _ret = crate::PARSED

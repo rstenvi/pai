@@ -1,16 +1,16 @@
 use crate::{
 	api::{
 		args::ClientArgs,
-		messages::{Cont, Event, ExecSyscall, MasterComm, NewClientReq, RegEvent},
+		messages::{Cont, Event, ExecSyscall, MasterComm, NewClientReq, RegEvent, Stopped},
 		Client, Command, ManagerCmd, ProcessCmd, RemoteCmd, Response, ThreadCmd,
 	},
 	ctrl::ClientState,
-	trace::{ptrace::Tracer, Stopped},
+	trace::ptrace::Tracer,
 	utils::process::Tid,
 	Error, Result,
 };
-use crossbeam_channel::{unbounded, Receiver, RecvTimeoutError, Sender};
-use std::{collections::HashMap, thread::JoinHandle, time::Duration};
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use std::{collections::HashMap, thread::JoinHandle};
 
 use super::{thread::ClientThread, AcceptNewClient, ClientType};
 
@@ -123,7 +123,7 @@ impl CtrlTracer {
 				if let Some(stop) = self.wait_stop()? {
 					self.handle_stop(stop)?;
 				} else {
-					log::warn!("breaking because of targetexit");
+					log::info!("breaking because of targetexit");
 					break;
 				}
 			}
@@ -197,7 +197,7 @@ impl CtrlTracer {
 				Ok(Some(s))
 			}
 			Err(Error::TargetStopped) => Ok(None),
-			Err(e) => Err(e.into()),
+			Err(e) => Err(e),
 		}
 	}
 	fn num_clients_blocking(&self) -> usize {
@@ -230,19 +230,20 @@ impl CtrlTracer {
 		}
 		ret
 	}
+	fn remove_client(&mut self, id: usize) -> Result<ClientMaster> {
+		self.clients.remove(&id).ok_or(Error::client_not_found(id))
+	}
 	fn get_from_clients(&mut self) -> Result<()> {
 		log::trace!("getting command from clients");
 		let r = self.rx.recv()?;
 		log::trace!("command {r:?}");
-		if let Some(mut client) = self.clients.remove(&r.client) {
-			self.handle_cmd(&mut client, r.cmd)?;
-			log::trace!("inserting client back in");
-			self.clients.insert(client.id, client);
-			Ok(())
-		} else {
-			log::error!("unknown client {}", r.client);
-			Ok(())
-		}
+		let mut client = self.remove_client(r.client)?;
+
+		// Cannot trigger error until we've inserted the client back in
+		let res = self.handle_cmd(&mut client, r.cmd);
+		log::trace!("inserting client back in");
+		self.clients.insert(client.id, client);
+		res
 	}
 	fn handle_cmd(&mut self, client: &mut ClientMaster, ocmd: Command) -> Result<()> {
 		log::debug!("got cmd {ocmd:?}");
@@ -272,26 +273,17 @@ impl CtrlTracer {
 	) -> Result<Option<Response>> {
 		let r = match cmd {
 			ProcessCmd::GetTids => {
-				let ins = self
-					.tracer
-					.get_tids()
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.get_tids();
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ProcessCmd::GetThreadsStatus => {
-				let ins = self
-					.tracer
-					.get_threads_status()
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.get_threads_status();
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ProcessCmd::GetPid => {
-				let ins = self
-					.tracer
-					.get_pid()
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.get_pid();
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
@@ -306,34 +298,22 @@ impl CtrlTracer {
 	) -> Result<Option<Response>> {
 		let r = match cmd {
 			ThreadCmd::GetLibcRegs => {
-				let ins = self
-					.tracer
-					.get_libc_regs(tid)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.get_libc_regs(tid);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ThreadCmd::ReadCString { addr } => {
-				let ins = self
-					.tracer
-					.read_c_string(tid, addr)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.read_c_string(tid, addr);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ThreadCmd::ReadBytes { addr, count } => {
-				let ins = self
-					.tracer
-					.read_memory(tid, addr, count)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.read_memory(tid, addr, count);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ThreadCmd::InsertBp { addr } => {
-				let ins = self
-					.tracer
-					.insert_single_bp(client.id, tid, addr)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.insert_single_bp(client.id, tid, addr);
 				if ins.is_ok() {
 					client.args.insert_bp(addr);
 				}
@@ -341,59 +321,38 @@ impl CtrlTracer {
 				Response::Value(val)
 			}
 			ThreadCmd::RemoveBp { addr } => {
-				let ins = self
-					.tracer
-					.remove_bp(tid, addr)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.remove_bp(tid, addr);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			// ThreadCmd::GetAgnosticReg { reg: _ } => todo!(),
 			ThreadCmd::WriteBytes { addr, bytes } => {
-				let ins = self
-					.tracer
-					.write_memory(tid, addr, &bytes)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.write_memory(tid, addr, &bytes);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ThreadCmd::CallFunc { func, args } => {
-				let ins = self
-					.tracer
-					.call_func(tid, func, &args)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.call_func(tid, func, &args);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ThreadCmd::ExecRawSyscall { sysno, args } => {
-				let ins = self
-					.tracer
-					.exec_syscall(tid, sysno, &args)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.exec_syscall(tid, sysno, &args);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ThreadCmd::WriteScratchBytes { bytes } => {
-				let ins = self
-					.tracer
-					.scratch_write_bytes(tid, bytes)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.scratch_write_bytes(tid, bytes);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ThreadCmd::WriteScratchString { string } => {
-				let ins = self
-					.tracer
-					.scratch_write_c_str(tid, string)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.scratch_write_c_str(tid, string);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ThreadCmd::FreeScratchAddr { addr } => {
-				let ins = self
-					.tracer
-					.scratch_free_addr(tid, addr)
-					.map_err(|x| Into::<crate::RemoteError>::into(x));
+				let ins = self.tracer.scratch_free_addr(tid, addr);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
@@ -401,21 +360,15 @@ impl CtrlTracer {
 				log::debug!("setting step for {tid}");
 				client.set_step_ins(tid, count);
 				Response::Ack
-			},
+			}
 			ThreadCmd::ExecSyscall { syscall } => {
 				let val = match syscall {
 					ExecSyscall::Getpid => {
-						let ins = self
-							.tracer
-							.exec_sys_getpid(tid)
-							.map_err(|x| Into::<crate::RemoteError>::into(x));
+						let ins = self.tracer.exec_sys_getpid(tid);
 						serde_json::to_value(ins)?
 					}
 					ExecSyscall::MmapAnon { size, prot } => {
-						let ins = self
-							.tracer
-							.exec_sys_anon_mmap(tid, size, prot)
-							.map_err(|x| Into::<crate::RemoteError>::into(x));
+						let ins = self.tracer.exec_sys_anon_mmap(tid, size, prot);
 						serde_json::to_value(ins)?
 					}
 				};
@@ -434,7 +387,7 @@ impl CtrlTracer {
 			RemoteCmd::Thread { tid, cmd } => self.handle_cmd_remote_thread(client, tid, cmd),
 		}
 	}
-	fn remove_client(&mut self, cid: usize) -> Result<()> {
+	fn cmd_remove_client(&mut self, cid: usize) -> Result<()> {
 		if let Some(client) = self.clients.get_mut(&cid) {
 			client.send(Response::Removed)?;
 		}
@@ -465,7 +418,7 @@ impl CtrlTracer {
 				Ok(Some(Response::Ack))
 			}
 			ManagerCmd::RemoveClient { cid } => {
-				self.remove_client(cid)?;
+				self.cmd_remove_client(cid)?;
 				Ok(Some(Response::Ack))
 			}
 			ManagerCmd::SetConfig { config } => {
@@ -610,6 +563,8 @@ impl ClientMaster {
 		self.state = ClientState::NotBlocking;
 		Ok(())
 	}
+
+	#[cfg(feature = "syscalls")]
 	fn set_state_sent_syscall(&mut self) {
 		self.state = match self.ctype {
 			ClientType::Regular => ClientState::Blocking,
@@ -634,6 +589,7 @@ impl ClientMaster {
 			Response::Ack => self.set_state_response_from_cmd(),
 			Response::Value(_) => self.set_state_response_from_cmd(),
 			Response::Event(_) => self.set_state_sent_event(),
+			#[cfg(feature = "syscalls")]
 			Response::Syscall(_) => self.set_state_sent_syscall(),
 			Response::Stopped(_) => self.set_state_stopped(),
 			Response::TargetExit => self.set_state_target_exit(),
@@ -665,10 +621,11 @@ impl ClientMaster {
 		log::debug!("{tid}: cont {ret:?}");
 		ret
 	}
-	pub fn send_event(&mut self, event: Event) -> Result<()> {
-		self.send(Response::Event(event))?;
-		Ok(())
-	}
+
+	// pub fn send_event(&mut self, event: Event) -> Result<()> {
+	// 	self.send(Response::Event(event))?;
+	// 	Ok(())
+	// }
 	pub fn send_stop(&mut self, stop: Stopped) -> Result<()> {
 		log::debug!("sending stop {stop:?}");
 		self.send(Response::Stopped(stop))?;

@@ -5,7 +5,7 @@ use crate::{
 	},
 	ctx,
 	plugin::Plugin,
-	utils, Result, TargetPtr,
+	utils, Error, Result, TargetPtr,
 };
 use std::collections::HashMap;
 
@@ -21,7 +21,7 @@ impl Files {
 	pub fn dependecies() -> &'static [Plugin] {
 		&[]
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Files>> {
+	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Files, Error>> {
 		log::info!("plugin Files started");
 		let data = Self::new();
 		let mut ctx = ctx::Secondary::new_second(client, data)?;

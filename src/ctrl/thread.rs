@@ -1,8 +1,14 @@
 use crate::{
-	api::client::IdWrapper, arch::ReadRegisters, syscalls::SyscallItem, syzarch, trace::{Stop, Stopped}, utils::process::Tid, Result
+	api::{client::IdWrapper, messages::Stopped},
+	utils::process::Tid,
+	Result,
 };
 use crossbeam_channel::{Receiver, Sender};
-use std::collections::HashMap;
+
+#[cfg(feature = "syscalls")]
+use crate::api::messages::Stop;
+#[cfg(feature = "syscalls")]
+use crate::syscalls::SyscallItem;
 
 use crate::api::{
 	args::{Args, ClientArgs},
@@ -30,7 +36,8 @@ pub(crate) struct ClientThread {
 
 	/// Syscall where we've gotten [Stop::SyscallEnter], but not
 	/// [Stop::SyscallExit]
-	pending_syscalls: HashMap<Tid, SyscallItem>,
+	#[cfg(feature = "syscalls")]
+	pending_syscalls: std::collections::HashMap<Tid, SyscallItem>,
 }
 
 impl ClientThread {
@@ -45,14 +52,14 @@ impl ClientThread {
 		let wrap = Box::new(wrap);
 		let client = Client::new_master_comm(mtx, mrx, wrap);
 		let args = ClientArgs::default();
-		let pending_syscalls = HashMap::new();
 		Self {
 			id,
 			client,
 			rx,
 			tx,
 			args,
-			pending_syscalls,
+			#[cfg(feature = "syscalls")]
+			pending_syscalls: std::collections::HashMap::new(),
 			done: false,
 		}
 	}
@@ -90,7 +97,7 @@ impl ClientThread {
 			.read()
 			.expect("unable to lock parsed")
 			.consts
-			.find_sysno(name, &syzarch());
+			.find_sysno(name, &crate::syzarch());
 		let r = serde_json::to_value(ret)?;
 		Ok(Response::Value(r))
 	}
@@ -139,6 +146,7 @@ impl ClientThread {
 	}
 	#[cfg(feature = "syscalls")]
 	fn transform_syscall(&mut self, tid: Tid, entry: bool) -> Result<Option<Response>> {
+		use crate::arch::ReadRegisters;
 		log::trace!("transform syscall {tid} {entry}");
 		let regs = self.client.get_libc_regs(tid)?;
 		if entry {
@@ -194,6 +202,7 @@ impl ClientThread {
 			Response::Value(_v) => Ok(Some(resp)),
 			Response::Event(e) => self.process_event(e),
 			Response::Stopped(s) => self.process_stopped(s),
+			#[cfg(feature = "syscalls")]
 			Response::Syscall(_) => todo!(),
 		}
 	}

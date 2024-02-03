@@ -20,7 +20,7 @@ use crate::{
 	},
 	ctx,
 	plugin::Plugin,
-	utils, Result, TargetPtr,
+	utils, Error, Result, TargetPtr,
 };
 use std::collections::HashMap;
 
@@ -65,7 +65,7 @@ impl DlopenDetect {
 	pub fn dependecies() -> &'static [Plugin] {
 		&[Plugin::Files]
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<DlopenDetect>> {
+	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<DlopenDetect, Error>> {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;

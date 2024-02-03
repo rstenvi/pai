@@ -106,12 +106,12 @@ impl crate::arch::WriteRegisters for user_regs_struct {
 	}
 }
 
-pub fn syscall_shellcode(code: &mut Vec<u8>) {
+pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
 	todo!();
 }
-pub fn call_shellcode(code: &mut Vec<u8>) {
+pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
 	todo!();
 }
-pub fn as_our_regs(regs: pete::Registers) -> user_regs_struct {
+pub(crate) fn as_our_regs(regs: pete::Registers) -> user_regs_struct {
 	regs.into()
 }

@@ -2,7 +2,11 @@ use crate::{
 	api::{
 		messages::{Event, EventInner, RegEvent},
 		ArgsBuilder, Client, Command, Response,
-	}, ctx, plugin::Plugin, syscalls::SyscallItem, utils, Result, TargetPtr
+	},
+	ctx,
+	plugin::Plugin,
+	syscalls::SyscallItem,
+	utils, Result, TargetPtr,
 };
 
 #[derive(Default)]
@@ -36,7 +40,7 @@ impl Mmap {
 		let evt = Event::new_attached(sys.tid, evt);
 		Ok(evt)
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self>> {
+	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self, crate::Error>> {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
