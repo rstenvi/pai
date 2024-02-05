@@ -3,6 +3,8 @@ use std::thread::JoinHandle;
 use std::{collections::HashMap, path::PathBuf};
 
 use crate::api::messages::{ElfSymbol, Stop, Stopped, SymbolType};
+use crate::api::CallFrame;
+use crate::arch::{ReadRegisters, WriteRegisters};
 use crate::exe::elf::Elf;
 #[cfg(feature = "plugins")]
 use crate::plugin::{plugins::*, Plugin};
@@ -29,6 +31,9 @@ pub type SignalCb<T, Err> = fn(&mut Secondary<T, Err>, nix::sys::signal::Signal)
 pub type SyscallCb<T, Err> = fn(&mut Secondary<T, Err>, SyscallItem) -> Result<()>;
 
 pub type BreakpointCb<T, Err> = fn(&mut Secondary<T, Err>, Tid, TargetPtr) -> Result<bool>;
+pub type HookEntryCb<T, Err> = fn(&mut Secondary<T, Err>, &CallFrame) -> Result<(bool, Option<TargetPtr>)>;
+pub type HookExitCb<T, Err> = fn(&mut Secondary<T, Err>, &CallFrame) -> Result<Option<TargetPtr>>;
+
 pub type EventCb<T, Err> = fn(&mut Secondary<T, Err>, Event) -> Result<()>;
 pub type StoppedCb<T, Err> = fn(&mut Secondary<T, Err>, Stopped) -> Result<()>;
 pub type RawSyscallCb<T, Err> = fn(&mut Secondary<T, Err>, Tid, bool) -> Result<()>;
@@ -59,6 +64,10 @@ where
 	stepcb: Option<StepCb<T, Err>>,
 	bpcbs: HashMap<TargetPtr, BreakpointCb<T, Err>>,
 
+	callframes: HashMap<(Tid, TargetPtr), CallFrame>,
+
+	funcentrycbs: HashMap<TargetPtr, (HookEntryCb<T, Err>, HookExitCb<T, Err>)>,
+
 	#[cfg(feature = "syscalls")]
 	syscallcbs: HashMap<TargetPtr, SyscallCb<T, Err>>,
 
@@ -83,11 +92,15 @@ where
 		let pid = client.get_pid()?;
 		let proc = Process::from_pid(pid as u32)?;
 		let resolved = HashMap::new();
+		let funcentrycbs = HashMap::new();
+		let callframes = HashMap::new();
 		let r = Self {
 			data,
 			client,
 			eventcb: None,
 			signalcbs,
+			funcentrycbs,
+			callframes,
 			#[cfg(feature = "syscalls")]
 			syscallcb: None,
 			proc,
@@ -105,6 +118,14 @@ where
 		Ok(r)
 	}
 
+	fn empty_hook_func_entry(&mut self, frame: &CallFrame) -> Result<(bool, Option<TargetPtr>)> {
+		log::debug!("called empty hook function entry {frame:?}");
+		Ok((true, None))
+	}
+	fn empty_hook_func_exit(&mut self, frame: &CallFrame) -> Result<Option<TargetPtr>> {
+		log::debug!("called empty hook function entry {frame:?}");
+		Ok(None)
+	}
 	/// Get a reference to [Client]
 	pub fn client(&self) -> &Client<Command, Response> {
 		&self.client
@@ -470,6 +491,21 @@ where
 	pub fn set_generic_syscall_handler(&mut self, cb: SyscallCb<T, Err>) {
 		self.syscallcb = Some(cb);
 	}
+	pub fn register_function_hook(&mut self, tid: Tid, addr: TargetPtr, cbentry: HookEntryCb<T, Err>, cbexit: HookExitCb<T, Err>) -> Result<()> {
+		self.client.insert_bp(tid, addr)?;
+		self.funcentrycbs.insert(addr, (cbentry, cbexit));
+		Ok(())
+	}
+	pub fn register_function_hook_entry(&mut self, tid: Tid, addr: TargetPtr, cbentry: HookEntryCb<T, Err>) -> Result<()> {
+		self.client.insert_bp(tid, addr)?;
+		self.funcentrycbs.insert(addr, (cbentry, Self::empty_hook_func_exit));
+		Ok(())
+	}
+	pub fn register_function_hook_exit(&mut self, tid: Tid, addr: TargetPtr, cbexit: HookExitCb<T, Err>) -> Result<()> {
+		self.client.insert_bp(tid, addr)?;
+		self.funcentrycbs.insert(addr, (Self::empty_hook_func_entry, cbexit));
+		Ok(())
+	}
 	pub fn register_breakpoint_handler(
 		&mut self,
 		tid: Tid,
@@ -514,6 +550,7 @@ where
 	fn event_breakpoint(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {
 		let mut r = self.bpcbs.remove(&addr);
 		if let Some(cb) = std::mem::take(&mut r) {
+			log::debug!("found regular BP at {addr:x}");
 			let r = cb(self, tid, addr);
 			match r {
 				Ok(true) => {
@@ -535,6 +572,76 @@ where
 					log::error!("bp callback triggered error: '{e:?}' | bp will be removed");
 				}
 			}
+		} else if let Some(mut frame) = std::mem::take( &mut self.callframes.remove(&(tid, addr))) {
+			log::debug!("found function exit BP at {addr:x}");
+			if let Some((entry, exit)) = std::mem::take(&mut self.funcentrycbs.remove(&frame.func)) {
+				// if let Some(exit) = std::mem::take(&mut exit) {
+
+				// We maintain the same callframe so that the user can parse
+				// arguments as before. But we will in output so that the
+				// user can also parse the result.
+				//
+				// It is the users responsibility to use this properly. If
+				// the argument is a pointer and the function modifies the
+				// data the pointer points to, it is the users
+				// responsibility to understand that they're reading output
+				// and not input. This code simply supplies the values as
+				// they were when the function call was made.
+				let mut regs = self.client.get_libc_regs(tid)?;
+				let retval = regs.ret_systemv();
+				frame.set_output(retval);
+				match exit(self, &frame) {
+					Ok(Some(ret)) => {
+						regs.set_ret_systemv(ret);
+						self.client.set_libc_regs(tid, regs)?;
+					},
+					Ok(None) => { },
+					Err(e) => {
+						log::error!("callback triggered error {e:?}");
+					},
+				}
+				self.funcentrycbs.insert(frame.func, (entry, exit));
+			}
+		} else if let Some((entry, exit)) = std::mem::take(&mut self.funcentrycbs.remove(&addr)) {
+			log::debug!("found function entry BP at {addr:x}");
+			let regs = self.client.get_libc_regs(tid)?;
+			let mut frame = CallFrame::new(tid, addr, regs);
+			let retaddr = frame.return_addr(&mut self.client)?;
+			let (skipexit, remove) = match entry(self, &frame) {
+				Ok((dorem, retval)) => {
+					if let Some(retval) = retval {
+						frame.regs.set_ret_systemv(retval);
+						self.client.set_libc_regs(tid, frame.regs.clone())?;
+						self.client.exec_ret(tid)?;
+						(true, dorem)
+					} else {
+						(false, dorem)
+					}
+				},
+				Err(e) => {
+					log::error!("callback triggered error {e:?}");
+					(true, false)
+				},
+			};
+			if !skipexit {
+				#[cfg(debug_assertions)]
+				let cond = true;
+				#[cfg(not(debug_assertions))]
+				let cond = exit != Self::empty_hook_func_exit;
+
+				if cond {
+					// Store a callframe so that we can detect this callframe later
+					self.callframes.insert((tid, retaddr), frame);
+					self.client.insert_bp(tid, retaddr)?;
+				}
+			}
+			if !remove {
+				self.client.step_ins(tid, 1)?;
+				self.client.insert_bp(tid, addr)?;
+				self.funcentrycbs.insert(addr, (entry, exit));
+			}
+		} else {
+			log::warn!("no registered BP at {addr:x}");
 		}
 		Ok(())
 	}

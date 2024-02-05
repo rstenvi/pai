@@ -109,6 +109,9 @@ impl crate::arch::WriteRegisters for user_regs_struct {
 	fn set_call_func(&mut self, addr: crate::TargetPtr) {
 		todo!()
 	}
+	fn set_ret_systemv(&mut self, ret: crate::TargetPtr) {
+        todo!()
+    }
 }
 
 pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {

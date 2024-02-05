@@ -32,6 +32,7 @@ pub trait WriteRegisters {
 	fn set_arg_syscall(&mut self, nr: usize, pc: TargetPtr);
 	fn set_ret_syscall(&mut self, ret: TargetPtr);
 	fn set_arg_systemv(&mut self, nr: usize, arg: TargetPtr);
+	fn set_ret_systemv(&mut self, ret: TargetPtr);
 	fn set_call_func(&mut self, addr: TargetPtr);
 }
 

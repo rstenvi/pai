@@ -26,7 +26,7 @@ use crate::arch::aarch64::{as_our_regs, call_shellcode, syscall_shellcode};
 #[cfg(target_arch = "x86")]
 use crate::arch::x86::{as_our_regs, call_shellcode, syscall_shellcode};
 #[cfg(target_arch = "x86_64")]
-use crate::arch::x86_64::{as_our_regs, call_shellcode, syscall_shellcode};
+use crate::arch::x86_64::{as_our_regs, call_shellcode, syscall_shellcode, ret_shellcode};
 
 impl From<pete::Stop> for Stop {
 	fn from(value: pete::Stop) -> Self {
@@ -84,6 +84,7 @@ impl TraceStop {
 enum TrampType {
 	Syscall,
 	Call,
+	Ret,
 }
 
 pub struct Tracer {
@@ -199,6 +200,12 @@ impl Tracer {
 	pub fn get_libc_regs(&self, tid: Tid) -> Result<Registers> {
 		let n = self.get_tracee(tid)?;
 		Ok(n.regs.clone())
+	}
+	pub fn set_libc_regs(&mut self, tid: Tid, regs: crate::Registers) -> Result<()> {
+		log::trace!("setting regs {regs:?}");
+		let n = self.get_tracee_mut(tid)?;
+		n.tracee.set_registers(regs.into())?;
+		Ok(())
 	}
 	pub fn get_threads_status(&self) -> Result<Vec<Thread>> {
 		log::debug!("threads_status");
@@ -591,7 +598,32 @@ impl Tracer {
 			"mmap not implemented yet on the target architecture",
 		))
 	}
-
+	fn __exec_ret(&mut self, mut tracee: Tracee, mut regs: Registers, pc: TargetPtr) -> Result<Tracee> {
+		regs.set_pc(pc);
+		tracee.set_registers(regs.into())?;
+		Ok(tracee)
+	}
+	fn _exec_ret(&mut self, tracee: Tracee, regs: Registers, maxattempts: usize) -> Result<Tracee> {
+		if let Some(pc) = self.tramps.get(&TrampType::Ret) {
+			self.__exec_ret(tracee, regs, *pc)
+		} else if maxattempts > 0 {
+			let tracee = self.init_tramps(tracee)?;
+			self._exec_ret(tracee, regs, maxattempts - 1)
+		} else {
+			todo!();
+		}
+	}
+	pub fn exec_ret(&mut self, tid: Tid) -> Result<()> {
+		let tracee = self.remove_tracee(tid)?;
+		let regs = tracee.regs.clone();
+		let tracee = self._exec_ret(tracee.tracee, regs, 1)?;
+		let pid: i32 = tracee.pid.into();
+		let tid = pid as Tid;
+		let tracee = TraceStop::new(tracee)?;
+		self.tracee.insert(tid, tracee);
+		Ok(())
+		
+	}
 	fn __exec_syscall(
 		&mut self,
 		mut tracee: Tracee,
@@ -635,7 +667,6 @@ impl Tracer {
 			Ok((TargetPtr::MAX, tracee))
 		}
 	}
-
 	pub fn exec_syscall(
 		&mut self,
 		tid: Tid,
@@ -774,6 +805,9 @@ impl Tracer {
 			let calltramp = addr + inscode.len() as TargetPtr;
 			call_shellcode(&mut inscode);
 
+			let rettramp = addr + inscode.len() as TargetPtr;
+			ret_shellcode(&mut inscode);
+
 			// Write the tramps to memory
 			log::debug!("writing real tramps to {addr:x} | {inscode:?}");
 			tracee.write_memory(addr as u64, &inscode)?;
@@ -808,6 +842,7 @@ impl Tracer {
 					// Everything succeeded and we can insert our tramps
 					self.tramps.insert(TrampType::Syscall, syscalltramp);
 					self.tramps.insert(TrampType::Call, calltramp);
+					self.tramps.insert(TrampType::Ret, rettramp);
 					tracee
 				} else {
 					log::error!("mprotect returned {ret:x}");

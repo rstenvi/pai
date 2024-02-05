@@ -2,8 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::{api::CallFrame, arch::ReadRegisters, Client, Result, TargetPtr};
+
 // rasm2 -a x86 -b 64 "int3"
 pub(crate) const SW_BP: [u8; 1] = [0xcc];
+
+// rasm2 -a x86 -b 64 "ret"
+pub(crate) const RET: [u8; 1] = [0xc3];
 
 // rasm2 -a x86 -b 64 "call r10"
 pub(crate) const CALL_TRAMP: [u8; 3] = [0x41, 0xff, 0xd2];
@@ -16,7 +21,7 @@ pub(crate) const SYSCALL: [u8; 2] = [0x0f, 0x05];
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct user_regs_struct {
 	pub r15: libc::c_ulonglong,
 	pub r14: libc::c_ulonglong,
@@ -55,6 +60,14 @@ impl From<user_regs_struct> for pete::Registers {
 impl From<pete::Registers> for user_regs_struct {
 	fn from(value: pete::Registers) -> user_regs_struct {
 		unsafe { std::mem::transmute(value) }
+	}
+}
+
+impl CallFrame {
+	pub fn return_addr(&self, client: &mut Client) -> Result<TargetPtr> {
+		let loc = self.regs.sp() - 0;
+		let v = client.read_u64(self.tid, loc)?;
+		Ok(v)
 	}
 }
 
@@ -146,6 +159,10 @@ impl crate::arch::WriteRegisters for user_regs_struct {
 	fn set_call_func(&mut self, addr: crate::TargetPtr) {
 		self.r10 = addr;
 	}
+
+	fn set_ret_systemv(&mut self, ret: crate::TargetPtr) {
+        self.rax = ret;
+    }
 }
 
 pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
@@ -157,6 +174,10 @@ pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
 	code.extend_from_slice(&NOP);
 	code.extend_from_slice(&CALL_TRAMP);
 	code.extend_from_slice(&SW_BP);
+}
+pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
+	code.extend_from_slice(&NOP);
+	code.extend_from_slice(&RET);
 }
 pub(crate) fn as_our_regs(regs: pete::Registers) -> user_regs_struct {
 	regs.into()

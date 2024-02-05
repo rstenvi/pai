@@ -257,6 +257,10 @@ where
 		let cmd = RemoteCmd::get_libc_regs(tid);
 		self.wr_value_remote(cmd)
 	}
+	pub fn set_libc_regs(&mut self, tid: Tid, regs: crate::Registers) -> Result<()> {
+		let cmd = RemoteCmd::set_libc_regs(tid, regs);
+		self.wr_value_remote(cmd)
+	}
 	pub fn get_pid(&mut self) -> Result<Pid> {
 		log::info!("get_pid started");
 		let cmd = RemoteCmd::get_pid();
@@ -274,6 +278,10 @@ where
 	}
 	pub fn read_c_string(&mut self, tid: Tid, addr: TargetPtr) -> Result<String> {
 		let cmd = RemoteCmd::read_c_string(tid, addr);
+		self.wr_value_remote(cmd)
+	}
+	pub fn exec_ret(&mut self, tid: Tid) -> Result<()> {
+		let cmd = RemoteCmd::exec_ret(tid);
 		self.wr_value_remote(cmd)
 	}
 	pub fn read_bytes(&mut self, tid: Tid, addr: TargetPtr, bytes: usize) -> Result<Vec<u8>> {

@@ -396,6 +396,9 @@ pub enum ThreadCmd {
 	/// Get all registers
 	GetLibcRegs,
 
+	/// Set all registers
+	SetLibcRegs { regs: crate::Registers },
+
 	/// Step one single instruction
 	StepIns {
 		count: usize,
@@ -441,6 +444,7 @@ pub enum ThreadCmd {
 		sysno: TargetPtr,
 		args: Vec<TargetPtr>,
 	},
+	ExecRet,
 
 	ExecSyscall {
 		syscall: ExecSyscall,
@@ -460,6 +464,9 @@ pub enum ThreadCmd {
 impl ThreadCmd {
 	pub fn read_c_string(addr: TargetPtr) -> Self {
 		Self::ReadCString { addr }
+	}
+	pub fn exec_ret() -> Self {
+		Self::ExecRet
 	}
 	pub fn write_scratch_string<S: Into<String>>(string: S) -> Self {
 		Self::WriteScratchString {
@@ -549,6 +556,10 @@ impl RemoteCmd {
 		let cmd = ThreadCmd::read_c_string(addr);
 		Self::Thread { tid, cmd }
 	}
+	pub fn exec_ret(tid: Tid) -> Self {
+		let cmd = ThreadCmd::exec_ret();
+		Self::Thread { tid, cmd }
+	}
 	pub fn get_threads_status() -> Self {
 		let cmd = ProcessCmd::GetThreadsStatus;
 		Self::Process { cmd }
@@ -557,6 +568,12 @@ impl RemoteCmd {
 		Self::Thread {
 			tid,
 			cmd: ThreadCmd::GetLibcRegs,
+		}
+	}
+	pub fn set_libc_regs(tid: Tid, regs: crate::Registers) -> Self {
+		Self::Thread {
+			tid,
+			cmd: ThreadCmd::SetLibcRegs { regs },
 		}
 	}
 }

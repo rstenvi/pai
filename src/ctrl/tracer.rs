@@ -301,7 +301,12 @@ impl CtrlTracer {
 				let ins = self.tracer.get_libc_regs(tid);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
-			}
+			},
+			ThreadCmd::SetLibcRegs { regs } => {
+				let ins = self.tracer.set_libc_regs(tid, regs);
+				let val = serde_json::to_value(ins)?;
+				Response::Value(val)
+			},
 			ThreadCmd::ReadCString { addr } => {
 				let ins = self.tracer.read_c_string(tid, addr);
 				let val = serde_json::to_value(ins)?;
@@ -361,6 +366,11 @@ impl CtrlTracer {
 				client.set_step_ins(tid, count);
 				Response::Ack
 			}
+			ThreadCmd::ExecRet => {
+				let ins = self.tracer.exec_ret(tid);
+				let val = serde_json::to_value(ins)?;
+				Response::Value(val)
+			},
 			ThreadCmd::ExecSyscall { syscall } => {
 				let val = match syscall {
 					ExecSyscall::Getpid => {

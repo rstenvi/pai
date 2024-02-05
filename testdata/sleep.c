@@ -15,9 +15,9 @@ int main(int argc, char **argv) {
 	void* h = dlopen(NULL, RTLD_NOW);
 	printf("h = %p\n", h);
 
-    for(i = 0; i < 10; i++) {
+    for(i = 0; i < 4; i++) {
         printf("euid[%i] : %i\n", i, geteuid());
-        sleep(60);
+        sleep(2);
     }
     return 0;
 }

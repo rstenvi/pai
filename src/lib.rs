@@ -177,6 +177,8 @@ pub type Registers = crate::arch::aarch64::user_regs_struct;
 /// Aarch32 registers the same way they are defined in C
 pub type Registers = crate::arch::aarch32::user_regs_struct;
 
+pub type Client = crate::api::Client<api::Command, api::Response>;
+
 macro_rules! error_from_crate {
 	($err:ty) => {
 		impl From<$err> for Error {
