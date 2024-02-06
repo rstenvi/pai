@@ -1,9 +1,15 @@
+//! Code specific to Aarch64
+//! 
+//! ABI is here: <https://github.com/ARM-software/abi-aa>
 use serde::{Deserialize, Serialize};
 
 use crate::TargetPtr;
 
 // rasm2 -a arm -b 64 "brk #0"
 pub(crate) const SW_BP: [u8; 4] = [0x00, 0x00, 0x20, 0xd4];
+
+// rasm2 -a arm -b 64 "ret"
+pub(crate) const SW_BP: [u8; 4] = [0xc0, 0x03, 0x5f, 0xd6];
 
 // rasm2 -a arm -b 64 "blr x9"
 pub(crate) const CALL_TRAMP: [u8; 4] = [0x20, 0x01, 0x3f, 0xd6];
@@ -111,6 +117,10 @@ pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
 	code.extend_from_slice(&NOP);
 	code.extend_from_slice(&CALL_TRAMP);
 	code.extend_from_slice(&SW_BP);
+}
+pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
+	code.extend_from_slice(&NOP);
+	code.extend_from_slice(&RET);
 }
 pub(crate) fn as_our_regs(regs: pete::Registers) -> user_regs_struct {
 	regs.into()

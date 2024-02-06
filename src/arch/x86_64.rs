@@ -1,4 +1,6 @@
 //! Code specific to x86_64
+//! 
+//! ABI is here: <https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-1.0.pdf>
 
 use serde::{Deserialize, Serialize};
 
@@ -96,24 +98,24 @@ impl crate::arch::ReadRegisters for user_regs_struct {
 		}
 	}
 
-	fn arg_systemv(&self, nr: usize) -> crate::TargetPtr {
-		match nr {
-			0 => self.rdi,
-			1 => self.rsi,
-			2 => self.rdx,
-			3 => self.rcx,
-			4 => self.r8,
-			5 => self.r9,
-			_ => crate::bug!("tried to get SystemV arg nr {nr}"),
-		}
-	}
+	// fn arg_systemv(&self, nr: usize) -> crate::TargetPtr {
+	// 	match nr {
+	// 		0 => self.rdi,
+	// 		1 => self.rsi,
+	// 		2 => self.rdx,
+	// 		3 => self.rcx,
+	// 		4 => self.r8,
+	// 		5 => self.r9,
+	// 		_ => crate::bug!("tried to get SystemV arg nr {nr}"),
+	// 	}
+	// }
 
 	fn ret_syscall(&self) -> crate::TargetPtr {
 		self.rax
 	}
-	fn ret_systemv(&self) -> crate::TargetPtr {
-		self.rax
-	}
+	// fn ret_systemv(&self) -> crate::TargetPtr {
+	// 	self.rax
+	// }
 }
 
 impl crate::arch::WriteRegisters for user_regs_struct {
@@ -145,25 +147,80 @@ impl crate::arch::WriteRegisters for user_regs_struct {
 		self.rax = ret;
 	}
 
-	fn set_arg_systemv(&mut self, nr: usize, arg: crate::TargetPtr) {
-		match nr {
-			0 => self.rdi = arg,
-			1 => self.rsi = arg,
-			2 => self.rdx = arg,
-			3 => self.rcx = arg,
-			4 => self.r8 = arg,
-			5 => self.r9 = arg,
-			_ => crate::bug!("tried to set SystemV arg nr {nr}"),
-		}
-	}
-	fn set_call_func(&mut self, addr: crate::TargetPtr) {
-		self.r10 = addr;
-	}
+	// fn set_arg_systemv(&mut self, nr: usize, arg: crate::TargetPtr) {
+	// 	match nr {
+	// 		0 => self.rdi = arg,
+	// 		1 => self.rsi = arg,
+	// 		2 => self.rdx = arg,
+	// 		3 => self.rcx = arg,
+	// 		4 => self.r8 = arg,
+	// 		5 => self.r9 = arg,
+	// 		_ => crate::bug!("tried to set SystemV arg nr {nr}"),
+	// 	}
+	// }
+	// fn set_call_func(&mut self, addr: crate::TargetPtr) {
+	// 	self.r10 = addr;
+	// }
 
-	fn set_ret_systemv(&mut self, ret: crate::TargetPtr) {
-        self.rax = ret;
+	// fn set_ret_systemv(&mut self, ret: crate::TargetPtr) {
+    //     self.rax = ret;
+    // }
+}
+
+impl super::RegsAbiAccess for super::SystemV {
+    fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
+        regs.rax
+    }
+
+    fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
+        regs.rax = val;
+    }
+
+    fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
+        let r = match num {
+			0 => regs.rdi,
+			1 => regs.rsi,
+			2 => regs.rdx,
+			3 => regs.rcx,
+			4 => regs.r8,
+			5 => regs.r9,
+			_ => crate::bug!("tried to get SystemV arg nr {num}"),
+		};
+		Ok(r)
+    }
+
+    fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
+        crate::bug!("get_arg_ext on SystemV not supported")
+    }
+
+    fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
+        match num {
+			0 => regs.rdi = val,
+			1 => regs.rsi = val,
+			2 => regs.rdx = val,
+			3 => regs.rcx = val,
+			4 => regs.r8 = val,
+			5 => regs.r9 = val,
+			_ => crate::bug!("tried to get SystemV arg nr {num}"),
+		}
+		Ok(())
+    }
+
+    fn set_arg_ext(&self, regs: &mut crate::Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()> {
+        crate::bug!("set_arg_ext on SystemV not supported")
+    }
+
+    fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
+        regs.r10 = val;
+    }
+
+    fn call_trampoline(&self, code: &mut Vec<u8>) {
+        code.extend_from_slice(&NOP);
+		code.extend_from_slice(&CALL_TRAMP);
+		code.extend_from_slice(&SW_BP);
     }
 }
+
 
 pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
 	code.extend_from_slice(&NOP);

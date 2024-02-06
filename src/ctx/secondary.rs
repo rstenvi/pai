@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use crate::api::messages::{ElfSymbol, Stop, Stopped, SymbolType};
 use crate::api::CallFrame;
-use crate::arch::{ReadRegisters, WriteRegisters};
+use crate::arch::{ReadRegisters, RegsAbiAccess, SystemV, WriteRegisters};
 use crate::exe::elf::Elf;
 #[cfg(feature = "plugins")]
 use crate::plugin::{plugins::*, Plugin};
@@ -77,6 +77,8 @@ where
 
 	resolved: HashMap<PathBuf, ModuleSymbols>,
 	pub(crate) req: Option<ReqNewClient>,
+
+	cc: Box<dyn RegsAbiAccess + Send + 'static>,
 }
 impl<T, Err> Secondary<T, Err>
 where
@@ -94,6 +96,7 @@ where
 		let resolved = HashMap::new();
 		let funcentrycbs = HashMap::new();
 		let callframes = HashMap::new();
+		let cc = Box::new(SystemV::default());
 		let r = Self {
 			data,
 			client,
@@ -114,6 +117,7 @@ where
 			stoppedcb: None,
 			raw_syscall_cb: None,
 			stepcb: None,
+			cc
 		};
 		Ok(r)
 	}
@@ -139,6 +143,11 @@ where
 	/// Get a reference to stored data
 	pub fn data(&self) -> &T {
 		&self.data
+	}
+
+	/// Override with a custom implementation of the ABI
+	pub fn set_cc(&mut self, cc: Box<dyn RegsAbiAccess + Send + 'static>) {
+		self.cc = cc;
 	}
 
 	/// Get a mutable reference to stored data
@@ -474,6 +483,24 @@ where
 
 		Ok(entry + mainmod.loc.addr())
 	}
+	pub fn call_func(
+		&mut self,
+		tid: Tid,
+		addr: TargetPtr,
+		args: &[TargetPtr],
+	) -> Result<TargetPtr> {
+		let mut regs = self.client.get_libc_regs(tid)?;
+		for (i, arg) in args.iter().enumerate() {
+			log::debug!("arg[{i}]: = {arg:x}");
+			self.cc.set_arg(&mut regs, i, *arg)?;
+			// regs.set_arg_systemv(i, *arg);
+		}
+		self.cc.set_reg_call_tramp(&mut regs, addr);
+		self.client.set_libc_regs(tid, regs)?;
+		
+		todo!();
+	}
+
 	pub fn set_step_handler(&mut self, cb: StepCb<T, Err>) {
 		self.stepcb = Some(cb);
 	}
@@ -588,11 +615,13 @@ where
 				// and not input. This code simply supplies the values as
 				// they were when the function call was made.
 				let mut regs = self.client.get_libc_regs(tid)?;
-				let retval = regs.ret_systemv();
+				let retval = self.cc.get_retval(&regs);
+				// let retval = regs.ret_systemv();
 				frame.set_output(retval);
 				match exit(self, &frame) {
 					Ok(Some(ret)) => {
-						regs.set_ret_systemv(ret);
+						self.cc.set_retval(&mut regs, ret);
+						// regs.set_ret_systemv(ret);
 						self.client.set_libc_regs(tid, regs)?;
 					},
 					Ok(None) => { },
@@ -610,7 +639,8 @@ where
 			let (skipexit, remove) = match entry(self, &frame) {
 				Ok((dorem, retval)) => {
 					if let Some(retval) = retval {
-						frame.regs.set_ret_systemv(retval);
+						self.cc.set_retval(&mut frame.regs, retval);
+						// frame.regs.set_ret_systemv(retval);
 						self.client.set_libc_regs(tid, frame.regs.clone())?;
 						self.client.exec_ret(tid)?;
 						(true, dorem)

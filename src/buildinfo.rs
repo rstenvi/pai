@@ -110,12 +110,12 @@ impl std::str::FromStr for BuildAbi {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct BuildTarget {
-	arch: BuildArch,
-	os: BuildOs,
-	endian: BuildEndian,
-	ptrwidth: usize,
-	abi: BuildAbi,
-	env: BuildEnv,
+	pub arch: BuildArch,
+	pub os: BuildOs,
+	pub endian: BuildEndian,
+	pub ptrwidth: usize,
+	pub abi: BuildAbi,
+	pub env: BuildEnv,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -123,6 +123,6 @@ pub(crate) struct BuildInfo {
 	linker: String,
 	version: BuildVersion,
 	triple: String,
-	target: BuildTarget,
+	pub target: BuildTarget,
 	githash: Option<String>,
 }

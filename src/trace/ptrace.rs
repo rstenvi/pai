@@ -1,6 +1,6 @@
 use crate::{
 	api::messages::{Cont, Stop, Stopped, Thread, ThreadStatus},
-	arch::{self, prep_syscall, ReadRegisters, WriteRegisters},
+	arch::{self, prep_syscall, ReadRegisters, RegsAbiAccess, SystemV, WriteRegisters},
 	utils::process::Pid,
 	utils::{AllocedMemory, MmapBuild},
 };
@@ -97,6 +97,9 @@ pub struct Tracer {
 	scratch: HashMap<Perms, AllocedMemory>,
 	lastaction: HashMap<Tid, Cont>,
 	pendingswbps: HashMap<Tid, SwBp>,
+
+	// No way for the end-user to override this with a completely custom one.
+	cc: Box<dyn RegsAbiAccess + Send + 'static>,
 }
 
 impl Tracer {
@@ -111,6 +114,7 @@ impl Tracer {
 		let scratch = HashMap::new();
 		let lastaction = HashMap::new();
 		let pendingswbps = HashMap::new();
+		let cc = Box::new(SystemV::default());
 		let s = Self {
 			proc,
 			tracer,
@@ -121,6 +125,7 @@ impl Tracer {
 			scratch,
 			lastaction,
 			pendingswbps,
+			cc,
 		};
 		Ok(s)
 	}
@@ -483,9 +488,11 @@ impl Tracer {
 			regs.set_pc(*pc + 4);
 			for (i, arg) in args.iter().enumerate() {
 				log::debug!("arg[{i}]: = {arg:x}");
-				regs.set_arg_systemv(i, *arg);
+				self.cc.set_arg(&mut regs, i, *arg)?;
+				// regs.set_arg_systemv(i, *arg);
 			}
-			regs.set_call_func(addr);
+			self.cc.set_reg_call_tramp(&mut regs, addr);
+			// regs.set_call_func(addr);
 			log::debug!("regs {regs:?}");
 			tracee.set_registers(regs.into())?;
 			log::debug!("running until call to {addr:x} is over");
@@ -498,7 +505,8 @@ impl Tracer {
 				Err(error)
 			} else {
 				let regs = as_our_regs(tracee.registers()?);
-				let ret = regs.ret_systemv();
+				let ret = self.cc.get_retval(&regs);
+				// let ret = regs.ret_systemv();
 				tracee.set_registers(oregs)?;
 				Ok((ret, tracee))
 			}
