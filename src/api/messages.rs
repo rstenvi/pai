@@ -13,6 +13,14 @@ use crate::syscalls::SyscallItem;
 
 use super::Args;
 
+#[derive(Eq, PartialEq, Hash, Debug, Clone, Serialize, Deserialize)]
+pub enum TrampType {
+	Syscall,
+	Call,
+	Ret,
+}
+
+
 /// Type of symbol, read ELF-specification for more details
 #[repr(u8)]
 #[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
@@ -383,6 +391,7 @@ pub enum ProcessCmd {
 	GetTids,
 	GetThreadsStatus,
 	GetPid,
+	SetTrampolineCode { tramp: TrampType, code: Vec<u8> },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -398,6 +407,10 @@ pub enum ThreadCmd {
 
 	/// Set all registers
 	SetLibcRegs { regs: crate::Registers },
+
+	GetTrampolineAddr { tramp: TrampType },
+
+	RunUntilTrap,
 
 	/// Step one single instruction
 	StepIns {
@@ -569,6 +582,15 @@ impl RemoteCmd {
 			tid,
 			cmd: ThreadCmd::GetLibcRegs,
 		}
+	}
+	pub fn get_trampoline_addr(tid: Tid, tramp: TrampType) -> Self {
+		Self::Thread { tid, cmd: ThreadCmd::GetTrampolineAddr { tramp } }
+	}
+	pub fn run_until_trap(tid: Tid) -> Self {
+		Self::Thread { tid, cmd: ThreadCmd::RunUntilTrap }
+	}
+	pub fn set_trampoline_code(tramp: TrampType, code: Vec<u8>) -> Self {
+		Self::Process { cmd: ProcessCmd::SetTrampolineCode { tramp, code } }
 	}
 	pub fn set_libc_regs(tid: Tid, regs: crate::Registers) -> Self {
 		Self::Thread {

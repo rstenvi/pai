@@ -267,7 +267,7 @@ impl CtrlTracer {
 		Ok(())
 	}
 	fn handle_cmd_remote_process(
-		&self,
+		&mut self,
 		_client: &mut ClientMaster,
 		cmd: ProcessCmd,
 	) -> Result<Option<Response>> {
@@ -287,6 +287,11 @@ impl CtrlTracer {
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
+    		ProcessCmd::SetTrampolineCode { tramp, code } => {
+				let ins = self.tracer.set_trampoline_code(tramp, code);
+				let val = serde_json::to_value(ins)?;
+				Response::Value(val)
+			},
 		};
 		Ok(Some(r))
 	}
@@ -384,6 +389,16 @@ impl CtrlTracer {
 				};
 				Response::Value(val)
 			}
+    		ThreadCmd::GetTrampolineAddr { tramp } => {
+				let ins = self.tracer.get_trampoline_addr(tid, tramp);
+				let val = serde_json::to_value(ins)?;
+				Response::Value(val)
+			},
+			ThreadCmd::RunUntilTrap => {
+				let ins = self.tracer.run_until_trap(tid);
+				let val = serde_json::to_value(ins)?;
+				Response::Value(val)
+			},
 		};
 		Ok(Some(r))
 	}

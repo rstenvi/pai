@@ -1,5 +1,5 @@
 use crate::{
-	api::messages::{Cont, Stop, Stopped, Thread, ThreadStatus},
+	api::messages::{Cont, Stop, Stopped, Thread, ThreadStatus, TrampType},
 	arch::{self, prep_syscall, ReadRegisters, RegsAbiAccess, SystemV, WriteRegisters},
 	utils::process::Pid,
 	utils::{AllocedMemory, MmapBuild},
@@ -80,18 +80,13 @@ impl TraceStop {
 	}
 }
 
-#[derive(Eq, PartialEq, Hash)]
-enum TrampType {
-	Syscall,
-	Call,
-	Ret,
-}
 
 pub struct Tracer {
 	proc: Process,
 	tracer: pete::ptracer::Ptracer,
 	swbps: HashMap<TargetPtr, SwBp>,
 	mmapped: Vec<(TargetPtr, usize)>,
+	trampcode: HashMap<TrampType, Vec<u8>>,
 	tramps: HashMap<TrampType, TargetPtr>,
 	tracee: HashMap<Tid, TraceStop>,
 	scratch: HashMap<Perms, AllocedMemory>,
@@ -115,12 +110,14 @@ impl Tracer {
 		let lastaction = HashMap::new();
 		let pendingswbps = HashMap::new();
 		let cc = Box::new(SystemV::default());
+		let trampcode = Self::default_trampcode();
 		let s = Self {
 			proc,
 			tracer,
 			swbps,
 			tracee,
 			tramps,
+			trampcode,
 			mmapped,
 			scratch,
 			lastaction,
@@ -128,6 +125,21 @@ impl Tracer {
 			cc,
 		};
 		Ok(s)
+	}
+	fn default_trampcode() -> HashMap<TrampType, Vec<u8>> {
+		let mut ret = HashMap::new();
+		let mut code = Vec::new();
+		syscall_shellcode(&mut code);
+		ret.insert(TrampType::Syscall, std::mem::take(&mut code));
+		assert!(code.is_empty());
+
+		call_shellcode(&mut code);
+		ret.insert(TrampType::Call, std::mem::take(&mut code));
+
+		ret_shellcode(&mut code);
+		ret.insert(TrampType::Ret, std::mem::take(&mut code));
+
+		ret
 	}
 	pub fn cont(&mut self, tid: Tid, cont: Cont) -> Result<()> {
 		log::debug!("cont {tid} {cont:?}");
@@ -207,9 +219,36 @@ impl Tracer {
 		Ok(n.regs.clone())
 	}
 	pub fn set_libc_regs(&mut self, tid: Tid, regs: crate::Registers) -> Result<()> {
-		log::trace!("setting regs {regs:?}");
+		log::debug!("setting regs {tid} | {regs:?}");
 		let n = self.get_tracee_mut(tid)?;
 		n.tracee.set_registers(regs.into())?;
+		Ok(())
+	}
+	fn _get_trampoline_addr(&mut self, tid: Tid, t: TrampType, maxattempts: usize) -> Result<TargetPtr> {
+		if let Some(addr) = self.tramps.get(&t) {
+			Ok(*addr)
+		} else if maxattempts > 0 {
+			let tracee = self.remove_tracee(tid)?;
+			let tracee = self.init_tramps(tracee.tracee)?;
+			let v = self._get_trampoline_addr(tid, t, maxattempts - 1);
+			let tracee = TraceStop::new(tracee)?;
+			self.tracee.insert(tid, tracee);
+			v
+		} else {
+			Err(Error::msg("too many attempts"))
+		}
+	}
+	pub fn get_trampoline_addr(&mut self, tid: Tid, t: TrampType) -> Result<TargetPtr> {
+		self._get_trampoline_addr(tid, t, 1)
+		// self.tramps.get(&t).ok_or(Error::msg("addr has not been set"))
+	}
+	pub fn set_trampoline_code(&mut self, t: TrampType, code: Vec<u8>) -> Result<()> {
+		// No point in setting trampoline code if we've already written it to
+		// memory. We could re-write, but would have to implement it.
+		if self.tramps.get(&t).is_some() {
+			return Err(Error::msg("trampoline has already been written to memory"));
+		}
+		self.trampcode.insert(t, code);
 		Ok(())
 	}
 	pub fn get_threads_status(&self) -> Result<Vec<Thread>> {
@@ -532,6 +571,19 @@ impl Tracer {
 		self.tracee.insert(tid, tracee);
 		Ok(ret)
 	}
+	pub fn run_until_trap(&mut self, tid: Tid) -> Result<()> {
+		let tracee = self.remove_tracee(tid)?;
+		let (tracee, err) = self.run_until(tracee.tracee, Self::cb_stop_is_trap)?;
+		let tid = tracee.pid.as_raw() as Tid;
+		let tracee = TraceStop::new(tracee)?;
+		self.tracee.insert(tid, tracee);
+		if let Some(error) = err {
+			log::error!("got error when executing until_trap, target may be in an unstable state, err: {error:?}");
+			Err(error)
+		} else {
+			Ok(())
+		}
+	}
 	fn remove_tracee(&mut self, tid: Tid) -> Result<TraceStop> {
 		self.tracee.remove(&tid).ok_or(Error::tid_not_found(tid))
 	}
@@ -757,11 +809,13 @@ impl Tracer {
 		// First step is to find some executable space we can write to and write
 		// our syscall tramp to that region
 		let exespace = self.find_executable_space()?;
-		let mut code = Vec::new();
-		syscall_shellcode(&mut code);
-		let len = code.len();
+		let shellcode = self.trampcode.get(&TrampType::Syscall)
+			.expect("TrampType::Syscall was not set");
+		// let mut code = Vec::new();
+		// syscall_shellcode(&mut code);
+		let len = shellcode.len();
 		let orig = tracee.read_memory(exespace as u64, len)?;
-		tracee.write_memory(exespace as u64, &code)?;
+		tracee.write_memory(exespace as u64, shellcode)?;
 		log::debug!("wrote executable memory");
 
 		// Get the registers, both so we can modify them to run our syscall
@@ -809,12 +863,19 @@ impl Tracer {
 			// Prepare all our tramps and store the individual location of them
 			let syscalltramp = addr;
 			let mut inscode = Vec::new();
-			syscall_shellcode(&mut inscode);
+			let a = self.trampcode.get(&TrampType::Syscall).unwrap();
+			inscode.extend(a);
+			// syscall_shellcode(&mut inscode);
+
 			let calltramp = addr + inscode.len() as TargetPtr;
-			call_shellcode(&mut inscode);
+			// call_shellcode(&mut inscode);
+			let a = self.trampcode.get(&TrampType::Call).unwrap();
+			inscode.extend(a);
 
 			let rettramp = addr + inscode.len() as TargetPtr;
-			ret_shellcode(&mut inscode);
+			// ret_shellcode(&mut inscode);
+			let a = self.trampcode.get(&TrampType::Ret).unwrap();
+			inscode.extend(a);
 
 			// Write the tramps to memory
 			log::debug!("writing real tramps to {addr:x} | {inscode:?}");

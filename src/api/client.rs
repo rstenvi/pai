@@ -14,7 +14,7 @@ use crate::{
 use crossbeam_channel::{Receiver, Sender};
 
 use super::{
-	messages::{Event, MasterComm, Thread},
+	messages::{Event, MasterComm, Thread, TrampType},
 	Args, ManagerCmd, RemoteCmd, Response, ThreadCmd,
 };
 
@@ -255,6 +255,18 @@ where
 	}
 	pub fn get_libc_regs(&mut self, tid: Tid) -> Result<crate::Registers> {
 		let cmd = RemoteCmd::get_libc_regs(tid);
+		self.wr_value_remote(cmd)
+	}
+	pub fn get_trampoline_addr(&mut self, tid: Tid, tramp: TrampType) -> Result<TargetPtr> {
+		let cmd = RemoteCmd::get_trampoline_addr(tid, tramp);
+		self.wr_value_remote(cmd)
+	}
+	pub fn run_until_trap(&mut self, tid: Tid) -> Result<()> {
+		let cmd = RemoteCmd::run_until_trap(tid);
+		self.wr_value_remote(cmd)
+	}
+	pub fn set_trampoline_code(&mut self, tramp: TrampType, code: Vec<u8>) -> Result<()> {
+		let cmd = RemoteCmd::set_trampoline_code(tramp, code);
 		self.wr_value_remote(cmd)
 	}
 	pub fn set_libc_regs(&mut self, tid: Tid, regs: crate::Registers) -> Result<()> {

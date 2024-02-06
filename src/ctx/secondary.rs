@@ -2,7 +2,7 @@ use std::io::{BufReader, BufWriter};
 use std::thread::JoinHandle;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::api::messages::{ElfSymbol, Stop, Stopped, SymbolType};
+use crate::api::messages::{ElfSymbol, Stop, Stopped, SymbolType, TrampType};
 use crate::api::CallFrame;
 use crate::arch::{ReadRegisters, RegsAbiAccess, SystemV, WriteRegisters};
 use crate::exe::elf::Elf;
@@ -490,15 +490,25 @@ where
 		args: &[TargetPtr],
 	) -> Result<TargetPtr> {
 		let mut regs = self.client.get_libc_regs(tid)?;
+		let oregs = regs.clone();
 		for (i, arg) in args.iter().enumerate() {
 			log::debug!("arg[{i}]: = {arg:x}");
 			self.cc.set_arg(&mut regs, i, *arg)?;
 			// regs.set_arg_systemv(i, *arg);
 		}
+		let pc = self.client.get_trampoline_addr(tid, TrampType::Call)?;
+		log::error!("setting pc {pc:x}");
+		regs.set_pc(pc + 4);
 		self.cc.set_reg_call_tramp(&mut regs, addr);
 		self.client.set_libc_regs(tid, regs)?;
+		self.client.run_until_trap(tid)?;
 		
-		todo!();
+		let regs = self.client.get_libc_regs(tid)?;
+		let ret = self.cc.get_retval(&regs);
+
+		self.client.set_libc_regs(tid, oregs)?;
+
+		Ok(ret)
 	}
 
 	pub fn set_step_handler(&mut self, cb: StepCb<T, Err>) {

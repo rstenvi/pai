@@ -350,7 +350,8 @@ mod tests {
 			assert!(cl.client_mut().write_bytes(tid, addr, data).unwrap() == 4);
 
 			if let Some(getpid) = cl.lookup_symbol("getpid")? {
-				let pid = cl.client_mut().call_func(tid, getpid.value, [])?;
+				let pid = cl.client_mut().call_func(tid, getpid.value, &[])?;
+				// let pid = cl.call_func(tid, getpid.value, &[])?;
 				assert_eq!(pid as Tid, tid);
 			} else {
 				panic!("unable to find 'getpid'");
