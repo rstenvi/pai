@@ -221,6 +221,7 @@ impl Tracer {
 	pub fn set_libc_regs(&mut self, tid: Tid, regs: crate::Registers) -> Result<()> {
 		log::debug!("setting regs {tid} | {regs:?}");
 		let n = self.get_tracee_mut(tid)?;
+		n.regs = regs.clone();
 		n.tracee.set_registers(regs.into())?;
 		Ok(())
 	}

@@ -15,9 +15,10 @@ fn main() -> anyhow::Result<()> {
 				log::info!("getpid {getpid:?}");
 				let tid = cl.get_first_stopped()?;
 				let v = cl.call_func(tid, getpid.value, &[]).unwrap();
+				log::info!("getpid -> {v}");
 				assert!(v as Tid == tid);
 			}
-			Ok(false) // disable breakpoint after this
+			Ok(true) // keep breakpoint, is never hit again
 		})?;
 
 	let (_, res) = ctx.loop_until_exit()?;
