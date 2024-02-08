@@ -424,7 +424,7 @@ mod tests {
 	fn test_twos() {
 		assert_eq!(twos_complement(1.into()), 1);
 		#[cfg(target_pointer_width = "32")]
-		assert_eq!(twos_complement(0xffffffff), -1);
+		assert_eq!(twos_complement(0xffffffff_u32.into()), -1);
 		#[cfg(target_pointer_width = "64")]
 		assert_eq!(twos_complement(0xffffffffffffffff_u64.into()), -1_isize);
 		assert_eq!(twos_complement(isize::MIN.into()), isize::MIN);

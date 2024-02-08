@@ -20,11 +20,11 @@ use crate::{
 use super::SwBp;
 
 #[cfg(target_arch = "arm")]
-use crate::arch::aarch32::{as_our_regs, call_shellcode, syscall_shellcode};
+use crate::arch::aarch32::{as_our_regs, call_shellcode, syscall_shellcode, ret_shellcode};
 #[cfg(target_arch = "aarch64")]
-use crate::arch::aarch64::{as_our_regs, call_shellcode, syscall_shellcode};
+use crate::arch::aarch64::{as_our_regs, call_shellcode, syscall_shellcode, ret_shellcode};
 #[cfg(target_arch = "x86")]
-use crate::arch::x86::{as_our_regs, call_shellcode, syscall_shellcode};
+use crate::arch::x86::{as_our_regs, call_shellcode, syscall_shellcode, ret_shellcode};
 #[cfg(target_arch = "x86_64")]
 use crate::arch::x86_64::{as_our_regs, call_shellcode, syscall_shellcode, ret_shellcode};
 

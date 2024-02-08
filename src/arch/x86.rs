@@ -3,6 +3,10 @@
 //! ABI is here: <https://github.com/hjl-tools/x86-psABI/wiki/intel386-psABI-1.1.pdf>
 use serde::{Deserialize, Serialize};
 
+use crate::{Result, api::CallFrame, Client, TargetPtr};
+
+use super::ReadRegisters;
+
 // rasm2 -a x86 -b 32 "int3"
 pub(crate) const SW_BP: [u8; 1] = [0xcc];
 
@@ -10,17 +14,17 @@ pub(crate) const SW_BP: [u8; 1] = [0xcc];
 pub(crate) const RET: [u8; 1] = [0xc3];
 
 // rasm2 -a x86 -b 32 "call eax"
-pub(crate) const CALL_TRAMP: [u8; 3] = [0xff, 0xd0];
+pub(crate) const CALL_TRAMP: [u8; 2] = [0xff, 0xd0];
 
 // rasm2 -a x86 -b 32 "nop"
 pub(crate) const NOP: [u8; 4] = [0x90, 0x90, 0x90, 0x90];
 
 // rasm2 -a x86 -b 32 "int 0x80"
-pub(crate) const SYSCALL: [u8; 1] = [0xcd, 0x80];
+pub(crate) const SYSCALL: [u8; 2] = [0xcd, 0x80];
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct user_regs_struct {
 	pub ebx: libc::c_long,
 	pub ecx: libc::c_long,
@@ -51,18 +55,56 @@ impl From<user_regs_struct> for pete::Registers {
 		unsafe { std::mem::transmute(value) }
 	}
 }
+impl CallFrame {
+	pub fn return_addr(&self, client: &mut Client) -> Result<TargetPtr> {
+		todo!();
+	}
+}
+impl super::RegsAbiAccess for super::SystemV {
+    fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
+        todo!()
+    }
+
+    fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
+        todo!()
+    }
+
+    fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
+        todo!()
+    }
+
+    fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
+        todo!()
+    }
+
+    fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
+        todo!()
+    }
+
+    fn set_arg_ext(&self, regs: &mut crate::Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()> {
+        todo!()
+    }
+
+    fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
+        todo!()
+    }
+
+    fn call_trampoline(&self, code: &mut Vec<u8>) {
+        todo!()
+    }
+}
 
 impl crate::arch::ReadRegisters for user_regs_struct {
 	fn pc(&self) -> crate::TargetPtr {
-		self.eip
+		self.eip.into()
 	}
 
 	fn sp(&self) -> crate::TargetPtr {
-		self.esp
+		self.esp.into()
 	}
 
-	fn sysno(&self) -> crate::TargetPtr {
-		self.eax
+	fn sysno(&self) -> usize {
+		self.eax as usize
 	}
 
 	fn arg_syscall(&self, nr: usize) -> crate::TargetPtr {
@@ -74,35 +116,28 @@ impl crate::arch::ReadRegisters for user_regs_struct {
 			4 => self.edi,
 			5 => self.ebp,
 			_ => crate::bug!("tried to get syscall arg nr {nr}"),
-		}
+		}.into()
 	}
 
 	fn ret_syscall(&self) -> crate::TargetPtr {
-		self.eax
-	}
-
-	fn arg_systemv(&self, nr: usize) -> crate::TargetPtr {
-		todo!()
-	}
-
-	fn ret_systemv(&self) -> crate::TargetPtr {
-		todo!()
+		self.eax.into()
 	}
 }
 impl crate::arch::WriteRegisters for user_regs_struct {
 	fn set_pc(&mut self, pc: crate::TargetPtr) {
-		self.eip = pc;
+		self.eip = pc.into();
 	}
 
 	fn set_sp(&mut self, sp: crate::TargetPtr) {
-		self.esp = sp;
+		self.esp = sp.into();
 	}
 
-	fn set_sysno(&mut self, arg: crate::TargetPtr) {
-		self.eax = arg;
+	fn set_sysno(&mut self, arg: usize) {
+		self.eax = arg as libc::c_long;
 	}
 
 	fn set_arg_syscall(&mut self, nr: usize, arg: crate::TargetPtr) {
+		let arg = arg.into();
 		match nr {
 			0 => self.ebx = arg,
 			1 => self.ecx = arg,
@@ -115,19 +150,8 @@ impl crate::arch::WriteRegisters for user_regs_struct {
 	}
 
 	fn set_ret_syscall(&mut self, ret: crate::TargetPtr) {
-		self.eax = ret;
+		self.eax = ret.into();
 	}
-
-	fn set_arg_systemv(&mut self, nr: usize, arg: crate::TargetPtr) {
-		todo!()
-	}
-
-	fn set_call_func(&mut self, addr: crate::TargetPtr) {
-		self.eax = addr;
-	}
-	fn set_ret_systemv(&mut self, ret: crate::TargetPtr) {
-        todo!()
-    }
 }
 
 pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {

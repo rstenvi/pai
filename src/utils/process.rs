@@ -69,10 +69,6 @@ impl TryFrom<procfs::process::MemoryMap> for MemoryMap {
 	fn try_from(value: procfs::process::MemoryMap) -> std::result::Result<Self, Self::Error> {
 		let start = value.address.0;
 		let end = value.address.1;
-		#[cfg(target_pointer_width = "32")]
-		let start = start.try_into()?;
-		#[cfg(target_pointer_width = "32")]
-		let end = end.try_into()?;
 
 		let r = Self {
 			loc: Location::new(start.into(), end.into()),
