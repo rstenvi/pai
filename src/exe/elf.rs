@@ -30,9 +30,9 @@ impl IntElfSymbol {
 		st.into()
 	}
 	pub fn value(&self) -> Result<TargetPtr> {
-		let v = self.sym.st_value;
-		#[cfg(target_pointer_width = "32")]
-		let v = v.try_into()?;
+		let v = self.sym.st_value.into();
+		// #[cfg(target_pointer_width = "32")]
+		// let v = v.try_into()?;
 		Ok(v)
 	}
 }
@@ -77,9 +77,9 @@ impl ElfData {
 			Vec::new()
 		};
 
-		let entry = file.ehdr.e_entry;
-		#[cfg(target_pointer_width = "32")]
-		let entry = entry.try_into()?;
+		let entry = file.ehdr.e_entry.into();
+		// #[cfg(target_pointer_width = "32")]
+		// let entry = entry.try_into()?;
 		let r = Self { symbols, entry };
 		Ok(r)
 	}
@@ -111,29 +111,40 @@ impl ElfData {
 }
 
 pub(crate) struct Elf {
-	_path: PathBuf,
 	data: ElfData,
+	loaded: TargetPtr,
 }
 
 impl Elf {
-	pub fn new<P: Into<PathBuf>>(path: P) -> Result<Self> {
+	pub fn new<P: Into<PathBuf>>(path: P, loaded: TargetPtr) -> Result<Self> {
 		let path = path.into();
 		log::info!("creating elf from {path:?}");
 		let data = std::fs::read(&path)?;
+		Self::from_bytes(data, loaded)
+	}
+	pub fn from_bytes(data: Vec<u8>, loaded: TargetPtr) -> Result<Self> {
 		let data = ElfData::from_bytes(data)?;
-		Ok(Self { _path: path, data })
+		Ok( Self { data, loaded })
 	}
 	pub fn entry(&self) -> TargetPtr {
-		self.data.entry
+		self.data.entry + self.loaded
 	}
 	pub fn parse(self) -> Result<Self> {
 		Ok(self)
 	}
 	pub fn resolve(&self, name: &str) -> Option<ElfSymbol> {
 		self.data.resolve(name)
+			.map(|mut x| { x.add_value(self.loaded); x })
 	}
 	pub fn all_symbols(&self) -> Vec<ElfSymbol> {
-		self.data.symbols.iter().map(|x| x.clone().into()).collect()
+		self.data.symbols
+			.iter()
+			.map(|x| {
+				let mut r: ElfSymbol = x.clone().into();
+				r.add_value(self.loaded);
+				r
+			})
+			.collect()
 	}
 }
 
@@ -155,7 +166,7 @@ mod test {
 		#[cfg(target_os = "android")]
 		const NAME: &str = "/system/lib64/libc.so";
 
-		let elf = Elf::new(PathBuf::from(NAME)).unwrap().parse().unwrap();
+		let elf = Elf::new(PathBuf::from(NAME), 0.into()).unwrap().parse().unwrap();
 		let _m = elf.resolve("malloc").unwrap();
 		assert!(elf.resolve("non_existent_").is_none());
 	}
@@ -167,6 +178,6 @@ mod test {
 		#[cfg(target_os = "android")]
 		const NAME: &str = "/system/bin/cat";
 
-		let _elf = Elf::new(PathBuf::from(NAME)).unwrap().parse().unwrap();
+		let _elf = Elf::new(PathBuf::from(NAME), 0.into()).unwrap().parse().unwrap();
 	}
 }

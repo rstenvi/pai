@@ -1,4 +1,6 @@
 //! Architecture-specific code
+use serde::{Deserialize, Serialize};
+
 use crate::{Registers, Result, TargetPtr};
 
 #[cfg(target_arch = "aarch64")]
@@ -13,7 +15,7 @@ pub mod x86_64;
 #[cfg(target_arch = "x86")]
 pub mod x86;
 
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SystemV;
 
 pub trait RegsAbiAccess {
@@ -31,7 +33,7 @@ pub trait RegsAbiAccess {
 pub trait ReadRegisters {
 	fn pc(&self) -> TargetPtr;
 	fn sp(&self) -> TargetPtr;
-	fn sysno(&self) -> TargetPtr;
+	fn sysno(&self) -> usize;
 	fn arg_syscall(&self, nr: usize) -> TargetPtr;
 	fn ret_syscall(&self) -> TargetPtr;
 	// fn arg_systemv(&self, nr: usize) -> TargetPtr;
@@ -42,7 +44,7 @@ pub trait ReadRegisters {
 pub trait WriteRegisters {
 	fn set_pc(&mut self, pc: TargetPtr);
 	fn set_sp(&mut self, pc: TargetPtr);
-	fn set_sysno(&mut self, pc: TargetPtr);
+	fn set_sysno(&mut self, pc: usize);
 	fn set_arg_syscall(&mut self, nr: usize, pc: TargetPtr);
 	fn set_ret_syscall(&mut self, ret: TargetPtr);
 	// fn set_arg_systemv(&mut self, nr: usize, arg: TargetPtr);
@@ -50,7 +52,7 @@ pub trait WriteRegisters {
 	// fn set_call_func(&mut self, addr: TargetPtr);
 }
 
-pub(crate) fn prep_syscall<T>(regs: &mut T, sysno: TargetPtr, args: &[TargetPtr]) -> Result<()>
+pub(crate) fn prep_syscall<T>(regs: &mut T, sysno: usize, args: &[TargetPtr]) -> Result<()>
 where
 	T: WriteRegisters,
 {
@@ -102,17 +104,17 @@ mod test {
 		#[cfg(target_arch = "arm")]
 		let mut r = aarch32::user_regs_struct::default();
 
-		assert_eq!(r.pc(), 0);
-		r.set_pc(42);
-		assert_eq!(r.pc(), 42);
+		assert_eq!(r.pc(), 0.into());
+		r.set_pc(42.into());
+		assert_eq!(r.pc(), 42.into());
 
-		r.set_sp(4);
-		assert_eq!(r.sp(), 4);
+		r.set_sp(4.into());
+		assert_eq!(r.sp(), 4.into());
 
 		// r.set_arg_systemv(0, 42);
 		// assert_eq!(r.arg_systemv(0), 42);
 
-		r.set_ret_syscall(43);
-		assert_eq!(r.ret_syscall(), 43);
+		r.set_ret_syscall(43.into());
+		assert_eq!(r.ret_syscall(), 43.into());
 	}
 }

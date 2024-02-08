@@ -151,9 +151,12 @@ impl ClientThread {
 		let regs = self.client.get_libc_regs(tid)?;
 		if entry {
 			let sysno = regs.sysno();
-			if self.args.intercept_all_syscalls(tid) || self.args.handles_syscall_sysno(tid, sysno)
+			if self.args.handles_syscall_sysno(tid, sysno)
 			{
-				let ins = SyscallItem::from_regs(tid, &regs);
+				let mut ins = SyscallItem::from_regs(tid, &regs);
+				if self.args.enrich_syscall_sysno(tid, sysno) {
+					ins.parse_deep(tid, &mut self.client, crate::syscalls::Direction::In)?;
+				}
 				let resp = if !self.args.only_notify_syscall_exit(tid) {
 					Some(Response::Syscall(ins.clone()))
 				} else {
@@ -166,6 +169,9 @@ impl ClientThread {
 			}
 		} else if let Some(mut syscall) = self.pending_syscalls.remove(&tid) {
 			syscall.fill_in_output(&regs);
+			if self.args.enrich_syscall_sysno(tid, syscall.sysno) {
+				syscall.parse_deep(tid, &mut self.client, crate::syscalls::Direction::Out)?;
+			}
 			let ret = Some(Response::Syscall(syscall));
 			Ok(ret)
 		} else {

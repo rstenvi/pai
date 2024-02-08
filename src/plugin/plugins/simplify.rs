@@ -132,7 +132,7 @@ impl SimplyfySyscall {
 		}
 		Ok(args)
 	}
-	pub fn init(client: Client<Command,Response>) -> Result<ctx::Secondary<Self>> {
+	pub fn init(client: crate::Client) -> Result<ctx::Secondary<Self>> {
 		log::error!("simplify plugin is not finished and will not give expected results");
 		let data = Self::new();
 		let inargs = data.args.clone();

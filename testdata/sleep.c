@@ -11,13 +11,13 @@
 
 int main(int argc, char **argv) {
 	int i;
-    printf("my pid : %d\n", getpid());
-	void* h = dlopen(NULL, RTLD_NOW);
-	printf("h = %p\n", h);
-
-    for(i = 0; i < 4; i++) {
+	int count = 4;
+	if (argc >= 2) {
+		count = atol(argv[1]);
+	}
+    for(i = 0; i < count; i++) {
         printf("euid[%i] : %i\n", i, geteuid());
-        sleep(2);
+        sleep(1);
     }
     return 0;
 }

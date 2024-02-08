@@ -247,7 +247,7 @@ where
 	pub fn exec_raw_syscall<S: Into<Vec<TargetPtr>>>(
 		&mut self,
 		tid: Tid,
-		sysno: TargetPtr,
+		sysno: usize,
 		args: S,
 	) -> Result<TargetPtr> {
 		let cmd = RemoteCmd::syscall(tid, sysno, args.into());
@@ -309,15 +309,15 @@ where
 		let cmd = RemoteCmd::write_bytes(tid, addr, bytes);
 		self.wr_value_remote(cmd)
 	}
-	pub fn call_func<T: Into<Vec<TargetPtr>>>(
-		&mut self,
-		tid: Tid,
-		func: TargetPtr,
-		args: T,
-	) -> Result<TargetPtr> {
-		let cmd = RemoteCmd::call_func(tid, func, args.into());
-		self.wr_value_remote(cmd)
-	}
+	// pub fn call_func<T: Into<Vec<TargetPtr>>>(
+	// 	&mut self,
+	// 	tid: Tid,
+	// 	func: TargetPtr,
+	// 	args: T,
+	// ) -> Result<TargetPtr> {
+	// 	let cmd = RemoteCmd::call_func(tid, func, args.into());
+	// 	self.wr_value_remote(cmd)
+	// }
 	client_read_int! { read_u8, u8 }
 	client_read_int! { read_i8, i8 }
 	client_read_int! { read_u16, u16 }
@@ -334,10 +334,10 @@ where
 		let cmd = RemoteCmd::insert_bp(tid, addr);
 		self.wr_value_remote(cmd)
 	}
-	pub fn remove_bp(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {
-		let cmd = RemoteCmd::remove_bp(tid, addr);
-		self.wr_value_remote(cmd)
-	}
+	// pub fn remove_bp(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {
+	// 	let cmd = RemoteCmd::remove_bp(tid, addr);
+	// 	self.wr_value_remote(cmd)
+	// }
 	pub fn write_scratch_string<S: Into<String>>(
 		&mut self,
 		tid: Tid,
@@ -454,11 +454,11 @@ impl Client<Command, Response> {
 		Ok(v)
 	}
 	#[cfg(feature = "syscalls")]
-	pub fn resolve_syscall<S: Into<String>>(&mut self, name: S) -> Result<TargetPtr> {
+	pub fn resolve_syscall<S: Into<String>>(&mut self, name: S) -> Result<usize> {
 		let name: String = name.into();
 		let cmd = Command::resolve_syscall(name);
 		let r = self.write_read(cmd)?;
-		let r: Option<TargetPtr> = match r {
+		let r: Option<usize> = match r {
 			Response::Value(v) => serde_json::from_value(v)?,
 			_ => todo!(),
 		};
@@ -466,7 +466,7 @@ impl Client<Command, Response> {
 		Ok(r)
 	}
 	#[cfg(not(feature = "syscalls"))]
-	pub fn resolve_syscall<S: Into<String>>(&mut self, _name: S) -> Result<TargetPtr> {
+	pub fn resolve_syscall<S: Into<String>>(&mut self, _name: S) -> Result<usize> {
 		Err(Error::unsupported())
 	}
 	pub(crate) fn remove_client(&mut self, cid: usize) -> Result<()> {

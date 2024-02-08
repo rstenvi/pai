@@ -1,3 +1,5 @@
+//! Various utility functions not fitting in anywhere else.
+//!
 use bit_vec::BitVec;
 use procfs::process::MMPermissions;
 use serde::{Deserialize, Serialize};
@@ -30,11 +32,11 @@ impl MmapBuild {
 	pub fn build(self) -> Vec<TargetPtr> {
 		vec![
 			self.addr,
-			self.size as TargetPtr,
-			self.prot.to_libc() as TargetPtr,
-			self.flags as TargetPtr,
-			self.fd as TargetPtr,
-			self.offset as TargetPtr,
+			self.size.into(),
+			self.prot.to_libc().into(),
+			self.flags.into(),
+			self.fd.into(),
+			self.offset.into(),
 		]
 	}
 	pub fn sane_anonymous(size: usize, prot: Perms) -> Vec<TargetPtr> {
@@ -93,8 +95,9 @@ impl Location {
 	pub fn new(start: TargetPtr, end: TargetPtr) -> Self {
 		Self { start, end }
 	}
+	pub fn end(&self) -> TargetPtr { self.end }
 	pub fn size(&self) -> usize {
-		(self.end - self.start) as usize
+		(self.end - self.start).into()
 	}
 	pub fn addr(&self) -> TargetPtr {
 		self.start
@@ -136,7 +139,7 @@ impl AllocedMemory {
 		let blocks = self.alloc.remove(&addr).ok_or(Error::msg(format!(
 			"tried to free unallocated memory {addr:x}"
 		)))?;
-		let off = (addr - self.loc.addr()) as usize;
+		let off: usize = (addr - self.loc.addr()).into();
 		let blkidx = off / Self::blocksize();
 		self.set_idxs(blkidx, blocks, false);
 		Ok(())
@@ -159,7 +162,7 @@ impl AllocedMemory {
 		let start = found_idx.ok_or(Error::NotFound)?;
 		self.set_idxs(start, blocks, true);
 		let off = start * Self::blocksize();
-		let addr = self.loc.addr() + off as TargetPtr;
+		let addr = self.loc.addr() + off.into();
 		self.alloc.insert(addr, blocks);
 		Ok(addr)
 	}
@@ -313,11 +316,12 @@ pub(crate) fn twos_complement(num: TargetPtr) -> isize {
 	#[cfg(target_pointer_width = "64")]
 	let and = 1 << 63;
 
+	let num: usize = num.into();
 	if num & and != 0 {
-		if num == isize::MIN as TargetPtr {
+		if num == isize::MIN as usize {
 			isize::MIN
 		} else {
-			let twos = -(num as isize) as TargetPtr;
+			let twos = -(num as isize) as usize;
 			let twos = twos as isize;
 			-twos
 		}
@@ -334,7 +338,7 @@ impl ModuleSymbols {
 	pub fn new(name: PathBuf, base: TargetPtr, insymbols: Vec<ElfSymbol>) -> Self {
 		let mut symbols = HashMap::new();
 		for mut symbol in insymbols.into_iter() {
-			if symbol.value != 0 {
+			if symbol.value != 0.into() {
 				symbol.add_value(base);
 				symbols.insert(symbol.name.clone(), symbol);
 			}
@@ -405,8 +409,8 @@ mod tests {
 
 	#[test]
 	fn utils0() {
-		assert_eq!(Location::new(0, 4).size(), 4);
-		assert_eq!(Location::new(4, 12).size(), 8);
+		assert_eq!(Location::new(0.into(), 4.into()).size(), 4);
+		assert_eq!(Location::new(4.into(), 12.into()).size(), 8);
 	}
 
 	#[test]
@@ -418,11 +422,11 @@ mod tests {
 
 	#[test]
 	fn test_twos() {
-		assert_eq!(twos_complement(1), 1);
+		assert_eq!(twos_complement(1.into()), 1);
 		#[cfg(target_pointer_width = "32")]
 		assert_eq!(twos_complement(0xffffffff), -1);
 		#[cfg(target_pointer_width = "64")]
-		assert_eq!(twos_complement(0xffffffffffffffff), -1);
-		assert_eq!(twos_complement(isize::MIN as TargetPtr), isize::MIN);
+		assert_eq!(twos_complement(0xffffffffffffffff_u64.into()), -1_isize);
+		assert_eq!(twos_complement(isize::MIN.into()), isize::MIN);
 	}
 }

@@ -4,8 +4,9 @@ fn main() -> anyhow::Result<()> {
 	let cmd = std::process::Command::new("true");
 	let mut ctx: ctx::Main<usize, pai::Error> = ctx::Main::new_spawn(cmd, 0_usize)?;
 
-	let tid = ctx.secondary_mut().get_first_stopped()?;
-	let entry = ctx.secondary().resolve_entry()?;
+	let sec = ctx.secondary_mut();
+	let tid = sec.get_first_stopped()?;
+	let entry = sec.resolve_entry()?;
 
 	// Register callback to be executed on breakpoint
 	ctx.secondary_mut()
@@ -16,7 +17,7 @@ fn main() -> anyhow::Result<()> {
 				let tid = cl.get_first_stopped()?;
 				let v = cl.call_func(tid, getpid.value, &[]).unwrap();
 				log::info!("getpid -> {v}");
-				assert!(v as Tid == tid);
+				assert!(v == tid.into());
 			}
 			Ok(true) // keep breakpoint, is never hit again
 		})?;

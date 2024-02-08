@@ -15,7 +15,7 @@ fn main() -> anyhow::Result<()> {
 
 	sec.register_function_hook_entry(tid, v.value, |cl, frame| {
 		println!("hit func");
-		Ok((false, Some(0)))
+		Ok((false, Some(0.into())))
 	})?;
 
 	let (r, _res) = ctx.loop_until_exit()?;

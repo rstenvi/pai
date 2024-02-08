@@ -11,7 +11,7 @@ pub mod tracer;
 #[derive(Debug)]
 pub struct ReqNewClient {
 	tx: Sender<NewClientReq>,
-	rx: Receiver<Client<Command, Response>>,
+	rx: Receiver<crate::Client>,
 }
 
 impl ReqNewClient {
@@ -22,18 +22,18 @@ impl ReqNewClient {
 		let s2 = AcceptNewClient::new(tx2, rx1);
 		(s, s2)
 	}
-	pub fn new_regular(&self) -> Result<Client<Command, Response>> {
+	pub fn new_regular(&self) -> Result<crate::Client> {
 		self.tx.send(NewClientReq::Regular)?;
 		let r = self.rx.recv()?;
 		Ok(r)
 	}
 }
 pub struct AcceptNewClient {
-	tx: Sender<Client<Command, Response>>,
+	tx: Sender<crate::Client>,
 	rx: Receiver<NewClientReq>,
 }
 impl AcceptNewClient {
-	pub fn new(tx: Sender<Client<Command, Response>>, rx: Receiver<NewClientReq>) -> Self {
+	pub fn new(tx: Sender<crate::Client>, rx: Receiver<NewClientReq>) -> Self {
 		Self { tx, rx }
 	}
 	pub fn recv(&self) -> Result<NewClientReq> {
@@ -46,7 +46,7 @@ impl AcceptNewClient {
 			Err(RecvTimeoutError::Disconnected) => todo!(),
 		}
 	}
-	pub fn send(&self, client: Client<Command, Response>) -> Result<()> {
+	pub fn send(&self, client: crate::Client) -> Result<()> {
 		self.tx
 			.send(client)
 			.map_err(|x| crate::Error::msg(format!("unable to send client {x:?}")))?;

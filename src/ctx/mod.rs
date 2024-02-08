@@ -23,9 +23,7 @@ mod tests {
 		api::{
 			messages::{RegEvent, Stop, SymbolType},
 			ArgsBuilder, Response,
-		},
-		utils::{self, process::Tid},
-		Result, TargetPtr,
+		}, arch::ReadRegisters, exe::elf::Elf, utils::{self, process::Tid}, Result, TargetPtr
 	};
 	use std::{path::PathBuf, str::FromStr};
 
@@ -49,25 +47,35 @@ mod tests {
 	// 	__set_up(cmd, 0)
 	// }
 
-	/// Exec the program and trace, but no
 	#[bench]
 	fn bench_trace_outer(b: &mut Bencher) {
 		clientmgr_basic();
-		b.iter(move || clientmgr_basic)
+		b.iter(move || std::hint::black_box(clientmgr_basic()))
 	}
 
+	#[bench]
+	fn bench_trace_strace_raw(b: &mut Bencher) {
+		clientmgr_strace_raw();
+		b.iter(move || std::hint::black_box(clientmgr_strace_raw()))
+	}
 	#[cfg(feature = "syscalls")]
 	#[bench]
-	fn bench_trace_strace(b: &mut Bencher) {
-		clientmgr_strace();
-		b.iter(move || clientmgr_strace)
+	fn bench_trace_strace_basic(b: &mut Bencher) {
+		clientmgr_strace_basic();
+		b.iter(move || std::hint::black_box(clientmgr_strace_basic()))
+	}
+	#[cfg(feature = "syscalls")]
+	#[bench]
+	fn bench_trace_strace_full(b: &mut Bencher) {
+		clientmgr_strace_full();
+		b.iter(move || std::hint::black_box(clientmgr_strace_full()))
 	}
 
 	#[cfg(feature = "syscalls")]
 	#[bench]
 	fn bench_parsed_syscalls(b: &mut Bencher) {
 		syscalls1();
-		b.iter(|| syscalls1)
+		b.iter(|| std::hint::black_box(syscalls1()))
 	}
 
 	#[cfg(feature = "syscalls")]
@@ -109,6 +117,71 @@ mod tests {
 	#[test]
 	fn clientmgr_basic() {
 		let ctx = set_up_int(0).unwrap();
+		ctx.loop_until_exit().unwrap();
+	}
+
+	#[test]
+	fn clientmgr_strace_raw() {
+		let args = ArgsBuilder::new()
+			.intercept_all_syscalls()
+			.finish()
+			.unwrap();
+
+		let mut ctx = set_up_int(0).unwrap();
+		let sec = ctx.secondary_mut();
+
+		sec.set_raw_syscall_handler(|_cl, tid, entry| {
+			let _ = format!("[{tid}]: {entry}");
+			Ok(())
+		});
+		sec.client_mut().set_config(args).unwrap();
+		ctx.loop_until_exit().unwrap();
+	}
+	#[cfg(feature = "syscalls")]
+	#[test]
+	fn clientmgr_strace_basic() {
+		let args = ArgsBuilder::new()
+			.intercept_all_syscalls()
+			.transform_syscalls()
+			.only_notify_syscall_exit()
+			.finish()
+			.unwrap();
+
+		let mut ctx = set_up_int(0).unwrap();
+		let sec = ctx.secondary_mut();
+		sec.set_generic_syscall_handler(|_cl, mut sys| {
+			if sys.is_exit() {
+				let _ = format!("{sys}");
+			}
+			Ok(())
+		});
+
+		sec.client_mut().set_config(args).unwrap();
+		ctx.loop_until_exit().unwrap();
+	}
+
+	#[cfg(feature = "syscalls")]
+	#[test]
+	fn clientmgr_strace_full() {
+		let args = ArgsBuilder::new()
+			.intercept_all_syscalls()
+			.transform_syscalls()
+			.enrich_all_syscalls()
+			.only_notify_syscall_exit()
+
+			.finish()
+			.unwrap();
+
+		let mut ctx = set_up_int(0).unwrap();
+		let sec = ctx.secondary_mut();
+		sec.set_generic_syscall_handler(|cl, mut sys| {
+			// sys.parse_deep(sys.tid, cl, crate::syscalls::Direction::InOut).unwrap();
+			let _sys = format!("{sys}");
+			// log::error!("{sys}");
+			Ok(())
+		});
+
+		sec.client_mut().set_config(args).unwrap();
 		ctx.loop_until_exit().unwrap();
 	}
 
@@ -165,19 +238,52 @@ mod tests {
 
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
-		sec.set_generic_syscall_handler(|_cl, sys| {
+		sec.set_generic_syscall_handler(|cl, mut sys| {
 			if sys.is_exit() {
 				format!("{sys}");
-				// sys.enrich_values().unwrap();
-				// format!("{sys}");
-				// sys.parse_deep(sys.tid, cl, Direction::InOut).unwrap();
-				// let _sys = format!("{sys}");
+				sys.enrich_values().unwrap();
+				format!("{sys}");
+				sys.parse_deep::<crate::api::Command>(sys.tid, cl.client_mut(), crate::syscalls::Direction::InOut).unwrap();
+				let _sys = format!("{sys}");
 			}
 			Ok(())
 		});
 
 		sec.client_mut().set_config(args).unwrap();
 		ctx.loop_until_exit().unwrap();
+	}
+
+	#[test]
+	fn clientmgr_early_ret_func() {
+		let numsleep = 3;
+		let mut files = crate::tests::get_all_tar_files().unwrap();
+		let sleep = files
+			.remove("sleep")
+			.expect("sleep not present in testdata");
+		let pargs = vec![format!("{numsleep}")];
+		let mut ctx: Main<usize, crate::Error> =
+			Main::spawn_in_mem("sleep", sleep.clone(), pargs, 0_usize).unwrap();
+		let sec = ctx.secondary_mut();
+
+		let entry = sec.resolve_entry().unwrap();
+		let stopped = sec.run_until_entry().unwrap();
+		assert_eq!(stopped.expect("didn't hit breakpoint"), entry);
+
+		let v = sec.lookup_symbol("sleep").unwrap()
+			.expect("unable to find sleep");
+		let tid = sec.get_first_stopped().unwrap();
+
+		sec.register_function_hook_entry(tid, v.value, |cl, frame| {
+			let secs = frame.arg(0)?.as_i32();
+			log::debug!("was supposed to sleep for {secs} seconds");
+			assert_eq!(secs, 1);
+			*(cl.data_mut()) += 1;
+			Ok((false, Some(0.into())))
+		}).unwrap();
+
+		let (r, res) = ctx.loop_until_exit().unwrap();
+		assert_eq!(r, Response::TargetExit);
+		assert_eq!(res, numsleep);
 	}
 
 	#[test]
@@ -350,9 +456,8 @@ mod tests {
 			assert!(cl.client_mut().write_bytes(tid, addr, data).unwrap() == 4);
 
 			if let Some(getpid) = cl.lookup_symbol("getpid")? {
-				let pid = cl.client_mut().call_func(tid, getpid.value, &[])?;
-				// let pid = cl.call_func(tid, getpid.value, &[])?;
-				assert_eq!(pid as Tid, tid);
+				let pid = cl.call_func(tid, getpid.value, &[])?;
+				assert_eq!(pid, tid.into());
 			} else {
 				panic!("unable to find 'getpid'");
 			}
@@ -424,8 +529,9 @@ mod tests {
 			.finish()
 			.unwrap();
 
+		let pargs = vec!["true".to_string()];
 		let mut ctx: Main<usize, crate::Error> =
-			Main::new_spawn(std::process::Command::new("true"), 0_usize).unwrap();
+			Main::new_main(false, pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 		let tid = sec.get_first_stopped().unwrap();
 		{
@@ -460,10 +566,10 @@ mod tests {
 			// Try double free
 			assert!(client.free_scratch_addr(tid, addr2).is_err());
 
-			assert!(client.write_bytes(tid, 0x42, vec![0x00]).is_err());
+			assert!(client.write_bytes(tid, 0x42.into(), vec![0x00]).is_err());
 
 			let r = client
-				.exec_raw_syscall(tid, TargetPtr::MAX, vec![0x00])
+				.exec_raw_syscall(tid, usize::MAX.into(), vec![0x00.into()])
 				.unwrap();
 			let code = utils::twos_complement(r) as i32;
 			assert_eq!(-code, libc::ENOSYS);
@@ -482,7 +588,7 @@ mod tests {
 			.symbols_of_type(m.path().unwrap(), SymbolType::Func)
 			.unwrap();
 
-		let r = sec.client_mut().call_func(tid, 0x00, []);
+		let r = sec.call_func(tid, 0x00.into(), &[]);
 		if let Err(e) = r {
 			log::debug!("error call @0 {e}");
 		} else {

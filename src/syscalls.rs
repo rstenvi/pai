@@ -1,3 +1,4 @@
+use crate::api::{Client, Command, Response};
 use crate::arch::ReadRegisters;
 use crate::{
 	ctx,
@@ -65,10 +66,11 @@ impl ValueLen {
 		Self { ltype, value }
 	}
 	pub fn bytes(&self, itemsz: usize) -> usize {
+		let v: usize = self.value.into();
 		match self.ltype {
-			LenType::Len => itemsz * self.value as usize,
-			LenType::Bytesize => self.value as usize,
-			LenType::Bitsize => self.value as usize / 8,
+			LenType::Len => itemsz * v,
+			LenType::Bytesize => v,
+			LenType::Bitsize => v / 8,
 		}
 	}
 }
@@ -298,7 +300,8 @@ impl Value {
 		}
 	}
 	fn new_int(raw: TargetPtr, bits: usize) -> Self {
-		let value: serde_json::value::Number = raw.into();
+		let v: usize = raw.into();
+		let value: serde_json::value::Number = v.into();
 		Self::Int { value, bits }
 	}
 	fn new_number(value: serde_json::value::Number, bits: usize) -> Self {
@@ -346,13 +349,6 @@ impl SysValue {
 	pub fn is_error(&self) -> Option<bool> {
 		self.parsed.as_ref().map(|parsed| parsed.is_error())
 	}
-	// pub fn as_nice_str(&self) -> String {
-	// 	if let Some(parsed) = self.parsed.as_ref() {
-	// 		format!("{parsed}")
-	// 	} else {
-	// 		format!("0x{:x}", self.raw_value)
-	// 	}
-	// }
 	pub fn raw_value(&self) -> TargetPtr {
 		self.raw_value
 	}
@@ -386,9 +382,6 @@ impl SysArg {
 		let signed = utils::twos_complement(raw);
 		signed as i32
 	}
-	// pub fn as_nice_str(&self) -> String {
-	// 	format!("{}={}", self.name, self.value.as_nice_str())
-	// }
 	pub fn parsed(&self) -> &Option<Value> {
 		&self.value.parsed
 	}
@@ -429,7 +422,7 @@ impl From<syzlang_parser::parser::Direction> for Direction {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SyscallItem {
 	pub tid: Tid,
-	pub sysno: TargetPtr,
+	pub sysno: usize,
 	pub name: String,
 	pub args: Vec<SysArg>,
 	pub output: Option<SysValue>,
@@ -494,44 +487,19 @@ impl SyscallItem {
 			panic!("Tried to get output on syscall which is entry");
 		}
 	}
-	// pub fn as_nice_str(&self) -> String {
-	// 	let mut n = format!("[{}]: ", self.tid);
-	// 	if !self.name.is_empty() {
-	// 		n.push_str(&self.name);
-	// 	} else {
-	// 		n.push_str(&format!("{}", self.sysno));
-	// 	}
-	// 	n.push('(');
-
-	// 	let mut parts = Vec::new();
-	// 	for arg in self.args.iter() {
-	// 		let ins = arg.as_nice_str();
-	// 		parts.push(ins);
-	// 	}
-
-	// 	n.push_str(&parts.join(", "));
-
-	// 	n.push(')');
-
-	// 	if let Some(v) = &self.output {
-	// 		n.push_str(" = ");
-	// 		n.push_str(&v.as_nice_str());
-	// 	}
-	// 	n
-	// }
 }
 
 impl SyscallItem {
-	fn parse_ptr<T>(
+	fn parse_ptr<T: Send + 'static>(
 		raw: TargetPtr,
 		tid: Tid,
-		ctx: &mut ctx::Secondary<T, crate::Error>,
+		client: &mut Client<T, Response>,
 		arg: &ArgType,
 		opts: &[ArgOpt],
 		len: Option<&ValueLen>,
-	) -> Result<Option<Value>> {
+	) -> Result<Option<Value>> where crate::Error: From<crossbeam_channel::SendError<T>> {
 		if arg.refers_c_string() {
-			let string = ctx.client_mut().read_c_string(tid, raw)?;
+			let string = client.read_c_string(tid, raw)?;
 			let value = if arg.is_filename() {
 				Value::new_filename(string)
 			} else {
@@ -542,7 +510,7 @@ impl SyscallItem {
 			Ok(match n.name.as_str() {
 				"stat" => {
 					let bytes = std::mem::size_of::<libc_stat>();
-					let bytes = ctx.client_mut().read_bytes(tid, raw, bytes)?;
+					let bytes = client.read_bytes(tid, raw, bytes)?;
 
 					let (head, body, _tail) = unsafe { bytes.align_to::<libc_stat>() };
 					assert!(head.is_empty(), "Data was not aligned");
@@ -552,9 +520,9 @@ impl SyscallItem {
 				_ => None,
 			})
 		} else if arg.is_int() {
-			if raw != 0 {
+			if raw != 0.into() {
 				let sz = arg.arg_size(std::mem::size_of::<TargetPtr>())?;
-				let bytes = ctx.client_mut().read_bytes(tid, raw, sz)?;
+				let bytes = client.read_bytes(tid, raw, sz)?;
 				let value = arg.bytes_as_int(&bytes)?;
 				let value = Value::new_number(value, sz * 8);
 				Ok(Some(value))
@@ -568,7 +536,7 @@ impl SyscallItem {
 					let sub = farg.arg_type();
 					if let Ok(itemsz) = sub.arg_size(std::mem::size_of::<TargetPtr>()) {
 						let bytes = len.bytes(itemsz);
-						let data = ctx.client_mut().read_bytes(tid, raw, bytes)?;
+						let data = client.read_bytes(tid, raw, bytes)?;
 						if let ArgType::Int8 = sub {
 							let value = Value::new_byte_array(data);
 							Ok(Some(value))
@@ -593,12 +561,12 @@ impl SyscallItem {
 			Ok(None)
 		}
 	}
-	pub fn parse_deep<T>(
+	pub fn parse_deep<T: Send + 'static>(
 		&mut self,
 		tid: Tid,
-		ctx: &mut ctx::Secondary<T, crate::Error>,
+		client: &mut Client<T, Response>,
 		parsedir: Direction,
-	) -> Result<()> {
+	) -> Result<()> where crate::Error: From<crossbeam_channel::SendError<T>> {
 		self.enrich_values()?;
 		let errored = self.syscall_errored().unwrap_or(true);
 
@@ -629,7 +597,7 @@ impl SyscallItem {
 					{
 						let len = lens.get(&inarg.name);
 						if let Some(v) =
-							Self::parse_ptr(inarg.raw_value(), tid, ctx, arg, opts, len)?
+							Self::parse_ptr(inarg.raw_value(), tid, client, arg, opts, len)?
 						{
 							inarg.set_parsed(v);
 						}
@@ -671,20 +639,28 @@ impl SyscallItem {
 			| ArgType::Int32be
 			| ArgType::Int16be => {
 				let bytes = atype
-					.arg_size(std::mem::size_of::<TargetPtr>())
+					.arg_size(std::mem::size_of::<usize>())
 					.unwrap_or_else(|_| panic!("unable to get size of int {atype:?})"));
-				let value = match atype {
+				let value: serde_json::value::Number = match atype {
 					ArgType::Intptr => raw.into(),
-					ArgType::Int64 => utils::twos_complement(raw as isize as TargetPtr).into(),
-					ArgType::Int32 => utils::twos_complement(raw as i32 as TargetPtr).into(),
-					ArgType::Int16 => utils::twos_complement(raw as i16 as TargetPtr).into(),
-					ArgType::Int8 => utils::twos_complement(raw as i8 as TargetPtr).into(),
-					ArgType::Int64be => utils::twos_complement(TargetPtr::from_be(raw)).into(),
+					ArgType::Int64 => raw.twos_complement(64).into(),
+					ArgType::Int32 => raw.twos_complement(32).into(),
+					ArgType::Int16 => raw.twos_complement(16).into(),
+					ArgType::Int8 => raw.twos_complement(8).into(),
+					ArgType::Int64be => {
+						let v: i64 = raw.into();
+						let v = i64::from_be(v);
+						v.into()
+					},
 					ArgType::Int32be => {
-						utils::twos_complement(TargetPtr::from_be(raw) as i32 as TargetPtr).into()
+						let v: i32 = raw.into();
+						let v = i32::from_be(v);
+						v.into()
 					}
 					ArgType::Int16be => {
-						utils::twos_complement(TargetPtr::from_be(raw) as i16 as TargetPtr).into()
+						let v: i16 = raw.into();
+						let v = i16::from_be(v);
+						v.into()
 					}
 					_ => panic!(""),
 				};
@@ -716,7 +692,7 @@ impl SyscallItem {
 				log::warn!("need to parse CompressedImage {opts:?}");
 				None
 			}
-			ArgType::Bool => Some(Value::new_bool(raw != 0)),
+			ArgType::Bool => Some(Value::new_bool(raw != 0.into())),
 			ArgType::Void => Some(Self::error_or_def(raw, Value::new_void(raw))),
 			ArgType::Vma | ArgType::Vma64 => {
 				let bits = if matches!(atype, ArgType::Vma64) {
@@ -758,9 +734,9 @@ impl SyscallItem {
 				}
 			}
 			ArgType::Ident(ident) => match ident.name.as_str() {
-				"boolptr" => Some(Value::new_bool(raw != 0)),
+				"boolptr" => Some(Value::new_bool(raw != 0.into())),
 				"buffer" => Some(Value::new_buffer(raw)),
-				"fileoff" => Some(Value::new_file_offset(raw as usize)),
+				"fileoff" => Some(Value::new_file_offset(raw.into())),
 				_ => Self::resolve_resource_ident(raw, ident, dir),
 			},
 			ArgType::Ptr | ArgType::Ptr64 => {
@@ -806,15 +782,19 @@ impl SyscallItem {
 			.resolve(self.sysno)
 		{
 			for (i, arg) in sys.args.iter().enumerate() {
-				let raw = self.args[i].raw_value();
-				let ins = Self::parse_arg(raw, arg);
-				self.args[i].value.parsed = ins;
+				if self.args[i].value.parsed.is_none() {
+					let raw = self.args[i].raw_value();
+					let ins = Self::parse_arg(raw, arg);
+					self.args[i].value.parsed = ins;
+				}
 			}
 
 			if let Some(out) = &mut self.output {
-				let opts = vec![ArgOpt::Dir(syzlang_parser::parser::Direction::Out)];
-				let ins = Self::parse_arg_type(out.raw_value(), &sys.output, &opts);
-				out.parsed = ins;
+				if out.parsed.is_none() {
+					let opts = vec![ArgOpt::Dir(syzlang_parser::parser::Direction::Out)];
+					let ins = Self::parse_arg_type(out.raw_value(), &sys.output, &opts);
+					out.parsed = ins;
+				}
 			}
 		}
 		Ok(())
@@ -866,7 +846,7 @@ impl SyscallItem {
 				parser::Value::Ident(ident) => {
 					let n = Self::resolve_const_ident(&ident.name);
 					let vi32 = utils::twos_complement(raw) as i32;
-					let matches = n == raw || n as i32 == vi32;
+					let matches = n == raw || n == vi32.into();
 					if matches {
 						if ident.name == "AT_FDCWD" {
 							Value::new_fd_const(vi32, "AT_FDCWD")
@@ -901,13 +881,13 @@ impl SyscallItem {
 					parser::Value::Int(_v) => todo!(),
 					parser::Value::Ident(n) => {
 						let v = Self::resolve_const_ident(&n.name);
-						let ones = TargetPtr::count_ones(v);
+						let ones = usize::count_ones(v.into());
 						if ones > 1 {
 							if v == raw {
 								ret.push(n.name.clone());
 							}
 						} else if v == raw
-							|| v as i32 == utils::twos_complement(raw) as i32
+							|| i32::from(v) == raw.twos_complement(32) as i32
 							|| (raw & v) == v
 						{
 							ret.push(n.name.clone());
@@ -933,7 +913,7 @@ impl SyscallItem {
 			.find_name_arch(name, &crate::syzarch())
 		{
 			match r.value() {
-				parser::Value::Int(n) => *n as TargetPtr,
+				parser::Value::Int(n) => (*n).into(),
 				_ => crate::bug!(
 					"encountered {:?} when trying to resolve const ident",
 					r.value()
@@ -1017,14 +997,14 @@ impl Syscall {
 
 #[derive(Debug, Default)]
 pub struct Syscalls {
-	pub syscalls: HashMap<TargetPtr, Syscall>,
+	pub syscalls: HashMap<usize, Syscall>,
 }
 
 impl Syscalls {
-	pub fn resolve(&self, sysno: TargetPtr) -> Option<&Syscall> {
+	pub fn resolve(&self, sysno: usize) -> Option<&Syscall> {
 		self.syscalls.get(&sysno)
 	}
-	pub fn resolve_sysno(&self, sysno: TargetPtr) -> Option<&String> {
+	pub fn resolve_sysno(&self, sysno: usize) -> Option<&String> {
 		self.syscalls.get(&sysno).map(|x| &x.name)
 	}
 }
@@ -1065,7 +1045,7 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 			.map(|func| {
 				if let Some(sysno) = value.consts.find_sysno(&func.name.name, &crate::syzarch()) {
 					let ins =
-						Syscall::new(func.name.name, sysno as TargetPtr, func.args, func.output);
+						Syscall::new(func.name.name, sysno.into(), func.args, func.output);
 					Some((sysno, ins))
 				} else {
 					None
@@ -1074,7 +1054,7 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 			.filter(|x| x.is_some())
 			.map(|x| {
 				let r = x.expect("impossible");
-				(r.0 as TargetPtr, r.1)
+				(r.0.into(), r.1)
 			})
 			.collect::<HashMap<_, _>>();
 		Ok(Self { syscalls })

@@ -11,7 +11,7 @@ fn main() -> anyhow::Result<()> {
 	if let Some(getpid) = sec.lookup_symbol("getpid")? {
 		log::info!("getpid {getpid:?}");
 		let v = sec.call_func(tid, getpid.value, &[])?;
-		assert!(v as Tid == tid);
+		assert!(v == tid.into());
 	}
 	let (r, _res) = ctx.loop_until_exit()?;
 	assert_eq!(r, Response::TargetExit);

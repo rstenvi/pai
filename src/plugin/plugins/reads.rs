@@ -18,7 +18,7 @@ impl Reads {
 	pub fn dependecies() -> Vec<Plugin> {
 		vec![Plugin::Files]
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self, crate::Error>> {
+	pub fn init(client: crate::Client) -> Result<ctx::Secondary<Self, crate::Error>> {
 		log::error!("read plugin is not finished and will not give expected results");
 		let data = Self::new();
 

@@ -2,7 +2,7 @@
 	"rust-analyzer.showUnlinkedFileNotification": false,
 	"rust-analyzer.checkOnSave.command": "clippy",
 	"rust-analyzer.cargo.target": "x86_64-unknown-linux-gnu",
-	"rust-analyzer.cargo.features": ["plugins"],
+	"rust-analyzer.cargo.features": ["plugins", "syscalls"],
 	"rust-analyzer.checkOnSave": true,
 	"search.exclude": {
 		"output/*": true

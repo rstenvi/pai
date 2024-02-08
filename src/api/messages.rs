@@ -219,6 +219,17 @@ impl std::fmt::Debug for Stopped {
 			.finish()
 	}
 }
+impl TryFrom<Response> for Stopped {
+    type Error = crate::Error;
+
+    fn try_from(value: Response) -> Result<Self, Self::Error> {
+        if let Response::Stopped(s) = value {
+			Ok(s)
+		} else {
+			Err(Self::Error::msg("cannot find Stopped in Response"))
+		}
+    }
+}
 impl std::fmt::Display for Stopped {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!(
@@ -442,19 +453,19 @@ pub enum ThreadCmd {
 		addr: TargetPtr,
 	},
 
-	/// Remove the breakpoint inserted at addr.
-	RemoveBp {
-		addr: TargetPtr,
-	},
+	// Remove the breakpoint inserted at addr.
+	// RemoveBp {
+	// 	addr: TargetPtr,
+	// },
 
 	// Get a single register, the argument is architecture agnostic
 	// GetAgnosticReg { reg: AgnoReg },
-	CallFunc {
-		func: TargetPtr,
-		args: Vec<TargetPtr>,
-	},
+	// CallFunc {
+	// 	func: TargetPtr,
+	// 	args: Vec<TargetPtr>,
+	// },
 	ExecRawSyscall {
-		sysno: TargetPtr,
+		sysno: usize,
 		args: Vec<TargetPtr>,
 	},
 	ExecRet,
@@ -494,10 +505,10 @@ impl ThreadCmd {
 	pub fn free_scratch_addr(addr: TargetPtr) -> Self {
 		Self::FreeScratchAddr { addr }
 	}
-	pub fn call_func(func: TargetPtr, args: Vec<TargetPtr>) -> Self {
-		Self::CallFunc { func, args }
-	}
-	pub fn syscall(sysno: TargetPtr, args: Vec<TargetPtr>) -> Self {
+	// pub fn call_func(func: TargetPtr, args: Vec<TargetPtr>) -> Self {
+	// 	Self::CallFunc { func, args }
+	// }
+	pub fn syscall(sysno: usize, args: Vec<TargetPtr>) -> Self {
 		Self::ExecRawSyscall { sysno, args }
 	}
 	pub fn read_bytes(addr: TargetPtr, count: usize) -> Self {
@@ -509,9 +520,9 @@ impl ThreadCmd {
 	pub fn insert_bp(addr: TargetPtr) -> Self {
 		Self::InsertBp { addr }
 	}
-	pub fn remove_bp(addr: TargetPtr) -> Self {
-		Self::RemoveBp { addr }
-	}
+	// pub fn remove_bp(addr: TargetPtr) -> Self {
+	// 	Self::RemoveBp { addr }
+	// }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -537,11 +548,11 @@ impl RemoteCmd {
 		let cmd = ThreadCmd::free_scratch_addr(addr);
 		Self::Thread { tid, cmd }
 	}
-	pub fn call_func(tid: Tid, func: TargetPtr, args: Vec<TargetPtr>) -> Self {
-		let cmd = ThreadCmd::call_func(func, args);
-		Self::Thread { tid, cmd }
-	}
-	pub fn syscall(tid: Tid, sysno: TargetPtr, args: Vec<TargetPtr>) -> Self {
+	// pub fn call_func(tid: Tid, func: TargetPtr, args: Vec<TargetPtr>) -> Self {
+	// 	let cmd = ThreadCmd::call_func(func, args);
+	// 	Self::Thread { tid, cmd }
+	// }
+	pub fn syscall(tid: Tid, sysno: usize, args: Vec<TargetPtr>) -> Self {
 		let cmd = ThreadCmd::syscall(sysno, args);
 		Self::Thread { tid, cmd }
 	}
@@ -553,10 +564,10 @@ impl RemoteCmd {
 		let cmd = ThreadCmd::insert_bp(addr);
 		Self::Thread { tid, cmd }
 	}
-	pub fn remove_bp(tid: Tid, addr: TargetPtr) -> Self {
-		let cmd = ThreadCmd::remove_bp(addr);
-		Self::Thread { tid, cmd }
-	}
+	// pub fn remove_bp(tid: Tid, addr: TargetPtr) -> Self {
+	// 	let cmd = ThreadCmd::remove_bp(addr);
+	// 	Self::Thread { tid, cmd }
+	// }
 	pub fn read_bytes(tid: Tid, addr: TargetPtr, bytes: usize) -> Self {
 		let cmd = ThreadCmd::read_bytes(addr, bytes);
 		Self::Thread { tid, cmd }

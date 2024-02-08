@@ -129,7 +129,7 @@ pub struct PluginExec;
 impl PluginExec {
 	pub fn spawn(
 		mut cmd: process::Command,
-		client: Client<Command, Response>,
+		client: crate::Client,
 	) -> Result<JoinHandle<Result<()>>> {
 		let handle = std::thread::spawn(move || -> Result<()> {
 			let client = ctx::Secondary::new_second(client, ())?;
@@ -163,7 +163,7 @@ impl PluginExec {
 	}
 	pub fn connect_tcp_stream(
 		stream: TcpStream,
-		client: Client<Command, Response>,
+		client: crate::Client,
 	) -> Result<JoinHandle<Result<()>>> {
 		let handle = std::thread::spawn(move || -> Result<()> {
 			let client = ctx::Secondary::new_second(client, ())?;

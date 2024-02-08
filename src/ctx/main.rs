@@ -1,4 +1,4 @@
-use crate::api::Response;
+use crate::api::{Args, ArgsBuilder, Response};
 use crate::ctrl::tracer::CtrlTracer;
 use crate::ctrl::ReqNewClient;
 use crate::ctx;
@@ -61,8 +61,9 @@ where
 		let args: Vec<String> = args.into();
 		let (req, acc) = ReqNewClient::new();
 
+		let nelf = elf.clone();
 		let handle = std::thread::spawn(move || -> Result<()> {
-			let (tracer, _tid) = Tracer::spawn_in_mem(&name, elf, args)?;
+			let (tracer, _tid) = Tracer::spawn_in_mem(&name, nelf, args)?;
 			let mgr = CtrlTracer::new(tracer, acc)?;
 			mgr.scheduler()?;
 			Ok(())
@@ -70,7 +71,24 @@ where
 		let client = req.new_regular()?;
 		log::info!("ready to send commands to target");
 
-		let ctx = ctx::Secondary::new_master(client, data, req)?;
+		let mut ctx = ctx::Secondary::new_master(client, data, req)?;
+
+		let args = ArgsBuilder::new()
+			.handle_exec()
+			.finish()?;
+		ctx.client_mut().set_config(args)?;
+		let tid = ctx.get_first_stopped()?;
+		let old = ctx.run_until_exec()?;
+		assert!(tid == old);
+
+		let mainloc = ctx.proc.exact_match_path("/memfd:rust_exec (deleted)")?
+			.expect("unable to location of main binary");
+
+		ctx.set_main_exe(mainloc.addr(), elf)?;
+
+		// Restore back default config
+		ctx.client_mut().set_config(Args::default())?;
+
 		Ok(Self::new(ctx, handle))
 	}
 
@@ -113,7 +131,7 @@ where
 		Ok(Self::new(ctx, handle))
 	}
 
-	// pub fn register_new_client(&mut self) -> Result<Client<Command, Response>> {
+	// pub fn register_new_client(&mut self) -> Result<crate::Client> {
 	// 	let req = self.ctx.req
 	// 		.as_mut()
 	// 		.ok_or(Error::msg("new_client called, but request channel not configured"))?;

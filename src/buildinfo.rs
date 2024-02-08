@@ -1,14 +1,14 @@
 // Info about program created when program is built
 // This is included by build.rs so should be as minimal as possible
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BuildVersion {
 	major: usize,
 	minor: usize,
 	patch: usize,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BuildArch {
 	Aarch64,
 	Aarch32,
@@ -48,7 +48,7 @@ impl std::str::FromStr for BuildOs {
 	}
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BuildEndian {
 	Little,
 	Big,
@@ -66,7 +66,7 @@ impl std::str::FromStr for BuildEndian {
 	}
 }
 
-#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BuildEnv {
 	#[default]
 	Undefined,
@@ -87,7 +87,7 @@ impl std::str::FromStr for BuildEnv {
 	}
 }
 
-#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BuildAbi {
 	#[default]
 	Undefined,
@@ -125,4 +125,29 @@ pub(crate) struct BuildInfo {
 	triple: String,
 	pub target: BuildTarget,
 	githash: Option<String>,
+}
+
+
+#[cfg(test)]
+mod test {
+	use std::str::FromStr;
+	use super::*;
+
+	#[test]
+	fn buildinfo() {
+		assert_eq!(BuildAbi::from_str("eabi").unwrap(), BuildAbi::Eabi);
+		assert!(BuildAbi::from_str("qwert").is_err());
+
+		assert_eq!(BuildArch::from_str("Aarch64").unwrap(), BuildArch::Aarch64);
+		assert!(BuildArch::from_str("qwert").is_err());
+
+		assert_eq!(BuildEndian::from_str("little").unwrap(), BuildEndian::Little);
+		assert!(BuildEndian::from_str("qwert").is_err());
+
+		assert_eq!(BuildOs::from_str("lInux").unwrap(), BuildOs::Linux);
+		assert!(BuildOs::from_str("qwert").is_err());
+
+		assert_eq!(BuildEnv::from_str("GNU").unwrap(), BuildEnv::Gnu);
+		assert!(BuildEnv::from_str("qwert").is_err());
+	}
 }

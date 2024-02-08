@@ -50,7 +50,7 @@ where
 {
 	/// Can be used to query information from OS about the process.
 	pub proc: Process,
-	client: Client<Command, Response>,
+	client: crate::Client,
 
 	#[cfg(feature = "plugins")]
 	pub(crate) plugins: HashMap<Plugin, crate::utils::LoadedPlugin>,
@@ -69,13 +69,13 @@ where
 	funcentrycbs: HashMap<TargetPtr, (HookEntryCb<T, Err>, HookExitCb<T, Err>)>,
 
 	#[cfg(feature = "syscalls")]
-	syscallcbs: HashMap<TargetPtr, SyscallCb<T, Err>>,
+	syscallcbs: HashMap<usize, SyscallCb<T, Err>>,
 
 	stoppedcb: Option<StoppedCb<T, Err>>,
 
 	raw_syscall_cb: Option<RawSyscallCb<T, Err>>,
 
-	resolved: HashMap<PathBuf, ModuleSymbols>,
+	resolved: HashMap<PathBuf, Elf>,
 	pub(crate) req: Option<ReqNewClient>,
 
 	cc: Box<dyn RegsAbiAccess + Send + 'static>,
@@ -85,7 +85,7 @@ where
 	Err: Into<crate::Error>,
 {
 	pub(crate) fn new(
-		mut client: Client<Command, Response>,
+		mut client: crate::Client,
 		data: T,
 		req: Option<ReqNewClient>,
 	) -> Result<Self> {
@@ -122,6 +122,13 @@ where
 		Ok(r)
 	}
 
+	pub(crate) fn set_main_exe<V: Into<Vec<u8>>>(&mut self, addr: TargetPtr, exe: V) -> Result<()> {
+		let exe: Vec<u8> = exe.into();
+		let elf = Elf::from_bytes(exe, addr)?;
+		let path = self.proc.exe_path()?;
+		self.resolved.insert(path, elf);
+		Ok(())
+	}
 	fn empty_hook_func_entry(&mut self, frame: &CallFrame) -> Result<(bool, Option<TargetPtr>)> {
 		log::debug!("called empty hook function entry {frame:?}");
 		Ok((true, None))
@@ -131,12 +138,12 @@ where
 		Ok(None)
 	}
 	/// Get a reference to [Client]
-	pub fn client(&self) -> &Client<Command, Response> {
+	pub fn client(&self) -> &crate::Client {
 		&self.client
 	}
 
 	/// Get a mutable reference to [Client]
-	pub fn client_mut(&mut self) -> &mut Client<Command, Response> {
+	pub fn client_mut(&mut self) -> &mut crate::Client {
 		&mut self.client
 	}
 
@@ -154,7 +161,7 @@ where
 	pub fn data_mut(&mut self) -> &mut T {
 		&mut self.data
 	}
-	pub(crate) fn new_second(client: Client<Command, Response>, data: T) -> Result<Self> {
+	pub(crate) fn new_second(client: crate::Client, data: T) -> Result<Self> {
 		Self::new(client, data, None)
 	}
 	pub(crate) fn new_remote_plugin(data: T) -> Result<Self> {
@@ -167,24 +174,24 @@ where
 		Ok(ctx)
 	}
 	pub(crate) fn new_master(
-		client: Client<Command, Response>,
+		client: crate::Client,
 		data: T,
 		req: ReqNewClient,
 	) -> Result<Self> {
 		Self::new(client, data, Some(req))
 	}
-	fn all_symbols_mod(&self, module: &MemoryMap) -> Result<Vec<ElfSymbol>> {
-		let p = module
-			.path()
-			.ok_or(Error::msg("unable to find path in module"))?;
-		let elf = Elf::new(p)?;
-		let r = elf.all_symbols();
-		Ok(r)
-	}
-	fn store_symbols(&mut self, path: PathBuf, base: TargetPtr, symbols: Vec<ElfSymbol>) {
-		let mods = ModuleSymbols::new(path.clone(), base, symbols);
-		self.resolved.insert(path, mods);
-	}
+	// fn all_symbols_mod(&self, module: &MemoryMap) -> Result<Vec<ElfSymbol>> {
+	// 	let p = module
+	// 		.path()
+	// 		.ok_or(Error::msg("unable to find path in module"))?;
+	// 	let elf = Elf::new(p, module.loc.addr())?;
+	// 	let r = elf.all_symbols();
+	// 	Ok(r)
+	// }
+	// fn store_symbols(&mut self, path: PathBuf, base: TargetPtr, symbols: Vec<ElfSymbol>) {
+	// 	let mods = ModuleSymbols::new(path.clone(), base, symbols);
+	// 	self.resolved.insert(path, mods);
+	// }
 
 	/// Get a [MemoryMap] which exactly matches the name in `pbuf`
 	pub fn get_module(&mut self, pbuf: &PathBuf) -> Result<MemoryMap> {
@@ -199,26 +206,26 @@ where
 			)))
 		}
 	}
-	fn symbols_init(&mut self, pbuf: &PathBuf) -> Result<()> {
-		let pbuf = std::fs::canonicalize(pbuf)?;
-		if self.resolved.get(&pbuf).is_some() {
-			log::info!("already gathered symbols for '{pbuf:?}'");
-			Ok(())
-		} else {
-			log::info!("symbols for {pbuf:?} not retrieved, gathering");
-			let mods = self.proc.proc_modules()?;
-			let mut mods: Vec<_> = mods.iter().filter(|x| x.file_name_matches(&pbuf)).collect();
-			if mods.len() == 1 {
-				let m = mods.remove(0);
-				let mods = self.all_symbols_mod(m)?;
-				self.store_symbols(pbuf.clone(), m.loc.addr(), mods);
-				Ok(())
-			} else {
-				let msg = format!("found no modules matching {pbuf:?}");
-				Err(Error::msg(msg))
-			}
-		}
-	}
+	// fn symbols_init(&mut self, pbuf: &PathBuf) -> Result<()> {
+	// 	let pbuf = std::fs::canonicalize(pbuf)?;
+	// 	if self.resolved.get(&pbuf).is_some() {
+	// 		log::info!("already gathered symbols for '{pbuf:?}'");
+	// 		Ok(())
+	// 	} else {
+	// 		log::info!("symbols for {pbuf:?} not retrieved, gathering");
+	// 		let mods = self.proc.proc_modules()?;
+	// 		let mut mods: Vec<_> = mods.iter().filter(|x| x.file_name_matches(&pbuf)).collect();
+	// 		if mods.len() == 1 {
+	// 			let m = mods.remove(0);
+	// 			let mods = self.all_symbols_mod(m)?;
+	// 			self.store_symbols(pbuf.clone(), m.loc.addr(), mods);
+	// 			Ok(())
+	// 		} else {
+	// 			let msg = format!("found no modules matching {pbuf:?}");
+	// 			Err(Error::msg(msg))
+	// 		}
+	// 	}
+	// }
 
 	/// Try and locate the symbol `name` in any of the loaded executables.
 	///
@@ -242,21 +249,41 @@ where
 		}
 		Ok(None)
 	}
-	fn resolve_pathbuf(&self, path: &PathBuf) -> Result<&ModuleSymbols> {
-		self.resolved
-			.get(path)
-			.ok_or(Error::msg(format!("found no modules matching '{path:?}'")))
+	fn ensure_elf_exists(&mut self, pbuf: &PathBuf) -> Result<()> {
+		let loc = self.proc.exact_match_path(pbuf)?
+				.ok_or(Error::msg("unable to find path"))?;
+		let elf = Elf::new(pbuf, loc.addr())?;
+		self.resolved.insert(pbuf.clone(), elf);
+		Ok(())
 	}
+	// fn resolve_pathbuf(&self, path: &PathBuf) -> Result<&ModuleSymbols> {
+	// 	self.resolved
+	// 		.get(path)
+	// 		.ok_or(Error::msg(format!("found no modules matching '{path:?}'")))
+	// }
+	// fn _resolve_symbol(&mut self, pbuf: &PathBuf, name: &str, maxattempts: usize) -> Result<Option<ElfSymbol>> {
+	// 	if let Some(n) = self.resolved.get(pbuf) {
+	// 		Ok(n.resolve(name))
+	// 	} else if maxattempts > 0 {
+			
+	// 		self._resolve_symbol(pbuf, name, maxattempts)
+	// 	} else {
+	// 		Err(Error::msg("unable to resolve symbol"))
+	// 	}
+	// }
 
 	/// Resolve a given symbol `name` in a given module with path `pbuf`
 	pub fn resolve_symbol(&mut self, pbuf: &PathBuf, name: &str) -> Result<Option<ElfSymbol>> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
+		self.ensure_elf_exists(&pbuf)?;
 		log::info!("resolving  in {pbuf:?}");
-		self.symbols_init(&pbuf)?;
-		let res = self.resolve_pathbuf(&pbuf)?;
-		log::info!("already gathered symbols for '{pbuf:?}'");
-		let sym = res.resolve(name).cloned();
-		Ok(sym)
+		let elf = self.resolved.get(&pbuf).ok_or(Error::Unknown)?;
+		Ok(elf.resolve(name))
+		// self.symbols_init(&pbuf)?;
+		// let res = self.resolve_pathbuf(&pbuf)?;
+		// log::info!("already gathered symbols for '{pbuf:?}'");
+		// let sym = res.resolve(name).cloned();
+		// Ok(sym)
 	}
 
 	/// Enumerate all symbols of the given type. See [SymbolType] for more
@@ -267,19 +294,32 @@ where
 		symtype: SymbolType,
 	) -> Result<Vec<ElfSymbol>> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
-		self.symbols_init(&pbuf)?;
-		let res = self.resolve_pathbuf(&pbuf)?;
-		let r: Vec<_> = res
-			.symbols
-			.values()
-			.filter(|x| x.stype == symtype)
-			.cloned()
-			.collect();
-		Ok(r)
+		self.ensure_elf_exists(&pbuf)?;
+		let elf = self.resolved.get(&pbuf).ok_or(Error::Unknown)?;
+		Ok(
+			elf.all_symbols()
+				.iter()
+				.filter(|x| x.stype == symtype)
+				.cloned()
+				.collect()
+		)
+
+		// todo!();
+		// let pbuf = std::fs::canonicalize(pbuf)?;
+		// self.symbols_init(&pbuf)?;
+		// let res = self.resolve_pathbuf(&pbuf)?;
+		// let r: Vec<_> = res
+		// 	.symbols
+		// 	.values()
+		// 	.filter(|x| x.stype == symtype)
+		// 	.cloned()
+		// 	.collect();
+		// Ok(r)
 	}
 	pub fn symbols_functions(&mut self, pbuf: &PathBuf) -> Result<Vec<ElfSymbol>> {
 		self.symbols_of_type(pbuf, SymbolType::Func)
 	}
+	#[cfg(feature = "plugins")]
 	fn start_plugin<X: Send + 'static>(
 		mut plugin: Secondary<X, crate::Error>,
 	) -> Result<JoinHandle<Result<()>>> {
@@ -302,7 +342,7 @@ where
 		}
 		Ok(())
 	}
-	fn new_regular(&self) -> Result<Client<Command, Response>> {
+	fn new_regular(&self) -> Result<crate::Client> {
 		log::debug!("req {:?}", self.req);
 		let req = self.req.as_ref().ok_or(Error::msg("req was not set"))?;
 		req.new_regular()
@@ -414,6 +454,7 @@ where
 		}
 	}
 
+
 	/// Should only be used when the client is fully remote and cannot call the
 	/// functions directly
 	fn handle_client_cmd(&mut self, _tid: Tid, cmd: ClientCmd) -> Result<Response> {
@@ -473,15 +514,25 @@ where
 		let n = a.first().ok_or(Error::msg("No stopped thread"))?;
 		Ok(*n)
 	}
+	fn _resolve_entry(&mut self, exe: &PathBuf, maxattempts: usize) -> Result<TargetPtr> {
+		
+		if let Some(elf) = self.resolved.get(exe) {
+			Ok(elf.entry())
+		} else if maxattempts > 0 {
+			let mainmod = self.proc.exe_module()?;
+			let elf = Elf::new(exe.clone(), mainmod.loc.addr())?.parse()?;
+			// let entry = elf.entry();
+			self.resolved.insert(exe.clone(), elf);
+			self._resolve_entry(exe, maxattempts - 1)
+		} else {
+			Err(Error::msg("too many attempts to read exe"))
+		}
+	}
 
 	/// Get entry point of program
-	pub fn resolve_entry(&self) -> Result<TargetPtr> {
+	pub fn resolve_entry(&mut self) -> Result<TargetPtr> {
 		let exe = self.proc.exe_path()?;
-		let elf = Elf::new(exe)?.parse()?;
-		let entry = elf.entry();
-		let mainmod = self.proc.exe_module()?;
-
-		Ok(entry + mainmod.loc.addr())
+		self._resolve_entry(&exe, 1)
 	}
 	pub fn call_func(
 		&mut self,
@@ -497,8 +548,8 @@ where
 			// regs.set_arg_systemv(i, *arg);
 		}
 		let pc = self.client.get_trampoline_addr(tid, TrampType::Call)?;
-		log::error!("setting pc {pc:x}");
-		regs.set_pc(pc + 4);
+		log::debug!("setting pc {pc:x}");
+		regs.set_pc(pc + 4.into());
 		self.cc.set_reg_call_tramp(&mut regs, addr);
 		self.client.set_libc_regs(tid, regs)?;
 		self.client.run_until_trap(tid)?;
@@ -515,7 +566,7 @@ where
 		self.stepcb = Some(cb);
 	}
 	#[cfg(feature = "syscalls")]
-	pub fn set_specific_syscall_handler(&mut self, sysno: TargetPtr, cb: SyscallCb<T, Err>) {
+	pub fn set_specific_syscall_handler(&mut self, sysno: usize, cb: SyscallCb<T, Err>) {
 		self.syscallcbs.insert(sysno, cb);
 	}
 	pub fn set_raw_syscall_handler(&mut self, cb: RawSyscallCb<T, Err>) {
@@ -779,6 +830,22 @@ where
 		Ok(ret.expect("impossible"))
 	}
 
+	pub fn run_until_stop(&mut self) -> Result<Stopped> {
+		log::info!("running until stop");
+		let rsp = self.loop_until(|rsp| Ok(matches!(rsp, Response::Stopped(_))) )?;
+		let stop: Stopped = rsp.try_into()?;
+		Ok(stop)
+	}
+	pub fn run_until_exec(&mut self) -> Result<Tid> {
+		log::info!("running until exec");
+		loop {
+			let stop = self.run_until_stop()?;
+			if let Stop::Exec { old } = stop.stop {
+				return Ok(old);
+			}
+		}
+	}
+
 	/// Run until a given address has been hit
 	pub fn run_until_addr(&mut self, addr: TargetPtr) -> Result<Option<TargetPtr>> {
 		let tid = self.get_first_stopped()?;
@@ -817,7 +884,7 @@ where
 	///
 	/// **NB!** This assumes that syscall transformation has been configured.
 	#[cfg(feature = "syscalls")]
-	pub fn run_until_sysno(&mut self, sysno: TargetPtr) -> Result<Response> {
+	pub fn run_until_sysno(&mut self, sysno: usize) -> Result<Response> {
 		let ret = self.loop_until(|rsp| {
 			let ret = if let Response::Syscall(sys) = rsp {
 				sys.sysno == sysno

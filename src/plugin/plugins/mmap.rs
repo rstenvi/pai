@@ -27,7 +27,7 @@ impl Mmap {
 		let fd = sys.args[4].raw_value();
 		let mut offset = sys.args[5].raw_value();
 		if istwo {
-			offset *= 4096;
+			offset *= 4096.into();
 		}
 		let evt = EventInner::Mmap {
 			addr,
@@ -40,7 +40,7 @@ impl Mmap {
 		let evt = Event::new_attached(sys.tid, evt);
 		Ok(evt)
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self, crate::Error>> {
+	pub fn init(client: crate::Client) -> Result<ctx::Secondary<Self, crate::Error>> {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;

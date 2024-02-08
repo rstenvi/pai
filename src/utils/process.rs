@@ -49,12 +49,12 @@ impl MemoryMap {
 			_ => false,
 		}
 	}
-	pub fn name_is(&self, name: &str) -> bool {
-		match &self.path {
-			MMapPath::Path(p) => p.as_os_str() == name,
-			_ => false,
-		}
-	}
+	// pub fn name_is(&self, name: &str) -> bool {
+	// 	match &self.path {
+	// 		MMapPath::Path(p) => p.as_os_str() == name,
+	// 		_ => false,
+	// 	}
+	// }
 }
 
 impl MemoryMap {
@@ -75,7 +75,7 @@ impl TryFrom<procfs::process::MemoryMap> for MemoryMap {
 		let end = end.try_into()?;
 
 		let r = Self {
-			loc: Location::new(start, end),
+			loc: Location::new(start.into(), end.into()),
 			perms: value.perms.into(),
 			path: value.pathname,
 			offset: value.offset,
@@ -164,6 +164,46 @@ impl Process {
 	pub fn exe_path(&self) -> Result<PathBuf> {
 		Ok(self.proc.exe()?)
 	}
+	pub fn exact_match_path<P: Into<PathBuf>>(&self, path: P) -> Result<Option<Location>> {
+		let path: PathBuf = path.into();
+		let mut r = self.maps()?
+			.into_iter()
+			.filter(|x| x.path_is(&path) )
+			;
+		let ret = if let Some(first) = r.next() {
+			let start = first.loc.addr();
+			let end = if let Some(last) = r.last() {
+				last.loc.end()
+			} else {
+				first.loc.end()
+			};
+			let loc = Location::new(start, end);
+			Some(loc)
+		} else {
+			None
+		};
+		Ok(ret)
+	}
+	// pub fn exact_match_location(&self, name: &str) -> Result<Option<Location>> {
+	// 	let path = PathBuf::from(name);
+	// 	let mut r = self.maps()?
+	// 		.into_iter()
+	// 		.filter(|x| x.name_is(name) )
+	// 		;
+	// 	let ret = if let Some(first) = r.next() {
+	// 		let start = first.loc.addr();
+	// 		let end = if let Some(last) = r.last() {
+	// 			last.loc.end()
+	// 		} else {
+	// 			first.loc.end()
+	// 		};
+	// 		let loc = Location::new(start, end);
+	// 		Some(loc)
+	// 	} else {
+	// 		None
+	// 	};
+	// 	Ok(ret)
+	// }
 	pub fn exe_module(&self) -> Result<MemoryMap> {
 		let exe = self.proc.exe()?;
 		let mut r: Vec<_> = self
@@ -208,7 +248,8 @@ impl Process {
 			.into_iter()
 			.find(|m| m.perms.contains(perms))
 			.map(|m| m.address.0)
-			.ok_or(crate::Error::Unknown)? as TargetPtr;
+			.ok_or(crate::Error::Unknown)?
+			.into();
 		Ok(r)
 	}
 	pub fn find_exe_space(&self) -> Result<TargetPtr> {

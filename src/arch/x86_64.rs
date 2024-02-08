@@ -67,23 +67,23 @@ impl From<pete::Registers> for user_regs_struct {
 
 impl CallFrame {
 	pub fn return_addr(&self, client: &mut Client) -> Result<TargetPtr> {
-		let loc = self.regs.sp() - 0;
+		let loc = self.regs.sp() - 0.into();
 		let v = client.read_u64(self.tid, loc)?;
-		Ok(v)
+		Ok(v.into())
 	}
 }
 
 impl crate::arch::ReadRegisters for user_regs_struct {
 	fn pc(&self) -> crate::TargetPtr {
-		self.rip
+		self.rip.into()
 	}
 
 	fn sp(&self) -> crate::TargetPtr {
-		self.rsp
+		self.rsp.into()
 	}
 
-	fn sysno(&self) -> crate::TargetPtr {
-		self.orig_rax
+	fn sysno(&self) -> usize {
+		self.orig_rax as usize
 	}
 
 	fn arg_syscall(&self, nr: usize) -> crate::TargetPtr {
@@ -95,43 +95,28 @@ impl crate::arch::ReadRegisters for user_regs_struct {
 			4 => self.r8,
 			5 => self.r9,
 			_ => crate::bug!("tried to get syscall arg nr {nr}"),
-		}
+		}.into()
 	}
-
-	// fn arg_systemv(&self, nr: usize) -> crate::TargetPtr {
-	// 	match nr {
-	// 		0 => self.rdi,
-	// 		1 => self.rsi,
-	// 		2 => self.rdx,
-	// 		3 => self.rcx,
-	// 		4 => self.r8,
-	// 		5 => self.r9,
-	// 		_ => crate::bug!("tried to get SystemV arg nr {nr}"),
-	// 	}
-	// }
-
 	fn ret_syscall(&self) -> crate::TargetPtr {
-		self.rax
+		self.rax.into()
 	}
-	// fn ret_systemv(&self) -> crate::TargetPtr {
-	// 	self.rax
-	// }
 }
 
 impl crate::arch::WriteRegisters for user_regs_struct {
 	fn set_pc(&mut self, pc: crate::TargetPtr) {
-		self.rip = pc;
+		self.rip = pc.into();
 	}
 
 	fn set_sp(&mut self, sp: crate::TargetPtr) {
-		self.rsp = sp;
+		self.rsp = sp.into();
 	}
 
-	fn set_sysno(&mut self, sysno: crate::TargetPtr) {
-		self.rax = sysno;
+	fn set_sysno(&mut self, sysno: usize) {
+		self.rax = sysno as libc::c_ulonglong;
 	}
 
 	fn set_arg_syscall(&mut self, nr: usize, arg: crate::TargetPtr) {
+		let arg = arg.into();
 		match nr {
 			0 => self.rdi = arg,
 			1 => self.rsi = arg,
@@ -144,40 +129,21 @@ impl crate::arch::WriteRegisters for user_regs_struct {
 	}
 
 	fn set_ret_syscall(&mut self, ret: crate::TargetPtr) {
-		self.rax = ret;
+		self.rax = ret.into();
 	}
-
-	// fn set_arg_systemv(&mut self, nr: usize, arg: crate::TargetPtr) {
-	// 	match nr {
-	// 		0 => self.rdi = arg,
-	// 		1 => self.rsi = arg,
-	// 		2 => self.rdx = arg,
-	// 		3 => self.rcx = arg,
-	// 		4 => self.r8 = arg,
-	// 		5 => self.r9 = arg,
-	// 		_ => crate::bug!("tried to set SystemV arg nr {nr}"),
-	// 	}
-	// }
-	// fn set_call_func(&mut self, addr: crate::TargetPtr) {
-	// 	self.r10 = addr;
-	// }
-
-	// fn set_ret_systemv(&mut self, ret: crate::TargetPtr) {
-    //     self.rax = ret;
-    // }
 }
 
 impl super::RegsAbiAccess for super::SystemV {
-    fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
-        regs.rax
-    }
+	fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
+		regs.rax.into()
+	}
 
-    fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        regs.rax = val;
-    }
+	fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
+		regs.rax = val.into();
+	}
 
-    fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
-        let r = match num {
+	fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
+		let r = match num {
 			0 => regs.rdi,
 			1 => regs.rsi,
 			2 => regs.rdx,
@@ -186,15 +152,16 @@ impl super::RegsAbiAccess for super::SystemV {
 			5 => regs.r9,
 			_ => crate::bug!("tried to get SystemV arg nr {num}"),
 		};
-		Ok(r)
-    }
+		Ok(r.into())
+	}
 
-    fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
-        crate::bug!("get_arg_ext on SystemV not supported")
-    }
+	fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
+		crate::bug!("get_arg_ext on SystemV not supported")
+	}
 
-    fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
-        match num {
+	fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
+		let val = val.into();
+		match num {
 			0 => regs.rdi = val,
 			1 => regs.rsi = val,
 			2 => regs.rdx = val,
@@ -204,21 +171,21 @@ impl super::RegsAbiAccess for super::SystemV {
 			_ => crate::bug!("tried to get SystemV arg nr {num}"),
 		}
 		Ok(())
-    }
+	}
 
-    fn set_arg_ext(&self, regs: &mut crate::Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()> {
-        crate::bug!("set_arg_ext on SystemV not supported")
-    }
+	fn set_arg_ext(&self, regs: &mut crate::Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()> {
+		crate::bug!("set_arg_ext on SystemV not supported")
+	}
 
-    fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        regs.r10 = val;
-    }
+	fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
+		regs.r10 = val.into();
+	}
 
-    fn call_trampoline(&self, code: &mut Vec<u8>) {
-        code.extend_from_slice(&NOP);
+	fn call_trampoline(&self, code: &mut Vec<u8>) {
+		code.extend_from_slice(&NOP);
 		code.extend_from_slice(&CALL_TRAMP);
 		code.extend_from_slice(&SW_BP);
-    }
+	}
 }
 
 

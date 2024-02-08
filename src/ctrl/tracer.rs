@@ -330,22 +330,22 @@ impl CtrlTracer {
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
-			ThreadCmd::RemoveBp { addr } => {
-				let ins = self.tracer.remove_bp(tid, addr);
-				let val = serde_json::to_value(ins)?;
-				Response::Value(val)
-			}
+			// ThreadCmd::RemoveBp { addr } => {
+			// 	let ins = self.tracer.remove_bp(tid, addr);
+			// 	let val = serde_json::to_value(ins)?;
+			// 	Response::Value(val)
+			// }
 			// ThreadCmd::GetAgnosticReg { reg: _ } => todo!(),
 			ThreadCmd::WriteBytes { addr, bytes } => {
 				let ins = self.tracer.write_memory(tid, addr, &bytes);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
-			ThreadCmd::CallFunc { func, args } => {
-				let ins = self.tracer.call_func(tid, func, &args);
-				let val = serde_json::to_value(ins)?;
-				Response::Value(val)
-			}
+			// ThreadCmd::CallFunc { func, args } => {
+			// 	let ins = self.tracer.call_func(tid, func, &args);
+			// 	let val = serde_json::to_value(ins)?;
+			// 	Response::Value(val)
+			// }
 			ThreadCmd::ExecRawSyscall { sysno, args } => {
 				let ins = self.tracer.exec_syscall(tid, sysno, &args);
 				let val = serde_json::to_value(ins)?;
@@ -485,7 +485,7 @@ impl CtrlTracer {
 		}
 		Ok(Response::Ack)
 	}
-	fn create_new_client(&mut self, ctype: ClientType) -> Result<Client<Command, Response>> {
+	fn create_new_client(&mut self, ctype: ClientType) -> Result<crate::Client> {
 		self.lastclientid += 1;
 		let nid = self.lastclientid;
 
@@ -507,7 +507,7 @@ impl CtrlTracer {
 		self.clients.insert(nid, client_us);
 		Ok(client_send)
 	}
-	fn handle_new_client(&mut self, req: NewClientReq) -> Result<Client<Command, Response>> {
+	fn handle_new_client(&mut self, req: NewClientReq) -> Result<crate::Client> {
 		let cl = match req {
 			NewClientReq::Regular => self.create_new_client(ClientType::Regular)?,
 		};

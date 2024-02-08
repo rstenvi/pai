@@ -65,7 +65,7 @@ impl DlopenDetect {
 	pub fn dependecies() -> &'static [Plugin] {
 		&[Plugin::Files]
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<DlopenDetect, Error>> {
+	pub fn init(client: crate::Client) -> Result<ctx::Secondary<DlopenDetect, Error>> {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;

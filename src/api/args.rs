@@ -73,7 +73,7 @@ impl ArgsBuilder {
 		self.args.sanity_check()?;
 		Ok(self.args)
 	}
-	#[cfg(feature = "syscalls")]
+	// #[cfg(feature = "syscalls")]
 	builder_set_bool! { intercept_all_syscalls }
 
 	#[cfg(feature = "syscalls")]
@@ -84,12 +84,13 @@ impl ArgsBuilder {
 
 	builder_set_bool! { only_notify_syscall_exit }
 	builder_set_bool! { handle_steps }
+	builder_set_bool! { handle_exec }
 
-	builder_push_val! { syscall_traced, sysno, TargetPtr }
+	builder_push_val! { syscall_traced, sysno, usize }
 	builder_push_val! { signal_traced, signal, i32 }
 
 	#[cfg(feature = "syscalls")]
-	builder_push_val! { enrich_syscalls, sysno, TargetPtr }
+	builder_push_val! { enrich_syscalls, sysno, usize }
 	builder_push_val! { registered, reg, RegEvent }
 }
 
@@ -100,11 +101,13 @@ pub struct Args {
 	intercept_all_syscalls: bool,
 	// intercept_attached: bool,
 	// intercept_clone: bool,
-	syscall_traced: Vec<TargetPtr>,
+	syscall_traced: Vec<usize>,
 
 	signal_traced: Vec<i32>,
 
 	handle_steps: bool,
+
+	handle_exec: bool,
 
 	/// If we should transform [Stop::SyscallEnter] and [Stop::SyscallExit] to
 	/// [Event::Syscall]
@@ -114,7 +117,7 @@ pub struct Args {
 	enrich_all_syscalls: bool,
 
 	/// Specific syscalls we should enrich
-	enrich_syscalls: Vec<TargetPtr>,
+	enrich_syscalls: Vec<usize>,
 
 	/// Only notify when syscall has completed, when used with
 	/// [Self::transform_syscalls], the caller still get all the argument.
@@ -159,9 +162,15 @@ impl Args {
 	fn handles_syscall_exit(&self) -> bool {
 		self.intercept_all_syscalls || !self.syscall_traced.is_empty()
 	}
+	
 	#[cfg(feature = "syscalls")]
-	fn handles_syscall_sysno(&self, sysno: TargetPtr) -> bool {
-		self.syscall_traced.contains(&sysno)
+	/// Returns true if we handle this syscall or all syscalls
+	fn handles_syscall_sysno(&self, sysno: usize) -> bool {
+		self.intercept_all_syscalls || self.syscall_traced.contains(&sysno)
+	}
+	#[cfg(feature = "syscalls")]
+	fn enrich_syscall_sysno(&self, sysno: usize) -> bool {
+		self.enrich_all_syscalls || self.enrich_syscalls.contains(&sysno)
 	}
 	fn handles_signal(&self, signal: i32) -> bool {
 		self.signal_traced.contains(&signal)
@@ -184,7 +193,7 @@ impl Args {
 			Stop::Breakpoint { pc: _, clients: _ } => None,
 			Stop::Fork { newpid: _ } => Some(self.registered.contains(&RegEvent::Fork)),
 			Stop::Step { pc: _ } => Some(self.handle_steps),
-			Stop::Exec { old: _ } => Some(false),
+			Stop::Exec { old: _ } => Some(self.handle_exec),
 		};
 		log::debug!("handles stop {stop:?} => {r:?}");
 		r
@@ -200,6 +209,13 @@ pub(crate) struct ClientArgs {
 }
 
 impl ClientArgs {
+	pub fn new(global: Args) -> Self {
+		Self {
+			global,
+			threads: HashMap::new(),
+			bps: HashMap::new(),
+		}
+	}
 	pub fn get_cont(&self, tid: Tid) -> Cont {
 		if let Some(args) = self.threads.get(&tid) {
 			args.get_cont()
@@ -241,7 +257,16 @@ impl ClientArgs {
 	bool_access! { only_notify_syscall_exit }
 
 	#[cfg(feature = "syscalls")]
-	pub fn handles_syscall_sysno(&self, tid: Tid, sysno: TargetPtr) -> bool {
+	pub fn enrich_syscall_sysno(&self, tid: Tid, sysno: usize) -> bool {
+		if let Some(args) = self.threads.get(&tid) {
+			args.enrich_syscall_sysno(sysno)
+		} else {
+			self.global.enrich_syscall_sysno(sysno)
+		}
+	}
+
+	#[cfg(feature = "syscalls")]
+	pub fn handles_syscall_sysno(&self, tid: Tid, sysno: usize) -> bool {
 		if let Some(args) = self.threads.get(&tid) {
 			args.handles_syscall_sysno(sysno)
 		} else {
@@ -271,5 +296,39 @@ impl ClientArgs {
 				false
 			}
 		}
+	}
+}
+
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn test_args1() {
+		let args = ArgsBuilder::new()
+			.handle_steps()
+			.only_notify_syscall_exit()
+			.finish()
+			.unwrap();
+		assert!(args.handle_steps);
+		assert!(args.only_notify_syscall_exit);
+		assert!(!args.handles_syscall_enter());
+	}
+
+	#[cfg(feature = "syscalls")]
+	#[test]
+	fn test_args2() {
+		let args = ArgsBuilder::new()
+			.intercept_all_syscalls()
+			.finish()
+			.unwrap();
+		assert!(args.handles_syscall_enter());
+		assert!(args.handles_syscall_exit());
+		assert!(args.handles_syscall_sysno(1));
+		assert!(args.intercept_all_syscalls);
+
+		let cargs = ClientArgs::new(args);
+		assert!(cargs.intercept_all_syscalls(1));
 	}
 }

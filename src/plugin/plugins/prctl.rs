@@ -18,7 +18,7 @@ impl Prctl {
 	pub fn dependecies() -> &'static [Plugin] {
 		&[]
 	}
-	pub fn init(client: Client<Command, Response>) -> Result<ctx::Secondary<Self, crate::Error>> {
+	pub fn init(client: crate::Client) -> Result<ctx::Secondary<Self, crate::Error>> {
 		let data = Self::new();
 
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
@@ -42,7 +42,7 @@ impl Prctl {
 			}
 			let tid = sys.tid;
 			let option = sys.args[0].raw_value();
-			let option = option as i32;
+			let option: i32 = option.into();
 			let arg2 = sys.args[1].raw_value();
 			let arg3 = sys.args[2].raw_value();
 			let arg4 = sys.args[3].raw_value();
@@ -55,12 +55,12 @@ impl Prctl {
 				}
 				libc::PR_GET_DUMPABLE => EventPrctl::GetDumpable,
 				libc::PR_SET_VMA => {
-					if arg2 as i32 == libc::PR_SET_VMA_ANON_NAME {
+					if arg2 == libc::PR_SET_VMA_ANON_NAME.into() {
 						let name = cl.client_mut().read_c_string(tid, arg5)?;
 						EventPrctl::SetVmaAnonName {
 							name,
 							addr: arg3,
-							size: arg4 as usize,
+							size: arg4.into(),
 						}
 					} else {
 						EventPrctl::Unknown { option }

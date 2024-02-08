@@ -1,4 +1,27 @@
 //! # Process Analyzer and Instrumenter
+//! 
+//! ## Benchmarking and speed
+//! 
+//! Speed is not the main goal in the development of this crate, it is however
+//! still recognized as an important attribute of tracing. There are some key
+//! benchmark tests to evaluate speed over time:
+//!
+//! - `bench_baseline_true`
+//!   - Execute the `true` to get a baseline for how long it takes to execute 
+//! - `bench_trace_inner` / `bench_trace_outer`
+//!   - Execute program under tracing, but don't do anything
+//!   - Tracing directly at the ptrace-level and at the Context level
+//!   - This is used to measure the overhead of tracing and Context-level code
+//! - `bench_baseline_strace`
+//!   - Execute command under `strace`
+//!   - Gives us something to compare against
+//! - `bench_trace_strace_raw` / `bench_trace_strace_basic` /
+//!   `bench_trace_strace_full`
+//!   - Trace syscalls with various levels of details read about each call
+//!   - If you run these tests, you will likely see a spike in time for
+//!     `bench_trace_strace_full`
+//!     - If you're tracing something time-critical, this is something to be
+//!       aware of. 
 //!
 //! ## Architecture
 //!
@@ -70,7 +93,7 @@
 //! handlers are registered, it doesn't do anything useful.
 //!
 //! This is the example
-//! [minimal.rs](https://github.com/rstenvi/pai/examples/minimal.rs)
+//! [minimal.rs](https://github.com/rstenvi/pai/tree/main/examples/minimal.rs)
 //!
 //! ```rust
 #![doc = include_str!("../examples/minimal.rs")]
@@ -80,7 +103,7 @@
 //!
 //! A slightly more complicated example is the strace-like program below.
 //!
-//! This is the example [strace.rs](https://github.com/rstenvi/pai/examples/strace.rs)
+//! This is the example [strace.rs](https://github.com/rstenvi/pai/tree/main/examples/strace.rs)
 //!
 //! ```rust
 #![doc = include_str!("../examples/strace.rs")]
@@ -93,7 +116,7 @@
 //! similar to the previous one, but it counts the number of system calls
 //! instead.
 //!
-//! This is the example [state.rs](https://github.com/rstenvi/pai/examples/state.rs)
+//! This is the example [state.rs](https://github.com/rstenvi/pai/tree/main/examples/state.rs)
 //!
 //! ```rust
 #![doc = include_str!("../examples/state.rs")]
@@ -103,7 +126,7 @@
 //!
 //! This shows an example of inserting a breakpoint.
 //!
-//! This is the example [breakpoint.rs](https://github.com/rstenvi/pai/examples/breakpoint.rs)
+//! This is the example [breakpoint.rs](https://github.com/rstenvi/pai/tree/main/examples/breakpoint.rs)
 //!
 //! ```rust
 #![doc = include_str!("../examples/breakpoint.rs")]
@@ -112,7 +135,7 @@
 //!
 //! This shows an example of inserting breakpoint without using the event-driven method.
 //!
-//! This is the example [breakpoint-noevent.rs](https://github.com/rstenvi/pai/examples/breakpoint-noevent.rs)
+//! This is the example [breakpoint-noevent.rs](https://github.com/rstenvi/pai/tree/main/examples/breakpoint-noevent.rs)
 //!
 //! ```rust
 #![doc = include_str!("../examples/breakpoint-noevent.rs")]
@@ -152,11 +175,127 @@ pub mod syscalls;
 #[cfg(feature = "syscalls")]
 use std::io::Read;
 
-#[cfg(target_pointer_width = "64")]
-pub type TargetPtr = u64;
+// #[cfg(target_pointer_width = "64")]
+// pub type TargetPtr = u64;
 
-#[cfg(target_pointer_width = "32")]
-pub type TargetPtr = u32;
+// #[cfg(target_pointer_width = "32")]
+// pub type TargetPtr = u32;
+
+#[derive(Copy, Clone, Default, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct TargetPtr {
+	raw: usize,
+}
+impl TargetPtr {
+	fn twos_complement(&self, bits: usize) -> isize {
+		let mask = ((1_usize<<bits)-1) as usize;
+		let num = self.raw & mask;
+		let and = 1 << (bits - 1);
+		// #[cfg(target_pointer_width = "32")]
+		// let and = 1 << 31;
+		// #[cfg(target_pointer_width = "64")]
+		// let and = 1 << 63;
+	
+		// let num: usize = self.raw.into();
+		if num & and != 0 {
+			if num == isize::MIN as usize {
+				isize::MIN
+			} else {
+				let twos = -(num as isize) as usize;
+				let twos = twos as isize;
+				-twos
+			}
+		} else {
+			num as isize
+		}
+	}
+}
+
+macro_rules! conv_target_int {
+	($int:ty) => {
+		impl From<$int> for TargetPtr {
+			fn from(value: $int) -> Self {
+				Self { raw: value as usize }
+			}
+		}
+		impl From<TargetPtr> for $int {
+			fn from(value: TargetPtr) -> Self {
+				value.raw as $int
+			}
+		}
+		
+	};
+}
+// impl From<*mut libc::c_void> for TargetPtr {
+//     fn from(value: *mut libc::c_void) -> Self {
+//         Self { raw: value as usize }
+//     }
+// }
+
+conv_target_int! { usize }
+conv_target_int! { isize }
+conv_target_int! { i32 }
+conv_target_int! { u64 }
+conv_target_int! { i64 }
+conv_target_int! { u32 }
+conv_target_int! { u8 }
+conv_target_int! { u16 }
+conv_target_int! { i16 }
+conv_target_int! { *const libc::c_void }
+
+
+// conv_target_int! { libc::c_long }
+// conv_target_int! { libc::c_int }
+
+impl From<TargetPtr> for serde_json::value::Number {
+    fn from(value: TargetPtr) -> Self {
+        serde_json::value::Number::from(value.raw)
+    }
+}
+impl std::ops::BitAnd for TargetPtr {
+    type Output = TargetPtr;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        let raw = self.raw & rhs.raw;
+		Self { raw }
+    }
+}
+impl std::ops::Sub for TargetPtr {
+    type Output = TargetPtr;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let raw = self.raw - rhs.raw;
+		Self { raw }
+    }
+}
+impl std::ops::Add for TargetPtr {
+    type Output = TargetPtr;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let raw = self.raw + rhs.raw;
+		Self { raw }
+    }
+}
+impl std::ops::AddAssign for TargetPtr {
+    fn add_assign(&mut self, rhs: Self) {
+        self.raw += rhs.raw;
+    }
+}
+impl std::ops::MulAssign for TargetPtr {
+    fn mul_assign(&mut self, rhs: Self) {
+        self.raw *= rhs.raw;
+    }
+}
+
+impl std::fmt::LowerHex for TargetPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:x}", self.raw))
+    }
+}
+impl std::fmt::Display for TargetPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.raw))
+    }
+}
 
 /// The main Result-type used is most functions
 pub type Result<T> = std::result::Result<T, crate::Error>;
@@ -177,6 +316,7 @@ pub type Registers = crate::arch::aarch64::user_regs_struct;
 /// Aarch32 registers the same way they are defined in C
 pub type Registers = crate::arch::aarch32::user_regs_struct;
 
+/// [api::Client] interface for all non-internal clients.
 pub type Client = crate::api::Client<api::Command, api::Response>;
 
 macro_rules! error_from_crate {
@@ -185,7 +325,7 @@ macro_rules! error_from_crate {
 			fn from(value: $err) -> Self {
 				let name = stringify!($err);
 				let msg = format!("{value:?}");
-				log::error!("generated error {msg}");
+				log::debug!("generated error {msg}");
 				Self::OtherCrate {
 					name: name.into(),
 					msg,
@@ -377,32 +517,17 @@ lazy_static::lazy_static! {
 	};
 }
 
-#[cfg(test)]
-#[ctor::dtor]
-fn global_test_destructor_rust_dtor_dtor() {
-	log::debug!("destructor");
-	// if let Some(p) = tests::testdata_unpack() {
-	// 	log::info!("removing {p:?}");
-	// 	assert!(!p.ends_with("testdata"));
-	// 	std::fs::remove_dir_all(p).unwrap();
-	// }
-}
+// #[cfg(test)]
+// #[ctor::dtor]
+// fn global_test_destructor_rust_dtor_dtor() {
+// 	log::debug!("destructor");
+// }
 
 #[cfg(test)]
 #[ctor::ctor]
 fn global_test_setup() {
 	env_logger::builder().format_timestamp_millis().init();
 	log::debug!("constructor");
-
-	// if let Some(to) = tests::testdata_unpack() {
-	// 	log::debug!("unpacking to {to:?}");
-	// 	let testdata = TESTDATA.read().expect("").clone();
-	// 	let dec = flate2::bufread::GzDecoder::new(testdata.as_slice());
-	// 	let mut tar = tar::Archive::new(dec);
-	// 	tar.unpack(to).unwrap();
-	// } else {
-	// 	log::info!("develop = test machine, so not unpacking testdata/");
-	// }
 }
 
 #[cfg(test)]
@@ -440,36 +565,4 @@ pub(crate) mod tests {
 		let maps = get_all_tar_files().unwrap();
 		assert!(maps.get("waitpid").is_some());
 	}
-
-	// pub fn develop_equal_test() -> bool {
-	// 	testdata_unpack().is_none()
-	// }
-	// pub fn testdata_unpack() -> Option<PathBuf> {
-	// 	#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-	// 	{
-	// 		None
-	// 	}
-	// 	#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-	// 	{
-	// 		#[cfg(target_os = "android")]
-	// 		{
-	// 			Some(PathBuf::from("/data/local/tmp/gratisida/"))
-	// 		}
-	// 		#[cfg(target_os = "linux")]
-	// 		{
-	// 			Some(PathBuf::from("/tmp/gratisida/"))
-	// 		}
-	// 	}
-	// }
-	// pub fn testdata_dir() -> PathBuf {
-	// 	if let Some(mut p) = testdata_unpack() {
-	// 		p.push("testdata");
-	// 		p
-	// 	} else {
-	// 		let testdata = env!("CARGO_MANIFEST_DIR");
-	// 		let mut testdata = PathBuf::from(testdata);
-	// 		testdata.push("testdata");
-	// 		testdata
-	// 	}
-	// }
 }
