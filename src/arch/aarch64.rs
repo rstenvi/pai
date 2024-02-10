@@ -42,40 +42,46 @@ impl From<user_regs_struct> for pete::Registers {
 }
 impl CallFrame {
 	pub fn return_addr(&self, client: &mut crate::Client) -> Result<TargetPtr> {
-		todo!();
+		let lr = self.regs.regs[30];
+		Ok(lr.into())
 	}
 }
 impl super::RegsAbiAccess for super::SystemV {
     fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
-        todo!()
+        regs.regs[0].into()
     }
 
     fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        todo!()
+        regs.regs[0] = val.into();
     }
 
     fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
-        todo!()
+        assert!(num < 8);
+        Ok(regs.regs[num].into())
     }
 
-    fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
-        todo!()
+    fn get_arg_ext(&self, _regs: &crate::Registers, _num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
+        crate::bug!("set_arg_ext on SystemV not supported")
     }
 
     fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
-        todo!()
+		assert!(num < 8);
+        regs.regs[num] = val.into();
+		Ok(())
     }
 
-    fn set_arg_ext(&self, regs: &mut crate::Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()> {
-        todo!()
+    fn set_arg_ext(&self, _regs: &mut crate::Registers, _num: usize, _client: &mut crate::Client, val: TargetPtr) -> Result<()> {
+        crate::bug!("set_arg_ext on SystemV not supported")
     }
 
     fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        todo!()
+        regs.regs[9] = val.into();
     }
 
     fn call_trampoline(&self, code: &mut Vec<u8>) {
-        todo!()
+		code.extend_from_slice(&NOP);
+		code.extend_from_slice(&CALL_TRAMP);
+		code.extend_from_slice(&SW_BP);
     }
 }
 
@@ -112,7 +118,7 @@ impl crate::arch::WriteRegisters for user_regs_struct {
 	}
 
 	fn set_sysno(&mut self, sysno: usize) {
-		self.regs[0] = sysno as u64;
+		self.regs[8] = sysno as u64;
 	}
 
 	fn set_arg_syscall(&mut self, nr: usize, arg: TargetPtr) {

@@ -57,40 +57,52 @@ impl From<user_regs_struct> for pete::Registers {
 }
 impl CallFrame {
 	pub fn return_addr(&self, client: &mut Client) -> Result<TargetPtr> {
-		todo!();
+		let loc = self.regs.sp() - 0.into();
+		let v = client.read_u32(self.tid, loc)?;
+		Ok(v.into())
 	}
 }
 impl super::RegsAbiAccess for super::SystemV {
     fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
-        todo!()
+        regs.eax.into()
     }
 
     fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        todo!()
+        regs.eax = val.into()
     }
 
-    fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
-        todo!()
+    fn get_arg(&self, _regs: &crate::Registers, _num: usize) -> Result<TargetPtr> {
+        Err(crate::Error::Unsupported)
     }
 
     fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
-        todo!()
+		let sp = regs.sp();
+		let ptrsz = std::mem::size_of::<usize>();
+		let off = ptrsz * (num + 1);
+		let addr = usize::from(sp) + off;
+		let tid = client.get_threads_status()?;
+		let tid = tid[0].id;
+		let v = client.read_u32(tid, addr.into())?;
+		Ok(v.into())
+        // crate::bug!("set_arg_ext on SystemV not supported")
     }
 
     fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
         todo!()
     }
 
-    fn set_arg_ext(&self, regs: &mut crate::Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()> {
-        todo!()
+    fn set_arg_ext(&self, _regs: &mut crate::Registers, _num: usize, _client: &mut crate::Client, val: TargetPtr) -> Result<()> {
+        crate::bug!("set_arg_ext on SystemV not supported")
     }
 
     fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        todo!()
+        regs.eax = val.into();
     }
 
     fn call_trampoline(&self, code: &mut Vec<u8>) {
-        todo!()
+        code.extend_from_slice(&NOP);
+		code.extend_from_slice(&CALL_TRAMP);
+		code.extend_from_slice(&SW_BP);
     }
 }
 

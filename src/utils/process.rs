@@ -49,12 +49,12 @@ impl MemoryMap {
 			_ => false,
 		}
 	}
-	// pub fn name_is(&self, name: &str) -> bool {
-	// 	match &self.path {
-	// 		MMapPath::Path(p) => p.as_os_str() == name,
-	// 		_ => false,
-	// 	}
-	// }
+	pub fn path_contains(&self, name: &str) -> bool {
+		match &self.path {
+			MMapPath::Path(p) => p.as_os_str().to_str().unwrap().contains(name),
+			_ => false,
+		}
+	}
 }
 
 impl MemoryMap {
@@ -154,6 +154,13 @@ impl Process {
 			.into_iter()
 			.filter_map(|x| TryInto::<MemoryMap>::try_into(x).ok())
 			.filter(|x| x.is_from_file() && x.offset == 0)
+			.collect();
+		Ok(r)
+	}
+	pub fn proc_modules_contains(&self, s: &str) -> Result<Vec<MemoryMap>> {
+		let r = self.proc_modules()?
+			.into_iter()
+			.filter(|x| x.path_contains(s))
 			.collect();
 		Ok(r)
 	}

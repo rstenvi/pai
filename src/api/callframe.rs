@@ -77,8 +77,14 @@ impl CallFrame {
 		}
 	}
 	
-	pub fn arg(&self, idx: usize) -> Result<CallFrameArg> {
-		let val = self.cc.get_arg(&self.regs, idx)?;
+	pub fn arg(&self, idx: usize, client: &mut crate::Client) -> Result<CallFrameArg> {
+		let val = if let Ok(val) = self.cc.get_arg(&self.regs, idx) {
+			val
+		} else if let Ok(val) = self.cc.get_arg_ext(&self.regs, idx, client) {
+			val
+		} else {
+			return Err(crate::Error::Unsupported);
+		};
 		let ins = CallFrameArg::new(val);
 		Ok(ins)
 	}

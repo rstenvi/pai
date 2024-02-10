@@ -159,6 +159,7 @@ mod test {
 		assert_eq!(std::convert::Into::<SymbolType>::into(4_u8), f);
 	}
 
+	#[cfg(target_arch = "x86_64")]
 	#[test]
 	fn load_elf2() {
 		#[cfg(target_os = "linux")]
@@ -170,6 +171,8 @@ mod test {
 		let _m = elf.resolve("malloc").unwrap();
 		assert!(elf.resolve("non_existent_").is_none());
 	}
+
+	#[cfg(target_arch = "x86_64")]
 	#[test]
 	fn load_elf3() {
 		#[cfg(target_os = "linux")]

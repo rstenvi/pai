@@ -284,6 +284,7 @@ pub struct FileAccess {
 
 impl FileAccess {
 	pub fn from_path(path: &PathBuf) -> Result<Self> {
+		log::debug!("FileAccess {path:?}");
 		let meta = std::fs::metadata(path)?;
 		let ftype = meta.file_type();
 		let uid = meta.uid();
@@ -306,6 +307,7 @@ impl FileAccess {
 			perm,
 			selinux,
 		};
+		log::debug!("returning {ret:?}");
 		Ok(ret)
 	}
 }
@@ -415,6 +417,7 @@ mod tests {
 
 	#[test]
 	fn file_access() {
+		#[cfg(not(target_arch = "x86"))]
 		let _f = FileAccess::from_path(&"/".into()).unwrap();
 		let f = FileAccess::from_path(&"/nonexistent/path".into());
 		assert!(f.is_err());

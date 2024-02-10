@@ -82,7 +82,7 @@ mod tests {
 	#[test]
 	fn syscalls0() {
 		let data = syzlang_data::linux::PARSED.read().unwrap();
-		let syzarch = syzlang_parser::parser::Arch::X86_64;
+		let syzarch = crate::syzarch();
 
 		// This also runs in benchmark, so we can't take data from original
 		// here, so we have to clone here. This results in worse times and not
@@ -100,7 +100,7 @@ mod tests {
 	#[test]
 	fn syscalls1() {
 		let data = syzlang_data::linux::PARSED.read().unwrap();
-		let syzarch = syzlang_parser::parser::Arch::X86_64;
+		let syzarch = crate::syzarch();
 
 		// This also runs in benchmark, so we can't take data from original
 		// here, so we have to clone here. This results in worse times and not
@@ -274,8 +274,8 @@ mod tests {
 		let tid = sec.get_first_stopped().unwrap();
 
 		sec.register_function_hook_entry(tid, v.value, |cl, frame| {
-			let secs = frame.arg(0)?.as_i32();
-			log::debug!("was supposed to sleep for {secs} seconds");
+			let secs = frame.arg(0, cl.client_mut())?.as_i32();
+			log::debug!("was supposed to sleep for {secs:x} seconds");
 			assert_eq!(secs, 1);
 			*(cl.data_mut()) += 1;
 			Ok((false, Some(0.into())))
@@ -440,6 +440,13 @@ mod tests {
 		assert_eq!(rsp, Response::TargetExit);
 		assert_eq!(res, 3 + (count * 7));
 	}
+	fn find_libc_so(sec: &mut Secondary<usize, crate::Error>) -> Result<PathBuf> {
+		let mut mods = sec.proc.proc_modules_contains("libc.so")?;
+		let m = mods.remove(0);
+		assert!(mods.is_empty());
+		let p = m.path().unwrap().clone();
+		Ok(p)
+	}
 
 	// Breakpoint at entry and call a function when bp is hit
 	#[test]
@@ -455,7 +462,11 @@ mod tests {
 			let data = cl.client_mut().read_bytes(tid, addr, 4).unwrap();
 			assert!(cl.client_mut().write_bytes(tid, addr, data).unwrap() == 4);
 
-			if let Some(getpid) = cl.lookup_symbol("getpid")? {
+			let libc = find_libc_so(cl).unwrap();
+			if let Some(getpid) = cl.resolve_symbol(&libc, "getpid")? {
+			// if let Some(getpid) = cl.resolve_symbol(&PathBuf::from("/apex/com.android.runtime/lib64/bionic/libc.so"), "getpid")? {
+			// if let Some(getpid) = cl.lookup_symbol("getpid")? {
+				log::debug!("resolved getpid {getpid:?}");
 				let pid = cl.call_func(tid, getpid.value, &[])?;
 				assert_eq!(pid, tid.into());
 			} else {

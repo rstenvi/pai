@@ -549,7 +549,9 @@ where
 		}
 		let pc = self.client.get_trampoline_addr(tid, TrampType::Call)?;
 		log::debug!("setting pc {pc:x}");
-		regs.set_pc(pc + 4.into());
+		let pc = pc + 4.into();
+		regs.set_pc(pc);
+		log::debug!("setting pc {pc:x}");
 		self.cc.set_reg_call_tramp(&mut regs, addr);
 		self.client.set_libc_regs(tid, regs)?;
 		self.client.run_until_trap(tid)?;

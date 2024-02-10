@@ -381,6 +381,7 @@ impl Tracer {
 
 			self.tracee.insert(tid, tracee);
 			let ret = Stopped::new(pc, stop, tid);
+			log::debug!("rstop {ret:?}");
 			Ok(Some(ret))
 		} else if force {
 			Err(Error::TargetStopped)
@@ -396,6 +397,10 @@ impl Tracer {
 	) -> Result<Stop> {
 		if signal == pete::Signal::SIGTRAP {
 			let pc = tracee.regs.pc();
+
+			// The program counter can either point to BP instruction or next
+			// instruction
+			#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 			let pc = pc - arch::bp_code().len().into();
 
 			if let Some(mut swbp) = self.swbps.remove(&pc) {
@@ -521,7 +526,7 @@ impl Tracer {
 		if let Some(bp) = self.swbps.get_mut(&addr) {
 			bp.add_client(cid);
 		} else {
-			log::debug!("writing SWBP {code:?}");
+			log::debug!("writing SWBP {code:?} @ {addr:x}");
 			let oldcode = tracee.tracee.read_memory(addr.into(), code.len())?;
 			let mut bp = SwBp::new_limit(addr, oldcode, 1);
 			bp.add_client(cid);
@@ -593,6 +598,7 @@ impl Tracer {
 	// 	Ok(ret)
 	// }
 	pub fn run_until_trap(&mut self, tid: Tid) -> Result<()> {
+		log::debug!("running until trap on {tid}");
 		let tracee = self.remove_tracee(tid)?;
 		let (tracee, err) = self.run_until(tracee.tracee, Self::cb_stop_is_trap)?;
 		let tid = tracee.pid.as_raw() as Tid;
@@ -663,7 +669,12 @@ impl Tracer {
 	}
 	#[cfg(not(target_arch = "arm"))]
 	pub fn exec_sys_anon_mmap(&mut self, tid: Tid, size: usize, prot: Perms) -> Result<TargetPtr> {
-		let sysno = libc::SYS_mmap as usize;
+		#[cfg(target_arch = "x86")]
+		let (sysno, size) = (libc::SYS_mmap2 as usize, size / 4096);
+
+		#[cfg(not(target_arch = "x86"))]
+		let (sysno, size) = (libc::SYS_mmap as usize, size);
+
 		let args = MmapBuild::sane_anonymous(size, prot);
 		let r = self.exec_syscall(tid, sysno, &args)?;
 		let c: *const libc::c_void = r.into();
@@ -743,9 +754,9 @@ impl Tracer {
 			self.__exec_syscall(tracee, *pc, sysno, args, maxattempts)
 		} else if maxattempts > 0 {
 			let tracee = self.init_tramps(tracee)?;
-			self._exec_syscall(tracee, sysno, args, maxattempts)
+			self._exec_syscall(tracee, sysno, args, maxattempts - 1)
 		} else {
-			log::error!("unable to call function, returning error");
+			log::error!("unable to syscall, returning error");
 			Ok((usize::MAX.into(), tracee))
 		}
 	}
@@ -762,7 +773,11 @@ impl Tracer {
 		let tid = pid as Tid;
 		let tracee = TraceStop::new(tracee)?;
 		self.tracee.insert(tid, tracee);
-		Ok(ret)
+		if usize::from(ret) == usize::MAX {
+			Err(Error::msg("syscall returned error"))
+		} else {
+			Ok(ret)
+		}
 	}
 	fn remove_swbp(&self, tracee: &mut Tracee, bp: &SwBp) -> Result<()> {
 		tracee.write_memory(bp.addr.into(), &bp.oldcode)?;
@@ -773,9 +788,10 @@ impl Tracer {
 		tracee: Tracee,
 		dostop: fn(&pete::Stop) -> bool,
 	) -> Result<(Tracee, Option<crate::Error>)> {
+		log::debug!("entered run_until");
 		self.tracer.restart(tracee, Restart::Continue)?;
 		while let Some(tracee) = self.tracer.wait()? {
-			log::trace!("got stop {:?} {:?}", tracee.pid, tracee.stop);
+			log::trace!("run_until: got stop {:?} {:?}", tracee.pid, tracee.stop);
 			if dostop(&tracee.stop) {
 				return Ok((tracee, None));
 			} else {
@@ -848,7 +864,14 @@ impl Tracer {
 		// Get registers we can modify and prepare mmap() syscall
 		let mut svc_regs = as_our_regs(oregs);
 
-		let psize: TargetPtr = unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.into();
+		// let mut psize: TargetPtr = unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.into();
+
+		#[cfg(target_arch = "x86")]
+		let (psize, sysno) = (1.into(), libc::SYS_mmap2);
+
+		#[cfg(not(target_arch = "x86"))]
+		let (psize, sysno) = (unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.into(), libc::SYS_mmap);
+
 		svc_regs.set_pc(exespace + 4.into());
 		let mmap_args = vec![
 			0.into(),     // addr
@@ -856,9 +879,10 @@ impl Tracer {
 			(libc::PROT_READ | libc::PROT_WRITE).into(),
 			(libc::MAP_ANONYMOUS | libc::MAP_PRIVATE).into(),
 			usize::MAX.into(), // fd
-			0.into(),              // offset
+			0.into(),          // offset
 		];
-		prep_syscall(&mut svc_regs, libc::SYS_mmap as usize, &mmap_args)?;
+		log::debug!("mmap args {mmap_args:?}");
+		prep_syscall(&mut svc_regs, sysno as usize, &mmap_args)?;
 
 		tracee.set_registers(svc_regs.into())?;
 
@@ -875,8 +899,10 @@ impl Tracer {
 		let nregs = tracee.registers()?;
 		let mut svc_regs = as_our_regs(nregs);
 		let addr = svc_regs.ret_syscall();
-		let naddr: *const libc::c_void = addr.into();
-		let _ntracee = if naddr != libc::MAP_FAILED {
+		log::debug!("addr {addr:x}");
+		// let naddr: *const libc::c_void = addr.into();
+		let naddr: usize = addr.into();
+		let _ntracee = if naddr < usize::MAX - 100 {
 			log::debug!("mmapped {addr:x}");
 
 			// Store the mmapped-region so that we can free it when we detach
@@ -942,7 +968,7 @@ impl Tracer {
 				}
 			}
 		} else {
-			log::error!("mmap returned MAP_FAILED");
+			log::error!("mmap returned MAP_FAILED {naddr}");
 			tracee
 		};
 
@@ -1002,6 +1028,8 @@ mod test {
 				.is_ok())
 		});
 	}
+
+	#[cfg(target_os = "linux")]
 	#[bench]
 	fn bench_baseline_strace(b: &mut Bencher) {
 		// Test environment doesn't necessarily have strace
@@ -1133,13 +1161,10 @@ mod test {
 
 		let searchbin = fullpath(PROGNAME);
 		let searchbin = PathBuf::from(searchbin);
+		#[cfg(target_os = "android")]
+		let searchbin = PathBuf::from("/system/bin/toybox");
 
-		let mods = tracer.get_modules().unwrap();
-		log::trace!("mods {mods:?}");
-		let mods: Vec<_> = mods.iter().filter(|x| x.path_is(&searchbin)).collect();
-		log::trace!("mods {mods:?}");
-		assert!(mods.len() == 1);
-		let main = mods[0];
+		let main = tracer.proc.exe_module().unwrap();
 
 		let elf = crate::exe::elf::Elf::new(searchbin, 0.into())
 			.unwrap()
@@ -1231,14 +1256,16 @@ mod test {
 	#[serial]
 	#[test]
 	fn trace_in_mem0() {
-		let (mut tracer, tid) = setup_in_mem("/usr/bin/true").unwrap();
+		let bin = fullpath("true");
+		let (mut tracer, tid) = setup_in_mem(&bin).unwrap();
 		tracer.detach(tid).unwrap();
 	}
 
 	#[serial]
 	#[test]
 	fn trace_in_mem1() {
-		let (mut tracer, tid) = setup_in_mem("/usr/bin/true").unwrap();
+		let bin = fullpath("true");
+		let (mut tracer, tid) = setup_in_mem(&bin).unwrap();
 
 		loop {
 			tracer.cont(tid, Cont::Syscall).unwrap();
