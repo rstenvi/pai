@@ -20,6 +20,23 @@ pub enum Enrich {
 	Basic,
 	Full,
 }
+impl std::str::FromStr for Enrich {
+	type Err = crate::Error;
+
+	fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+		match s.to_lowercase().as_str() {
+			"none" => Ok(Self::None),
+			"basic" => Ok(Self::Basic),
+			"full" => Ok(Self::Full),
+			_ => Err(crate::Error::NotFound),
+		}
+	}
+}
+impl std::fmt::Display for Enrich {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_fmt(format_args!("{:?}", self))
+	}
+}
 
 macro_rules! bool_access {
 	($name:ident) => {
