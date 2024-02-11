@@ -287,11 +287,11 @@ impl CtrlTracer {
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
-    		ProcessCmd::SetTrampolineCode { tramp, code } => {
+			ProcessCmd::SetTrampolineCode { tramp, code } => {
 				let ins = self.tracer.set_trampoline_code(tramp, code);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
-			},
+			}
 		};
 		Ok(Some(r))
 	}
@@ -306,12 +306,12 @@ impl CtrlTracer {
 				let ins = self.tracer.get_libc_regs(tid);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
-			},
+			}
 			ThreadCmd::SetLibcRegs { regs } => {
 				let ins = self.tracer.set_libc_regs(tid, regs);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
-			},
+			}
 			ThreadCmd::ReadCString { addr } => {
 				let ins = self.tracer.read_c_string(tid, addr);
 				let val = serde_json::to_value(ins)?;
@@ -375,7 +375,7 @@ impl CtrlTracer {
 				let ins = self.tracer.exec_ret(tid);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
-			},
+			}
 			ThreadCmd::ExecSyscall { syscall } => {
 				let val = match syscall {
 					ExecSyscall::Getpid => {
@@ -389,16 +389,16 @@ impl CtrlTracer {
 				};
 				Response::Value(val)
 			}
-    		ThreadCmd::GetTrampolineAddr { tramp } => {
+			ThreadCmd::GetTrampolineAddr { tramp } => {
 				let ins = self.tracer.get_trampoline_addr(tid, tramp);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
-			},
+			}
 			ThreadCmd::RunUntilTrap => {
 				let ins = self.tracer.run_until_trap(tid);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
-			},
+			}
 		};
 		Ok(Some(r))
 	}

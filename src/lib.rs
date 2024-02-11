@@ -1,13 +1,13 @@
 //! # Process Analyzer and Instrumenter
-//! 
+//!
 //! ## Benchmarking and speed
-//! 
+//!
 //! Speed is not the main goal in the development of this crate, it is however
 //! still recognized as an important attribute of tracing. There are some key
 //! benchmark tests to evaluate speed over time:
 //!
 //! - `bench_baseline_true`
-//!   - Execute the `true` to get a baseline for how long it takes to execute 
+//!   - Execute the `true` to get a baseline for how long it takes to execute
 //! - `bench_trace_inner` / `bench_trace_outer`
 //!   - Execute program under tracing, but don't do anything
 //!   - Tracing directly at the ptrace-level and at the Context level
@@ -21,7 +21,7 @@
 //!   - If you run these tests, you will likely see a spike in time for
 //!     `bench_trace_strace_full`
 //!     - If you're tracing something time-critical, this is something to be
-//!       aware of. 
+//!       aware of.
 //!
 //! ## Architecture
 //!
@@ -174,39 +174,70 @@ pub mod syscalls;
 
 #[cfg(feature = "syscalls")]
 use std::io::Read;
+trait CastSigned {
+	type Signed;
+	fn cast_signed(self) -> Self::Signed;
+}
 
-// #[cfg(target_pointer_width = "64")]
-// pub type TargetPtr = u64;
+macro_rules! cast_signed {
+	($f:ty, $t:ty) => {
+		impl CastSigned for $f {
+			type Signed = $t;
+			fn cast_signed(self) -> $t {
+				self as $t
+			}
+		}
+	};
+}
 
-// #[cfg(target_pointer_width = "32")]
-// pub type TargetPtr = u32;
+cast_signed! { u8, i8 }
+cast_signed! { u16, i16 }
+cast_signed! { u32, i32 }
+cast_signed! { u64, i64 }
+cast_signed! { usize, isize }
 
-#[derive(Copy, Clone, Default, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(
+	Copy, Clone, Default, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize,
+)]
 pub struct TargetPtr {
 	raw: usize,
 }
 impl TargetPtr {
-	fn twos_complement(&self, bits: usize) -> isize {
-		let mask = ((1_usize<<bits)-1) as usize;
-		let num = self.raw & mask;
-		let and = 1 << (bits - 1);
-		// #[cfg(target_pointer_width = "32")]
-		// let and = 1 << 31;
-		// #[cfg(target_pointer_width = "64")]
-		// let and = 1 << 63;
-	
-		// let num: usize = self.raw.into();
-		if num & and != 0 {
-			if num == isize::MIN as usize {
-				isize::MIN
-			} else {
-				let twos = -(num as isize) as usize;
-				let twos = twos as isize;
-				-twos
-			}
-		} else {
-			num as isize
-		}
+	fn new(raw: usize) -> Self {
+		Self { raw }
+	}
+	pub fn as_u8(&self) -> u8 {
+		(self.raw & 0xff) as u8
+	}
+	pub fn as_i8(&self) -> i8 {
+		self.as_u8().cast_signed()
+	}
+	pub fn as_u16(&self) -> u16 {
+		(self.raw & 0xffff) as u16
+	}
+	pub fn as_i16(&self) -> i16 {
+		self.as_u16().cast_signed()
+	}
+	pub fn as_u32(&self) -> u32 {
+		(self.raw & 0xffffffff) as u32
+	}
+	pub fn as_i32(&self) -> i32 {
+		self.as_u32().cast_signed()
+	}
+	pub fn as_u64(&self) -> u64 {
+		self.raw as u64
+	}
+
+	// For this to be correct on 32- and 64-bit we cast as isize first and then to i64
+	pub fn as_i64(&self) -> i64 {
+		self.as_usize().cast_signed() as i64
+	}
+
+	pub fn as_isize(&self) -> isize {
+		self.raw.cast_signed()
+	}
+	pub fn as_usize(&self) -> usize {
+		self.raw
 	}
 }
 
@@ -214,7 +245,9 @@ macro_rules! conv_target_int {
 	($int:ty) => {
 		impl From<$int> for TargetPtr {
 			fn from(value: $int) -> Self {
-				Self { raw: value as usize }
+				Self {
+					raw: value as usize,
+				}
 			}
 		}
 		impl From<TargetPtr> for $int {
@@ -222,7 +255,6 @@ macro_rules! conv_target_int {
 				value.raw as $int
 			}
 		}
-		
 	};
 }
 // impl From<*mut libc::c_void> for TargetPtr {
@@ -242,59 +274,58 @@ conv_target_int! { u16 }
 conv_target_int! { i16 }
 conv_target_int! { *const libc::c_void }
 
-
 // conv_target_int! { libc::c_long }
 // conv_target_int! { libc::c_int }
 
 impl From<TargetPtr> for serde_json::value::Number {
-    fn from(value: TargetPtr) -> Self {
-        serde_json::value::Number::from(value.raw)
-    }
+	fn from(value: TargetPtr) -> Self {
+		serde_json::value::Number::from(value.raw)
+	}
 }
 impl std::ops::BitAnd for TargetPtr {
-    type Output = TargetPtr;
+	type Output = TargetPtr;
 
-    fn bitand(self, rhs: Self) -> Self::Output {
-        let raw = self.raw & rhs.raw;
+	fn bitand(self, rhs: Self) -> Self::Output {
+		let raw = self.raw & rhs.raw;
 		Self { raw }
-    }
+	}
 }
 impl std::ops::Sub for TargetPtr {
-    type Output = TargetPtr;
+	type Output = TargetPtr;
 
-    fn sub(self, rhs: Self) -> Self::Output {
-        let raw = self.raw - rhs.raw;
+	fn sub(self, rhs: Self) -> Self::Output {
+		let raw = self.raw - rhs.raw;
 		Self { raw }
-    }
+	}
 }
 impl std::ops::Add for TargetPtr {
-    type Output = TargetPtr;
+	type Output = TargetPtr;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        let raw = self.raw + rhs.raw;
+	fn add(self, rhs: Self) -> Self::Output {
+		let raw = self.raw + rhs.raw;
 		Self { raw }
-    }
+	}
 }
 impl std::ops::AddAssign for TargetPtr {
-    fn add_assign(&mut self, rhs: Self) {
-        self.raw += rhs.raw;
-    }
+	fn add_assign(&mut self, rhs: Self) {
+		self.raw += rhs.raw;
+	}
 }
 impl std::ops::MulAssign for TargetPtr {
-    fn mul_assign(&mut self, rhs: Self) {
-        self.raw *= rhs.raw;
-    }
+	fn mul_assign(&mut self, rhs: Self) {
+		self.raw *= rhs.raw;
+	}
 }
 
 impl std::fmt::LowerHex for TargetPtr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{:x}", self.raw))
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_fmt(format_args!("{:x}", self.raw))
+	}
 }
 impl std::fmt::Display for TargetPtr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", self.raw))
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_fmt(format_args!("{}", self.raw))
+	}
 }
 
 /// The main Result-type used is most functions
@@ -369,6 +400,9 @@ pub enum Error {
 
 	#[error("unknown error")]
 	Unknown,
+
+	#[error("unexpected signal")]
+	Signal { signal: i32 },
 
 	#[error("Unsupported")]
 	Unsupported,
@@ -564,5 +598,13 @@ pub(crate) mod tests {
 	fn extract_tar_files() {
 		let maps = get_all_tar_files().unwrap();
 		assert!(maps.get("waitpid").is_some());
+	}
+
+	#[test]
+	fn test_twos() {
+		assert_eq!(TargetPtr::new(0xff).as_u8(), 0xff);
+		assert_eq!(TargetPtr::new(0xff).as_i8(), -1);
+		assert_eq!(TargetPtr::new(0xff).as_i16(), 0xff);
+		assert_eq!(TargetPtr::new(0xfff0).as_i16(), -16);
 	}
 }

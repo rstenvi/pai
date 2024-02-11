@@ -95,7 +95,9 @@ impl Location {
 	pub fn new(start: TargetPtr, end: TargetPtr) -> Self {
 		Self { start, end }
 	}
-	pub fn end(&self) -> TargetPtr { self.end }
+	pub fn end(&self) -> TargetPtr {
+		self.end
+	}
 	pub fn size(&self) -> usize {
 		(self.end - self.start).into()
 	}
@@ -312,26 +314,6 @@ impl FileAccess {
 	}
 }
 
-pub(crate) fn twos_complement(num: TargetPtr) -> isize {
-	#[cfg(target_pointer_width = "32")]
-	let and = 1 << 31;
-	#[cfg(target_pointer_width = "64")]
-	let and = 1 << 63;
-
-	let num: usize = num.into();
-	if num & and != 0 {
-		if num == isize::MIN as usize {
-			isize::MIN
-		} else {
-			let twos = -(num as isize) as usize;
-			let twos = twos as isize;
-			-twos
-		}
-	} else {
-		num as isize
-	}
-}
-
 pub struct ModuleSymbols {
 	pub name: PathBuf,
 	pub symbols: HashMap<String, ElfSymbol>,
@@ -417,19 +399,9 @@ mod tests {
 
 	#[test]
 	fn file_access() {
-		#[cfg(not(target_arch = "x86"))]
+		#[cfg(not(any(target_arch = "x86", target_arch = "arm")))]
 		let _f = FileAccess::from_path(&"/".into()).unwrap();
 		let f = FileAccess::from_path(&"/nonexistent/path".into());
 		assert!(f.is_err());
-	}
-
-	#[test]
-	fn test_twos() {
-		assert_eq!(twos_complement(1.into()), 1);
-		#[cfg(target_pointer_width = "32")]
-		assert_eq!(twos_complement(0xffffffff_u32.into()), -1);
-		#[cfg(target_pointer_width = "64")]
-		assert_eq!(twos_complement(0xffffffffffffffff_u64.into()), -1_isize);
-		assert_eq!(twos_complement(isize::MIN.into()), isize::MIN);
 	}
 }

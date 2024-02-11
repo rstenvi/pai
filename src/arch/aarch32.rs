@@ -1,19 +1,18 @@
 //! Code specific to Aarch32
-//! 
+//!
 //! ABI is here: <https://github.com/ARM-software/abi-aa>
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, api::CallFrame, TargetPtr};
+use crate::{api::CallFrame, Result, TargetPtr};
 
 // TODO: These will not work if thumb mode
 
-// rasm2 -a arm -b 32 "brk #0"
-pub(crate) const SW_BP: [u8; 4] = [0xfe, 0xff, 0xff, 0xea];
+pub(crate) const SW_BP: [u8; 4] = [0xf0, 0x01, 0xf0, 0xe7];
 
 // rasm2 -a arm -b 32 "pop {r11, lr}"
 pub(crate) const EPILOGUE: [u8; 4] = [0x00, 0x48, 0xbd, 0xe8];
 
-// rasm2 -a arm -b 32 "pop {r11, lr}"
+// rasm2 -a arm -b 32 "bx lr"
 pub(crate) const RET: [u8; 4] = [0x1e, 0xff, 0x2f, 0xe1];
 
 // rasm2 -a arm -b 32 "blx r9"
@@ -60,43 +59,71 @@ impl From<user_regs_struct> for pete::Registers {
 	}
 }
 impl CallFrame {
-	pub fn return_addr(&self, client: &mut crate::Client) -> Result<TargetPtr> {
-		todo!();
+	pub fn return_addr(&self, _client: &mut crate::Client) -> Result<TargetPtr> {
+		Ok(self.regs.arm_lr.into())
 	}
 }
 
 impl super::RegsAbiAccess for super::SystemV {
-    fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
-        todo!()
-    }
+	fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
+		regs.arm_r0.into()
+	}
 
-    fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        todo!()
-    }
+	fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
+		regs.arm_r0 = val.into();
+	}
 
-    fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
-        todo!()
-    }
+	fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
+		let v = match num {
+			0 => regs.arm_r0,
+			1 => regs.arm_r1,
+			2 => regs.arm_r2,
+			3 => regs.arm_r3,
+			_ => return Err(crate::Error::Unsupported),
+		};
+		Ok(v.into())
+	}
 
-    fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
-        todo!()
-    }
+	fn get_arg_ext(
+		&self,
+		regs: &crate::Registers,
+		num: usize,
+		client: &mut crate::Client,
+	) -> Result<TargetPtr> {
+		todo!()
+	}
 
-    fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
-        todo!()
-    }
+	fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
+		let val = val.into();
+		match num {
+			0 => regs.arm_r0 = val,
+			1 => regs.arm_r1 = val,
+			2 => regs.arm_r2 = val,
+			3 => regs.arm_r3 = val,
+			_ => return Err(crate::Error::Unsupported),
+		}
+		Ok(())
+	}
 
-    fn set_arg_ext(&self, regs: &mut crate::Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()> {
-        todo!()
-    }
+	fn set_arg_ext(
+		&self,
+		regs: &mut crate::Registers,
+		num: usize,
+		client: &mut crate::Client,
+		val: TargetPtr,
+	) -> Result<()> {
+		todo!()
+	}
 
-    fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        todo!()
-    }
+	fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
+		regs.arm_r9 = val.into();
+	}
 
-    fn call_trampoline(&self, code: &mut Vec<u8>) {
-        todo!()
-    }
+	fn call_trampoline(&self, code: &mut Vec<u8>) {
+		code.extend_from_slice(&NOP);
+		code.extend_from_slice(&CALL_TRAMP);
+		code.extend_from_slice(&SW_BP);
+	}
 }
 
 impl crate::arch::ReadRegisters for user_regs_struct {
@@ -121,7 +148,8 @@ impl crate::arch::ReadRegisters for user_regs_struct {
 			4 => self.arm_r4,
 			5 => self.arm_r5,
 			_ => crate::bug!("tried to get syscall arg nr {nr}"),
-		}.into()
+		}
+		.into()
 	}
 
 	fn ret_syscall(&self) -> TargetPtr {
@@ -175,5 +203,5 @@ pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
 	code.extend_from_slice(&RET);
 }
 pub(crate) fn as_our_regs(regs: pete::Registers) -> user_regs_struct {
-	todo!();
+	regs.into()
 }

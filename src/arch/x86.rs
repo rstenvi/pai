@@ -1,9 +1,9 @@
 //! Code specific to x86
-//! 
+//!
 //! ABI is here: <https://github.com/hjl-tools/x86-psABI/wiki/intel386-psABI-1.1.pdf>
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, api::CallFrame, Client, TargetPtr};
+use crate::{api::CallFrame, Client, Result, TargetPtr};
 
 use super::ReadRegisters;
 
@@ -63,19 +63,24 @@ impl CallFrame {
 	}
 }
 impl super::RegsAbiAccess for super::SystemV {
-    fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
-        regs.eax.into()
-    }
+	fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
+		regs.eax.into()
+	}
 
-    fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        regs.eax = val.into()
-    }
+	fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
+		regs.eax = val.into()
+	}
 
-    fn get_arg(&self, _regs: &crate::Registers, _num: usize) -> Result<TargetPtr> {
-        Err(crate::Error::Unsupported)
-    }
+	fn get_arg(&self, _regs: &crate::Registers, _num: usize) -> Result<TargetPtr> {
+		Err(crate::Error::Unsupported)
+	}
 
-    fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
+	fn get_arg_ext(
+		&self,
+		regs: &crate::Registers,
+		num: usize,
+		client: &mut crate::Client,
+	) -> Result<TargetPtr> {
 		let sp = regs.sp();
 		let ptrsz = std::mem::size_of::<usize>();
 		let off = ptrsz * (num + 1);
@@ -84,26 +89,32 @@ impl super::RegsAbiAccess for super::SystemV {
 		let tid = tid[0].id;
 		let v = client.read_u32(tid, addr.into())?;
 		Ok(v.into())
-        // crate::bug!("set_arg_ext on SystemV not supported")
-    }
+		// crate::bug!("set_arg_ext on SystemV not supported")
+	}
 
-    fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
-        todo!()
-    }
+	fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
+		todo!()
+	}
 
-    fn set_arg_ext(&self, _regs: &mut crate::Registers, _num: usize, _client: &mut crate::Client, val: TargetPtr) -> Result<()> {
-        crate::bug!("set_arg_ext on SystemV not supported")
-    }
+	fn set_arg_ext(
+		&self,
+		_regs: &mut crate::Registers,
+		_num: usize,
+		_client: &mut crate::Client,
+		val: TargetPtr,
+	) -> Result<()> {
+		crate::bug!("set_arg_ext on SystemV not supported")
+	}
 
-    fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        regs.eax = val.into();
-    }
+	fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
+		regs.eax = val.into();
+	}
 
-    fn call_trampoline(&self, code: &mut Vec<u8>) {
-        code.extend_from_slice(&NOP);
+	fn call_trampoline(&self, code: &mut Vec<u8>) {
+		code.extend_from_slice(&NOP);
 		code.extend_from_slice(&CALL_TRAMP);
 		code.extend_from_slice(&SW_BP);
-    }
+	}
 }
 
 impl crate::arch::ReadRegisters for user_regs_struct {
@@ -128,7 +139,8 @@ impl crate::arch::ReadRegisters for user_regs_struct {
 			4 => self.edi,
 			5 => self.ebp,
 			_ => crate::bug!("tried to get syscall arg nr {nr}"),
-		}.into()
+		}
+		.into()
 	}
 
 	fn ret_syscall(&self) -> crate::TargetPtr {

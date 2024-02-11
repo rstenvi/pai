@@ -20,7 +20,6 @@ pub enum TrampType {
 	Ret,
 }
 
-
 /// Type of symbol, read ELF-specification for more details
 #[repr(u8)]
 #[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
@@ -220,15 +219,15 @@ impl std::fmt::Debug for Stopped {
 	}
 }
 impl TryFrom<Response> for Stopped {
-    type Error = crate::Error;
+	type Error = crate::Error;
 
-    fn try_from(value: Response) -> Result<Self, Self::Error> {
-        if let Response::Stopped(s) = value {
+	fn try_from(value: Response) -> Result<Self, Self::Error> {
+		if let Response::Stopped(s) = value {
 			Ok(s)
 		} else {
 			Err(Self::Error::msg("cannot find Stopped in Response"))
 		}
-    }
+	}
 }
 impl std::fmt::Display for Stopped {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -365,6 +364,9 @@ pub enum Cont {
 	#[default]
 	Cont,
 	Syscall,
+
+	// Step is not supported on arm, see link below for more details.
+	// https://stackoverflow.com/a/25268484
 	Step,
 }
 
@@ -417,9 +419,13 @@ pub enum ThreadCmd {
 	GetLibcRegs,
 
 	/// Set all registers
-	SetLibcRegs { regs: crate::Registers },
+	SetLibcRegs {
+		regs: crate::Registers,
+	},
 
-	GetTrampolineAddr { tramp: TrampType },
+	GetTrampolineAddr {
+		tramp: TrampType,
+	},
 
 	RunUntilTrap,
 
@@ -595,13 +601,21 @@ impl RemoteCmd {
 		}
 	}
 	pub fn get_trampoline_addr(tid: Tid, tramp: TrampType) -> Self {
-		Self::Thread { tid, cmd: ThreadCmd::GetTrampolineAddr { tramp } }
+		Self::Thread {
+			tid,
+			cmd: ThreadCmd::GetTrampolineAddr { tramp },
+		}
 	}
 	pub fn run_until_trap(tid: Tid) -> Self {
-		Self::Thread { tid, cmd: ThreadCmd::RunUntilTrap }
+		Self::Thread {
+			tid,
+			cmd: ThreadCmd::RunUntilTrap,
+		}
 	}
 	pub fn set_trampoline_code(tramp: TrampType, code: Vec<u8>) -> Self {
-		Self::Process { cmd: ProcessCmd::SetTrampolineCode { tramp, code } }
+		Self::Process {
+			cmd: ProcessCmd::SetTrampolineCode { tramp, code },
+		}
 	}
 	pub fn set_libc_regs(tid: Tid, regs: crate::Registers) -> Self {
 		Self::Thread {

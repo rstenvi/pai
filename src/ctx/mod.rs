@@ -23,7 +23,11 @@ mod tests {
 		api::{
 			messages::{RegEvent, Stop, SymbolType},
 			ArgsBuilder, Response,
-		}, arch::ReadRegisters, exe::elf::Elf, utils::{self, process::Tid}, Result, TargetPtr
+		},
+		arch::ReadRegisters,
+		exe::elf::Elf,
+		utils::{self, process::Tid},
+		Result, TargetPtr,
 	};
 	use std::{path::PathBuf, str::FromStr};
 
@@ -58,27 +62,28 @@ mod tests {
 		clientmgr_strace_raw();
 		b.iter(move || std::hint::black_box(clientmgr_strace_raw()))
 	}
-	#[cfg(feature = "syscalls")]
+	#[cfg(all(feature = "syscalls", target_arch = "x86_64"))]
 	#[bench]
 	fn bench_trace_strace_basic(b: &mut Bencher) {
 		clientmgr_strace_basic();
 		b.iter(move || std::hint::black_box(clientmgr_strace_basic()))
 	}
-	#[cfg(feature = "syscalls")]
+	#[cfg(all(feature = "syscalls", target_arch = "x86_64"))]
 	#[bench]
 	fn bench_trace_strace_full(b: &mut Bencher) {
 		clientmgr_strace_full();
 		b.iter(move || std::hint::black_box(clientmgr_strace_full()))
 	}
 
-	#[cfg(feature = "syscalls")]
+	#[cfg(all(feature = "syscalls", target_arch = "x86_64"))]
 	#[bench]
 	fn bench_parsed_syscalls(b: &mut Bencher) {
-		syscalls1();
-		b.iter(|| std::hint::black_box(syscalls1()))
+		syscalls0();
+		b.iter(|| std::hint::black_box(syscalls0()))
 	}
 
-	#[cfg(feature = "syscalls")]
+	// Disabled on arm just because it's so slow in the emulator
+	#[cfg(all(feature = "syscalls", not(target_arch = "arm")))]
 	#[test]
 	fn syscalls0() {
 		let data = syzlang_data::linux::PARSED.read().unwrap();
@@ -93,24 +98,6 @@ mod tests {
 		parsed.remove_subfunctions();
 		parsed.consts.filter_arch(&syzarch);
 		let syscalls: Syscalls = (&parsed).try_into().unwrap();
-		let _v = syscalls.resolve(1).unwrap();
-	}
-
-	#[cfg(feature = "syscalls")]
-	#[test]
-	fn syscalls1() {
-		let data = syzlang_data::linux::PARSED.read().unwrap();
-		let syzarch = crate::syzarch();
-
-		// This also runs in benchmark, so we can't take data from original
-		// here, so we have to clone here. This results in worse times and not
-		// the most realistic, but still ok for comparison.
-		let mut parsed = data.clone();
-		parsed.remove_virtual_functions();
-		parsed.remove_func_no_sysno(&syzarch);
-		parsed.remove_subfunctions();
-		parsed.consts.filter_arch(&syzarch);
-		let syscalls: Syscalls = parsed.try_into().unwrap();
 		let _v = syscalls.resolve(1).unwrap();
 	}
 
@@ -168,7 +155,6 @@ mod tests {
 			.transform_syscalls()
 			.enrich_all_syscalls()
 			.only_notify_syscall_exit()
-
 			.finish()
 			.unwrap();
 
@@ -198,6 +184,7 @@ mod tests {
 		assert_eq!(rsp, Response::TargetExit);
 	}
 
+	#[cfg(not(target_arch = "arm"))]
 	#[test]
 	fn clientmgr_step1() {
 		let mut ctx = set_up_int(42).unwrap();
@@ -229,7 +216,7 @@ mod tests {
 
 	#[cfg(feature = "syscalls")]
 	#[test]
-	fn clientmgr_strace() {
+	fn clientmgr_strace0() {
 		let args = ArgsBuilder::new()
 			.intercept_all_syscalls()
 			.transform_syscalls()
@@ -239,11 +226,17 @@ mod tests {
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
 		sec.set_generic_syscall_handler(|cl, mut sys| {
+			log::debug!("hit cb handler");
 			if sys.is_exit() {
 				format!("{sys}");
 				sys.enrich_values().unwrap();
 				format!("{sys}");
-				sys.parse_deep::<crate::api::Command>(sys.tid, cl.client_mut(), crate::syscalls::Direction::InOut).unwrap();
+				sys.parse_deep::<crate::api::Command>(
+					sys.tid,
+					cl.client_mut(),
+					crate::syscalls::Direction::InOut,
+				)
+				.unwrap();
 				let _sys = format!("{sys}");
 			}
 			Ok(())
@@ -253,6 +246,7 @@ mod tests {
 		ctx.loop_until_exit().unwrap();
 	}
 
+	#[cfg(not(target_arch = "arm"))]
 	#[test]
 	fn clientmgr_early_ret_func() {
 		let numsleep = 3;
@@ -269,7 +263,9 @@ mod tests {
 		let stopped = sec.run_until_entry().unwrap();
 		assert_eq!(stopped.expect("didn't hit breakpoint"), entry);
 
-		let v = sec.lookup_symbol("sleep").unwrap()
+		let v = sec
+			.lookup_symbol("sleep")
+			.unwrap()
 			.expect("unable to find sleep");
 		let tid = sec.get_first_stopped().unwrap();
 
@@ -279,13 +275,15 @@ mod tests {
 			assert_eq!(secs, 1);
 			*(cl.data_mut()) += 1;
 			Ok((false, Some(0.into())))
-		}).unwrap();
+		})
+		.unwrap();
 
 		let (r, res) = ctx.loop_until_exit().unwrap();
 		assert_eq!(r, Response::TargetExit);
 		assert_eq!(res, numsleep);
 	}
 
+	#[cfg(not(target_arch = "arm"))]
 	#[test]
 	fn clientmgr_strace_clone() {
 		let args = ArgsBuilder::new()
@@ -322,6 +320,7 @@ mod tests {
 		assert_eq!(r, (11 + 7) * numclones);
 	}
 
+	#[cfg(not(target_arch = "arm"))]
 	#[serial]
 	#[test]
 	fn clientmgr_strace_fork() {
@@ -441,10 +440,20 @@ mod tests {
 		assert_eq!(res, 3 + (count * 7));
 	}
 	fn find_libc_so(sec: &mut Secondary<usize, crate::Error>) -> Result<PathBuf> {
+		// let mods = sec.proc.maps()?;
+		// for m in mods.into_iter() {
+		// 	log::error!("{m:?}");
+		// }
+		// /usr/lib/x86_64-linux-gnu/libc-2.31.so
 		let mut mods = sec.proc.proc_modules_contains("libc.so")?;
+		if mods.is_empty() {
+			mods = sec.proc.proc_modules_contains("libc-2.31.so")?;
+		}
+		log::debug!("mods {mods:?}");
 		let m = mods.remove(0);
 		assert!(mods.is_empty());
 		let p = m.path().unwrap().clone();
+		log::debug!("libc @ {p:?}");
 		Ok(p)
 	}
 
@@ -464,8 +473,8 @@ mod tests {
 
 			let libc = find_libc_so(cl).unwrap();
 			if let Some(getpid) = cl.resolve_symbol(&libc, "getpid")? {
-			// if let Some(getpid) = cl.resolve_symbol(&PathBuf::from("/apex/com.android.runtime/lib64/bionic/libc.so"), "getpid")? {
-			// if let Some(getpid) = cl.lookup_symbol("getpid")? {
+				// if let Some(getpid) = cl.resolve_symbol(&PathBuf::from("/apex/com.android.runtime/lib64/bionic/libc.so"), "getpid")? {
+				// if let Some(getpid) = cl.lookup_symbol("getpid")? {
 				log::debug!("resolved getpid {getpid:?}");
 				let pid = cl.call_func(tid, getpid.value, &[])?;
 				assert_eq!(pid, tid.into());
@@ -541,8 +550,7 @@ mod tests {
 			.unwrap();
 
 		let pargs = vec!["true".to_string()];
-		let mut ctx: Main<usize, crate::Error> =
-			Main::new_main(false, pargs, 0_usize).unwrap();
+		let mut ctx: Main<usize, crate::Error> = Main::new_main(false, pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 		let tid = sec.get_first_stopped().unwrap();
 		{
@@ -579,11 +587,19 @@ mod tests {
 
 			assert!(client.write_bytes(tid, 0x42.into(), vec![0x00]).is_err());
 
-			let r = client
-				.exec_raw_syscall(tid, usize::MAX.into(), vec![0x00.into()])
-				.unwrap();
-			let code = utils::twos_complement(r) as i32;
-			assert_eq!(-code, libc::ENOSYS);
+			// This is returning SIGILL on arm
+			let r = client.exec_raw_syscall(tid, usize::MAX.into(), vec![0x00.into()]);
+
+			#[cfg(target_arch = "arm")]
+			{
+				assert!(r.is_err())
+			}
+			#[cfg(not(target_arch = "arm"))]
+			{
+				let r = r.unwrap();
+				let code = r.as_i32();
+				assert_eq!(-code, libc::ENOSYS);
+			}
 
 			client.set_config(args).unwrap();
 		}

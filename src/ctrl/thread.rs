@@ -151,8 +151,7 @@ impl ClientThread {
 		let regs = self.client.get_libc_regs(tid)?;
 		if entry {
 			let sysno = regs.sysno();
-			if self.args.handles_syscall_sysno(tid, sysno)
-			{
+			if self.args.handles_syscall_sysno(tid, sysno) {
 				let mut ins = SyscallItem::from_regs(tid, &regs);
 				if self.args.enrich_syscall_sysno(tid, sysno) {
 					ins.parse_deep(tid, &mut self.client, crate::syscalls::Direction::In)?;

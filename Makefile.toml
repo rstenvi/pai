@@ -5,7 +5,7 @@ extend= [
 
 [env]
 docargs = "--target-dir=output|--quiet|--no-deps|--target=${@}"
-buildargs = "--target-dir=output|--features=plugins|--target=${@}"
+buildargs = "--target-dir=output|--features=plugins|--features=syscalls|--target=${@}"
 clippyargs = "--target-dir=output|--no-deps|--all-targets|--all-features|--target=${@}"
 
 
@@ -48,19 +48,27 @@ args = ["bench", "--features=syscalls"]
 
 # Various tasks which expect target argument(s)
 
-[tasks.test]
-command = "cross"
-# Going to need this in the future
-install_crate = "rust-script"
-args = ["test", "@@split(buildargs,|)", "--features=syscalls"]
-
 [tasks.drytest]
 command = "cross"
 args = ["test", "@@split(buildargs,|)", "--no-run"]
 
+[tasks.testnative]
+command = "cross"
+args = ["test", "@@split(buildargs,|)"]
+
+[tasks.test]
+command = "rust-script"
+install_crate = "rust-script"
+args = [
+	"${CARGO_MAKE_WORKING_DIRECTORY}/scripts/test-runner.rs",
+	"--config",
+	"${CARGO_MAKE_WORKING_DIRECTORY}/runner_config.toml",
+	"@@split(buildargs,|)",
+]
+
 [tasks.build]
 command = "cross"
-args = ["build", "@@split(buildargs,|)", "--features=syscalls"]
+args = ["build", "@@split(buildargs,|)"]
 
 [tasks.release]
 command = "cross"

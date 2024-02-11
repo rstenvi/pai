@@ -378,9 +378,7 @@ impl SysArg {
 		self.value.raw_value()
 	}
 	pub fn as_i32(&self) -> i32 {
-		let raw = self.raw_value();
-		let signed = utils::twos_complement(raw);
-		signed as i32
+		self.raw_value().as_i32()
 	}
 	pub fn parsed(&self) -> &Option<Value> {
 		&self.value.parsed
@@ -497,7 +495,10 @@ impl SyscallItem {
 		arg: &ArgType,
 		opts: &[ArgOpt],
 		len: Option<&ValueLen>,
-	) -> Result<Option<Value>> where crate::Error: From<crossbeam_channel::SendError<T>> {
+	) -> Result<Option<Value>>
+	where
+		crate::Error: From<crossbeam_channel::SendError<T>>,
+	{
 		if arg.refers_c_string() {
 			let string = client.read_c_string(tid, raw)?;
 			let value = if arg.is_filename() {
@@ -566,7 +567,11 @@ impl SyscallItem {
 		tid: Tid,
 		client: &mut Client<T, Response>,
 		parsedir: Direction,
-	) -> Result<()> where crate::Error: From<crossbeam_channel::SendError<T>> {
+	) -> Result<()>
+	where
+		crate::Error: From<crossbeam_channel::SendError<T>>,
+	{
+		log::debug!("parsing deep values");
 		self.enrich_values()?;
 		let errored = self.syscall_errored().unwrap_or(true);
 
@@ -610,7 +615,7 @@ impl SyscallItem {
 		Ok(())
 	}
 	fn error_or_def(raw: TargetPtr, def: Value) -> Value {
-		let err = utils::twos_complement(raw) as i32;
+		let err = raw.as_i32();
 		if err < 0 {
 			Value::new_error_or_default(err, def)
 		} else {
@@ -643,15 +648,15 @@ impl SyscallItem {
 					.unwrap_or_else(|_| panic!("unable to get size of int {atype:?})"));
 				let value: serde_json::value::Number = match atype {
 					ArgType::Intptr => raw.into(),
-					ArgType::Int64 => raw.twos_complement(64).into(),
-					ArgType::Int32 => raw.twos_complement(32).into(),
-					ArgType::Int16 => raw.twos_complement(16).into(),
-					ArgType::Int8 => raw.twos_complement(8).into(),
+					ArgType::Int64 => raw.as_i64().into(),
+					ArgType::Int32 => raw.as_i32().into(),
+					ArgType::Int16 => raw.as_i16().into(),
+					ArgType::Int8 => raw.as_i8().into(),
 					ArgType::Int64be => {
 						let v: i64 = raw.into();
 						let v = i64::from_be(v);
 						v.into()
-					},
+					}
 					ArgType::Int32be => {
 						let v: i32 = raw.into();
 						let v = i32::from_be(v);
@@ -664,7 +669,7 @@ impl SyscallItem {
 					}
 					_ => panic!(""),
 				};
-				let err = utils::twos_complement(raw) as i32;
+				let err = raw.as_i32();
 				let ret = Value::new_number(value, bytes * 8);
 				Some(if isout {
 					Value::new_error_or_default(err, ret)
@@ -776,6 +781,7 @@ impl SyscallItem {
 	}
 
 	pub fn enrich_values(&mut self) -> crate::Result<()> {
+		log::debug!("enriching values");
 		if let Some(sys) = crate::SYSCALLS
 			.read()
 			.expect("unable to lock syscalls")
@@ -822,7 +828,7 @@ impl SyscallItem {
 			.resource_to_basics(ident);
 		log::trace!("basics {ident:?} ->  {basics:?}");
 		if Self::argtypes_are_fd(ident, &basics) {
-			let fd = utils::twos_complement(raw) as i32;
+			let fd = raw.as_i32();
 			let r = Value::new_fd(fd, dir);
 			Some(r)
 		} else if let Some(at) = basics.last().cloned() {
@@ -845,7 +851,7 @@ impl SyscallItem {
 			match value {
 				parser::Value::Ident(ident) => {
 					let n = Self::resolve_const_ident(&ident.name);
-					let vi32 = utils::twos_complement(raw) as i32;
+					let vi32 = raw.as_i32();
 					let matches = n == raw || n == vi32.into();
 					if matches {
 						if ident.name == "AT_FDCWD" {
@@ -886,10 +892,7 @@ impl SyscallItem {
 							if v == raw {
 								ret.push(n.name.clone());
 							}
-						} else if v == raw
-							|| i32::from(v) == raw.twos_complement(32) as i32
-							|| (raw & v) == v
-						{
+						} else if v == raw || i32::from(v) == raw.as_i32() || (raw & v) == v {
 							ret.push(n.name.clone());
 						}
 					}
@@ -1044,8 +1047,7 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 			// .filter(|x| {x.name.subname.is_empty() /*&& value.consts.find_sysno(&x.name.name, &syzarch).is_some() */ })
 			.map(|func| {
 				if let Some(sysno) = value.consts.find_sysno(&func.name.name, &crate::syzarch()) {
-					let ins =
-						Syscall::new(func.name.name, sysno.into(), func.args, func.output);
+					let ins = Syscall::new(func.name.name, sysno.into(), func.args, func.output);
 					Some((sysno, ins))
 				} else {
 					None

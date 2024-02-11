@@ -1,6 +1,9 @@
 //! Architecture-specific code
 use serde::{Deserialize, Serialize};
 
+// Syscall table for different architectures
+// <https://stackoverflow.com/a/38906005>
+
 use crate::{Registers, Result, TargetPtr};
 
 #[cfg(target_arch = "aarch64")]
@@ -22,9 +25,20 @@ pub trait RegsAbiAccess {
 	fn get_retval(&self, regs: &Registers) -> TargetPtr;
 	fn set_retval(&self, regs: &mut Registers, val: TargetPtr);
 	fn get_arg(&self, regs: &Registers, num: usize) -> Result<TargetPtr>;
-	fn get_arg_ext(&self, regs: &Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr>;
+	fn get_arg_ext(
+		&self,
+		regs: &Registers,
+		num: usize,
+		client: &mut crate::Client,
+	) -> Result<TargetPtr>;
 	fn set_arg(&self, regs: &mut Registers, num: usize, val: TargetPtr) -> Result<()>;
-	fn set_arg_ext(&self, regs: &mut Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()>;
+	fn set_arg_ext(
+		&self,
+		regs: &mut Registers,
+		num: usize,
+		client: &mut crate::Client,
+		val: TargetPtr,
+	) -> Result<()>;
 	fn set_reg_call_tramp(&self, regs: &mut Registers, val: TargetPtr);
 	fn call_trampoline(&self, code: &mut Vec<u8>);
 }
@@ -56,6 +70,7 @@ pub(crate) fn prep_syscall<T>(regs: &mut T, sysno: usize, args: &[TargetPtr]) ->
 where
 	T: WriteRegisters,
 {
+	log::trace!("sysno {sysno} | args {args:?}");
 	regs.set_sysno(sysno);
 	for (i, arg) in args.iter().enumerate() {
 		regs.set_arg_syscall(i, *arg);

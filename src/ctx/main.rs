@@ -51,6 +51,13 @@ where
 		};
 		Ok(ctx)
 	}
+
+	#[cfg(not(target_arch = "arm"))]
+	/// Spawn from a process in memory
+	///
+	/// **NB!** This is disabled on arm, because we do not receive the the Exec
+	/// notification. Unsure why this bug happens, but disabled until it's
+	/// figured out.
 	pub fn spawn_in_mem<S: Into<String>, V: Into<Vec<String>>>(
 		name: S,
 		elf: Vec<u8>,
@@ -73,15 +80,15 @@ where
 
 		let mut ctx = ctx::Secondary::new_master(client, data, req)?;
 
-		let args = ArgsBuilder::new()
-			.handle_exec()
-			.finish()?;
+		let args = ArgsBuilder::new().handle_exec().finish()?;
 		ctx.client_mut().set_config(args)?;
 		let tid = ctx.get_first_stopped()?;
 		let old = ctx.run_until_exec()?;
 		assert!(tid == old);
 
-		let mainloc = ctx.proc.exact_match_path("/memfd:rust_exec (deleted)")?
+		let mainloc = ctx
+			.proc
+			.exact_match_path("/memfd:rust_exec (deleted)")?
 			.expect("unable to location of main binary");
 
 		ctx.set_main_exe(mainloc.addr(), elf)?;

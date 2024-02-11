@@ -1,5 +1,5 @@
 //! Code specific to x86_64
-//! 
+//!
 //! ABI is here: <https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-1.0.pdf>
 
 use serde::{Deserialize, Serialize};
@@ -95,7 +95,8 @@ impl crate::arch::ReadRegisters for user_regs_struct {
 			4 => self.r8,
 			5 => self.r9,
 			_ => crate::bug!("tried to get syscall arg nr {nr}"),
-		}.into()
+		}
+		.into()
 	}
 	fn ret_syscall(&self) -> crate::TargetPtr {
 		self.rax.into()
@@ -155,7 +156,12 @@ impl super::RegsAbiAccess for super::SystemV {
 		Ok(r.into())
 	}
 
-	fn get_arg_ext(&self, regs: &crate::Registers, num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
+	fn get_arg_ext(
+		&self,
+		regs: &crate::Registers,
+		num: usize,
+		client: &mut crate::Client,
+	) -> Result<TargetPtr> {
 		crate::bug!("get_arg_ext on SystemV not supported")
 	}
 
@@ -173,7 +179,13 @@ impl super::RegsAbiAccess for super::SystemV {
 		Ok(())
 	}
 
-	fn set_arg_ext(&self, regs: &mut crate::Registers, num: usize, client: &mut crate::Client, val: TargetPtr) -> Result<()> {
+	fn set_arg_ext(
+		&self,
+		regs: &mut crate::Registers,
+		num: usize,
+		client: &mut crate::Client,
+		val: TargetPtr,
+	) -> Result<()> {
 		crate::bug!("set_arg_ext on SystemV not supported")
 	}
 
@@ -187,7 +199,6 @@ impl super::RegsAbiAccess for super::SystemV {
 		code.extend_from_slice(&SW_BP);
 	}
 }
-
 
 pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
 	code.extend_from_slice(&NOP);

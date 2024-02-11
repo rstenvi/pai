@@ -127,11 +127,10 @@ pub(crate) struct BuildInfo {
 	githash: Option<String>,
 }
 
-
 #[cfg(test)]
 mod test {
-	use std::str::FromStr;
 	use super::*;
+	use std::str::FromStr;
 
 	#[test]
 	fn buildinfo() {
@@ -141,7 +140,10 @@ mod test {
 		assert_eq!(BuildArch::from_str("Aarch64").unwrap(), BuildArch::Aarch64);
 		assert!(BuildArch::from_str("qwert").is_err());
 
-		assert_eq!(BuildEndian::from_str("little").unwrap(), BuildEndian::Little);
+		assert_eq!(
+			BuildEndian::from_str("little").unwrap(),
+			BuildEndian::Little
+		);
 		assert!(BuildEndian::from_str("qwert").is_err());
 
 		assert_eq!(BuildOs::from_str("lInux").unwrap(), BuildOs::Linux);

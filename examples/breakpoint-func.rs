@@ -8,8 +8,7 @@ fn main() -> anyhow::Result<()> {
 	let stopped = sec.run_until_entry()?;
 	assert_eq!(stopped.expect("didn't hit breakpoint"), entry);
 
-	let v = sec.lookup_symbol("sleep")?
-		.expect("unable to find sleep");
+	let v = sec.lookup_symbol("sleep")?.expect("unable to find sleep");
 	println!("{v:?}");
 	let tid = sec.get_first_stopped()?;
 

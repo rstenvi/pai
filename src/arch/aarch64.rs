@@ -1,9 +1,9 @@
 //! Code specific to Aarch64
-//! 
+//!
 //! ABI is here: <https://github.com/ARM-software/abi-aa>
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, api::CallFrame, TargetPtr};
+use crate::{api::CallFrame, Result, TargetPtr};
 
 // rasm2 -a arm -b 64 "brk #0"
 pub(crate) const SW_BP: [u8; 4] = [0x00, 0x00, 0x20, 0xd4];
@@ -47,42 +47,53 @@ impl CallFrame {
 	}
 }
 impl super::RegsAbiAccess for super::SystemV {
-    fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
-        regs.regs[0].into()
-    }
+	fn get_retval(&self, regs: &crate::Registers) -> TargetPtr {
+		regs.regs[0].into()
+	}
 
-    fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        regs.regs[0] = val.into();
-    }
+	fn set_retval(&self, regs: &mut crate::Registers, val: TargetPtr) {
+		regs.regs[0] = val.into();
+	}
 
-    fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
-        assert!(num < 8);
-        Ok(regs.regs[num].into())
-    }
-
-    fn get_arg_ext(&self, _regs: &crate::Registers, _num: usize, client: &mut crate::Client) -> Result<TargetPtr> {
-        crate::bug!("set_arg_ext on SystemV not supported")
-    }
-
-    fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
+	fn get_arg(&self, regs: &crate::Registers, num: usize) -> Result<TargetPtr> {
 		assert!(num < 8);
-        regs.regs[num] = val.into();
+		Ok(regs.regs[num].into())
+	}
+
+	fn get_arg_ext(
+		&self,
+		_regs: &crate::Registers,
+		_num: usize,
+		client: &mut crate::Client,
+	) -> Result<TargetPtr> {
+		crate::bug!("set_arg_ext on SystemV not supported")
+	}
+
+	fn set_arg(&self, regs: &mut crate::Registers, num: usize, val: TargetPtr) -> Result<()> {
+		assert!(num < 8);
+		regs.regs[num] = val.into();
 		Ok(())
-    }
+	}
 
-    fn set_arg_ext(&self, _regs: &mut crate::Registers, _num: usize, _client: &mut crate::Client, val: TargetPtr) -> Result<()> {
-        crate::bug!("set_arg_ext on SystemV not supported")
-    }
+	fn set_arg_ext(
+		&self,
+		_regs: &mut crate::Registers,
+		_num: usize,
+		_client: &mut crate::Client,
+		val: TargetPtr,
+	) -> Result<()> {
+		crate::bug!("set_arg_ext on SystemV not supported")
+	}
 
-    fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
-        regs.regs[9] = val.into();
-    }
+	fn set_reg_call_tramp(&self, regs: &mut crate::Registers, val: TargetPtr) {
+		regs.regs[9] = val.into();
+	}
 
-    fn call_trampoline(&self, code: &mut Vec<u8>) {
+	fn call_trampoline(&self, code: &mut Vec<u8>) {
 		code.extend_from_slice(&NOP);
 		code.extend_from_slice(&CALL_TRAMP);
 		code.extend_from_slice(&SW_BP);
-    }
+	}
 }
 
 impl crate::arch::ReadRegisters for user_regs_struct {

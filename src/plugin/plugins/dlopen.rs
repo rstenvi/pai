@@ -84,7 +84,7 @@ impl DlopenDetect {
 		ctx.set_specific_syscall_handler(mmap, |cl, sys| {
 			if sys.is_entry() {
 				let fd = sys.args[4].raw_value();
-				let fd = utils::twos_complement(fd);
+				let fd = fd.as_isize();
 				if let Some(r) = cl.data_mut().mmapped.get_mut(&fd) {
 					r.mmapped += 1;
 				}
@@ -108,7 +108,7 @@ impl DlopenDetect {
 							let tid = event.tid.unwrap_or(0);
 							let event = EventInner::Dlopen { fname };
 							let event = Event::new_attached(tid, event);
-							log::warn!("sending dlopen event {event:?}");
+							log::debug!("sending dlopen event {event:?}");
 							cl.client_mut().send_event(event)?;
 						}
 					}

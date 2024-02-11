@@ -2,20 +2,22 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{arch::{RegsAbiAccess, SystemV}, utils::process::Tid, Client, Result, TargetPtr};
 use super::{Command, Response};
+use crate::{
+	arch::{RegsAbiAccess, SystemV},
+	utils::process::Tid,
+	Client, Result, TargetPtr,
+};
 
 macro_rules! arg_as_signed {
-	($t:ty, $tt:ty) => {
+	($t:ty) => {
 		paste::paste! {
 			pub fn [<as_$t>](&self) -> $t {
-				crate::utils::twos_complement((Into::<$tt>::into(self.raw)).into()) as $t
+				self.raw.[<as_$t>]()
 			}
 		}
-		
 	};
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CallLocation {
@@ -39,10 +41,16 @@ impl CallFrameArg {
 	pub fn read_ptr_as_str(&self, client: &mut Client) -> Result<String> {
 		todo!();
 	}
-	arg_as_signed! { i8, u8 }
-	arg_as_signed! { i16, u16 }
-	arg_as_signed! { i32, u32 }
-	arg_as_signed! { i64, u64 }
+	arg_as_signed! { i8 }
+	arg_as_signed! { i16 }
+	arg_as_signed! { i32 }
+	arg_as_signed! { i64 }
+	arg_as_signed! { isize }
+	arg_as_signed! { u8 }
+	arg_as_signed! { u16 }
+	arg_as_signed! { u32 }
+	arg_as_signed! { u64 }
+	arg_as_signed! { usize }
 	// pub fn as_i8(&self) -> i8 {
 	// 	crate::utils::twos_complement(self.raw as u8 as TargetPtr) as i8
 	// }
@@ -76,7 +84,7 @@ impl CallFrame {
 			cc,
 		}
 	}
-	
+
 	pub fn arg(&self, idx: usize, client: &mut crate::Client) -> Result<CallFrameArg> {
 		let val = if let Ok(val) = self.cc.get_arg(&self.regs, idx) {
 			val
@@ -108,7 +116,7 @@ mod test {
 		assert_eq!(arg.as_i32(), 0);
 
 		let arg = CallFrameArg::new(u64::MAX.into());
-		assert_eq!(arg.raw(), u64::MAX.into());
+		assert_eq!(arg.raw(), usize::MAX.into());
 		assert_eq!(arg.as_i16(), -1);
 		assert_eq!(arg.as_i64(), -1);
 

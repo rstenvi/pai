@@ -42,7 +42,7 @@ impl Files {
 			let fname = sys.args[1].raw_value();
 			let fname = cl.client_mut().read_c_string(sys.tid, fname)?;
 			let fd = sys.output_as_raw();
-			let fd = utils::twos_complement(fd);
+			let fd = fd.as_isize();
 			if fd > 0 {
 				log::debug!("'{fname}' -> {fd}");
 				cl.data_mut().opened.insert(fd, fname.clone());
@@ -57,7 +57,7 @@ impl Files {
 		ctx.set_specific_syscall_handler(close, |cl, sys| {
 			debug_assert!(sys.is_exit());
 			let fd = sys.args[0].raw_value();
-			let fd = utils::twos_complement(fd);
+			let fd = fd.as_isize();
 			let close = cl.data_mut().opened.remove(&fd);
 			if let Some(fname) = close {
 				let tid = sys.tid;

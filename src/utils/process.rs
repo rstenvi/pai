@@ -158,7 +158,8 @@ impl Process {
 		Ok(r)
 	}
 	pub fn proc_modules_contains(&self, s: &str) -> Result<Vec<MemoryMap>> {
-		let r = self.proc_modules()?
+		let r = self
+			.proc_modules()?
 			.into_iter()
 			.filter(|x| x.path_contains(s))
 			.collect();
@@ -169,10 +170,7 @@ impl Process {
 	}
 	pub fn exact_match_path<P: Into<PathBuf>>(&self, path: P) -> Result<Option<Location>> {
 		let path: PathBuf = path.into();
-		let mut r = self.maps()?
-			.into_iter()
-			.filter(|x| x.path_is(&path) )
-			;
+		let mut r = self.maps()?.into_iter().filter(|x| x.path_is(&path));
 		let ret = if let Some(first) = r.next() {
 			let start = first.loc.addr();
 			let end = if let Some(last) = r.last() {

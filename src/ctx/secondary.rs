@@ -31,7 +31,8 @@ pub type SignalCb<T, Err> = fn(&mut Secondary<T, Err>, nix::sys::signal::Signal)
 pub type SyscallCb<T, Err> = fn(&mut Secondary<T, Err>, SyscallItem) -> Result<()>;
 
 pub type BreakpointCb<T, Err> = fn(&mut Secondary<T, Err>, Tid, TargetPtr) -> Result<bool>;
-pub type HookEntryCb<T, Err> = fn(&mut Secondary<T, Err>, &CallFrame) -> Result<(bool, Option<TargetPtr>)>;
+pub type HookEntryCb<T, Err> =
+	fn(&mut Secondary<T, Err>, &CallFrame) -> Result<(bool, Option<TargetPtr>)>;
 pub type HookExitCb<T, Err> = fn(&mut Secondary<T, Err>, &CallFrame) -> Result<Option<TargetPtr>>;
 
 pub type EventCb<T, Err> = fn(&mut Secondary<T, Err>, Event) -> Result<()>;
@@ -117,7 +118,7 @@ where
 			stoppedcb: None,
 			raw_syscall_cb: None,
 			stepcb: None,
-			cc
+			cc,
 		};
 		Ok(r)
 	}
@@ -173,25 +174,9 @@ where
 		let ctx = Secondary::new_second(client, data)?;
 		Ok(ctx)
 	}
-	pub(crate) fn new_master(
-		client: crate::Client,
-		data: T,
-		req: ReqNewClient,
-	) -> Result<Self> {
+	pub(crate) fn new_master(client: crate::Client, data: T, req: ReqNewClient) -> Result<Self> {
 		Self::new(client, data, Some(req))
 	}
-	// fn all_symbols_mod(&self, module: &MemoryMap) -> Result<Vec<ElfSymbol>> {
-	// 	let p = module
-	// 		.path()
-	// 		.ok_or(Error::msg("unable to find path in module"))?;
-	// 	let elf = Elf::new(p, module.loc.addr())?;
-	// 	let r = elf.all_symbols();
-	// 	Ok(r)
-	// }
-	// fn store_symbols(&mut self, path: PathBuf, base: TargetPtr, symbols: Vec<ElfSymbol>) {
-	// 	let mods = ModuleSymbols::new(path.clone(), base, symbols);
-	// 	self.resolved.insert(path, mods);
-	// }
 
 	/// Get a [MemoryMap] which exactly matches the name in `pbuf`
 	pub fn get_module(&mut self, pbuf: &PathBuf) -> Result<MemoryMap> {
@@ -206,26 +191,6 @@ where
 			)))
 		}
 	}
-	// fn symbols_init(&mut self, pbuf: &PathBuf) -> Result<()> {
-	// 	let pbuf = std::fs::canonicalize(pbuf)?;
-	// 	if self.resolved.get(&pbuf).is_some() {
-	// 		log::info!("already gathered symbols for '{pbuf:?}'");
-	// 		Ok(())
-	// 	} else {
-	// 		log::info!("symbols for {pbuf:?} not retrieved, gathering");
-	// 		let mods = self.proc.proc_modules()?;
-	// 		let mut mods: Vec<_> = mods.iter().filter(|x| x.file_name_matches(&pbuf)).collect();
-	// 		if mods.len() == 1 {
-	// 			let m = mods.remove(0);
-	// 			let mods = self.all_symbols_mod(m)?;
-	// 			self.store_symbols(pbuf.clone(), m.loc.addr(), mods);
-	// 			Ok(())
-	// 		} else {
-	// 			let msg = format!("found no modules matching {pbuf:?}");
-	// 			Err(Error::msg(msg))
-	// 		}
-	// 	}
-	// }
 
 	/// Try and locate the symbol `name` in any of the loaded executables.
 	///
@@ -250,27 +215,14 @@ where
 		Ok(None)
 	}
 	fn ensure_elf_exists(&mut self, pbuf: &PathBuf) -> Result<()> {
-		let loc = self.proc.exact_match_path(pbuf)?
-				.ok_or(Error::msg("unable to find path"))?;
+		let loc = self
+			.proc
+			.exact_match_path(pbuf)?
+			.ok_or(Error::msg("unable to find path"))?;
 		let elf = Elf::new(pbuf, loc.addr())?;
 		self.resolved.insert(pbuf.clone(), elf);
 		Ok(())
 	}
-	// fn resolve_pathbuf(&self, path: &PathBuf) -> Result<&ModuleSymbols> {
-	// 	self.resolved
-	// 		.get(path)
-	// 		.ok_or(Error::msg(format!("found no modules matching '{path:?}'")))
-	// }
-	// fn _resolve_symbol(&mut self, pbuf: &PathBuf, name: &str, maxattempts: usize) -> Result<Option<ElfSymbol>> {
-	// 	if let Some(n) = self.resolved.get(pbuf) {
-	// 		Ok(n.resolve(name))
-	// 	} else if maxattempts > 0 {
-			
-	// 		self._resolve_symbol(pbuf, name, maxattempts)
-	// 	} else {
-	// 		Err(Error::msg("unable to resolve symbol"))
-	// 	}
-	// }
 
 	/// Resolve a given symbol `name` in a given module with path `pbuf`
 	pub fn resolve_symbol(&mut self, pbuf: &PathBuf, name: &str) -> Result<Option<ElfSymbol>> {
@@ -279,11 +231,6 @@ where
 		log::info!("resolving  in {pbuf:?}");
 		let elf = self.resolved.get(&pbuf).ok_or(Error::Unknown)?;
 		Ok(elf.resolve(name))
-		// self.symbols_init(&pbuf)?;
-		// let res = self.resolve_pathbuf(&pbuf)?;
-		// log::info!("already gathered symbols for '{pbuf:?}'");
-		// let sym = res.resolve(name).cloned();
-		// Ok(sym)
 	}
 
 	/// Enumerate all symbols of the given type. See [SymbolType] for more
@@ -296,25 +243,12 @@ where
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		self.ensure_elf_exists(&pbuf)?;
 		let elf = self.resolved.get(&pbuf).ok_or(Error::Unknown)?;
-		Ok(
-			elf.all_symbols()
-				.iter()
-				.filter(|x| x.stype == symtype)
-				.cloned()
-				.collect()
-		)
-
-		// todo!();
-		// let pbuf = std::fs::canonicalize(pbuf)?;
-		// self.symbols_init(&pbuf)?;
-		// let res = self.resolve_pathbuf(&pbuf)?;
-		// let r: Vec<_> = res
-		// 	.symbols
-		// 	.values()
-		// 	.filter(|x| x.stype == symtype)
-		// 	.cloned()
-		// 	.collect();
-		// Ok(r)
+		Ok(elf
+			.all_symbols()
+			.iter()
+			.filter(|x| x.stype == symtype)
+			.cloned()
+			.collect())
 	}
 	pub fn symbols_functions(&mut self, pbuf: &PathBuf) -> Result<Vec<ElfSymbol>> {
 		self.symbols_of_type(pbuf, SymbolType::Func)
@@ -454,7 +388,6 @@ where
 		}
 	}
 
-
 	/// Should only be used when the client is fully remote and cannot call the
 	/// functions directly
 	fn handle_client_cmd(&mut self, _tid: Tid, cmd: ClientCmd) -> Result<Response> {
@@ -515,7 +448,6 @@ where
 		Ok(*n)
 	}
 	fn _resolve_entry(&mut self, exe: &PathBuf, maxattempts: usize) -> Result<TargetPtr> {
-		
 		if let Some(elf) = self.resolved.get(exe) {
 			Ok(elf.entry())
 		} else if maxattempts > 0 {
@@ -555,7 +487,7 @@ where
 		self.cc.set_reg_call_tramp(&mut regs, addr);
 		self.client.set_libc_regs(tid, regs)?;
 		self.client.run_until_trap(tid)?;
-		
+
 		let regs = self.client.get_libc_regs(tid)?;
 		let ret = self.cc.get_retval(&regs);
 
@@ -581,19 +513,37 @@ where
 	pub fn set_generic_syscall_handler(&mut self, cb: SyscallCb<T, Err>) {
 		self.syscallcb = Some(cb);
 	}
-	pub fn register_function_hook(&mut self, tid: Tid, addr: TargetPtr, cbentry: HookEntryCb<T, Err>, cbexit: HookExitCb<T, Err>) -> Result<()> {
+	pub fn register_function_hook(
+		&mut self,
+		tid: Tid,
+		addr: TargetPtr,
+		cbentry: HookEntryCb<T, Err>,
+		cbexit: HookExitCb<T, Err>,
+	) -> Result<()> {
 		self.client.insert_bp(tid, addr)?;
 		self.funcentrycbs.insert(addr, (cbentry, cbexit));
 		Ok(())
 	}
-	pub fn register_function_hook_entry(&mut self, tid: Tid, addr: TargetPtr, cbentry: HookEntryCb<T, Err>) -> Result<()> {
+	pub fn register_function_hook_entry(
+		&mut self,
+		tid: Tid,
+		addr: TargetPtr,
+		cbentry: HookEntryCb<T, Err>,
+	) -> Result<()> {
 		self.client.insert_bp(tid, addr)?;
-		self.funcentrycbs.insert(addr, (cbentry, Self::empty_hook_func_exit));
+		self.funcentrycbs
+			.insert(addr, (cbentry, Self::empty_hook_func_exit));
 		Ok(())
 	}
-	pub fn register_function_hook_exit(&mut self, tid: Tid, addr: TargetPtr, cbexit: HookExitCb<T, Err>) -> Result<()> {
+	pub fn register_function_hook_exit(
+		&mut self,
+		tid: Tid,
+		addr: TargetPtr,
+		cbexit: HookExitCb<T, Err>,
+	) -> Result<()> {
 		self.client.insert_bp(tid, addr)?;
-		self.funcentrycbs.insert(addr, (Self::empty_hook_func_entry, cbexit));
+		self.funcentrycbs
+			.insert(addr, (Self::empty_hook_func_entry, cbexit));
 		Ok(())
 	}
 	pub fn register_breakpoint_handler(
@@ -662,9 +612,10 @@ where
 					log::error!("bp callback triggered error: '{e:?}' | bp will be removed");
 				}
 			}
-		} else if let Some(mut frame) = std::mem::take( &mut self.callframes.remove(&(tid, addr))) {
+		} else if let Some(mut frame) = std::mem::take(&mut self.callframes.remove(&(tid, addr))) {
 			log::debug!("found function exit BP at {addr:x}");
-			if let Some((entry, exit)) = std::mem::take(&mut self.funcentrycbs.remove(&frame.func)) {
+			if let Some((entry, exit)) = std::mem::take(&mut self.funcentrycbs.remove(&frame.func))
+			{
 				// if let Some(exit) = std::mem::take(&mut exit) {
 
 				// We maintain the same callframe so that the user can parse
@@ -686,11 +637,11 @@ where
 						self.cc.set_retval(&mut regs, ret);
 						// regs.set_ret_systemv(ret);
 						self.client.set_libc_regs(tid, regs)?;
-					},
-					Ok(None) => { },
+					}
+					Ok(None) => {}
 					Err(e) => {
 						log::error!("callback triggered error {e:?}");
-					},
+					}
 				}
 				self.funcentrycbs.insert(frame.func, (entry, exit));
 			}
@@ -710,11 +661,11 @@ where
 					} else {
 						(false, dorem)
 					}
-				},
+				}
 				Err(e) => {
 					log::error!("callback triggered error {e:?}");
 					(true, false)
-				},
+				}
 			};
 			if !skipexit {
 				#[cfg(debug_assertions)]
@@ -834,7 +785,7 @@ where
 
 	pub fn run_until_stop(&mut self) -> Result<Stopped> {
 		log::info!("running until stop");
-		let rsp = self.loop_until(|rsp| Ok(matches!(rsp, Response::Stopped(_))) )?;
+		let rsp = self.loop_until(|rsp| Ok(matches!(rsp, Response::Stopped(_))))?;
 		let stop: Stopped = rsp.try_into()?;
 		Ok(stop)
 	}

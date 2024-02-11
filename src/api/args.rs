@@ -162,7 +162,7 @@ impl Args {
 	fn handles_syscall_exit(&self) -> bool {
 		self.intercept_all_syscalls || !self.syscall_traced.is_empty()
 	}
-	
+
 	#[cfg(feature = "syscalls")]
 	/// Returns true if we handle this syscall or all syscalls
 	fn handles_syscall_sysno(&self, sysno: usize) -> bool {
@@ -298,7 +298,6 @@ impl ClientArgs {
 		}
 	}
 }
-
 
 #[cfg(test)]
 mod test {
