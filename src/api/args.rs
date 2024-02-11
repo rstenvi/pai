@@ -13,6 +13,14 @@ struct Breakpoint {
 	// numhit: usize,
 }
 
+#[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Enrich {
+	#[default]
+	None,
+	Basic,
+	Full,
+}
+
 macro_rules! bool_access {
 	($name:ident) => {
 		pub fn $name(&self, tid: Tid) -> bool {
@@ -73,14 +81,18 @@ impl ArgsBuilder {
 		self.args.sanity_check()?;
 		Ok(self.args)
 	}
-	// #[cfg(feature = "syscalls")]
+	pub fn enrich_default(mut self, enrich: Enrich) -> Self {
+		self.args.enrich_default = enrich;
+		self
+	}
+	pub fn enrich_sysno(mut self, sysno: usize, enrich: Enrich) -> Self {
+		self.args.enrich_sysno.insert(sysno, enrich);
+		self
+	}
 	builder_set_bool! { intercept_all_syscalls }
 
 	#[cfg(feature = "syscalls")]
 	builder_set_bool! { transform_syscalls }
-
-	#[cfg(feature = "syscalls")]
-	builder_set_bool! { enrich_all_syscalls }
 
 	builder_set_bool! { only_notify_syscall_exit }
 	builder_set_bool! { handle_steps }
@@ -89,8 +101,6 @@ impl ArgsBuilder {
 	builder_push_val! { syscall_traced, sysno, usize }
 	builder_push_val! { signal_traced, signal, i32 }
 
-	#[cfg(feature = "syscalls")]
-	builder_push_val! { enrich_syscalls, sysno, usize }
 	builder_push_val! { registered, reg, RegEvent }
 }
 
@@ -109,15 +119,12 @@ pub struct Args {
 
 	handle_exec: bool,
 
+	enrich_default: Enrich,
+	enrich_sysno: HashMap<usize, Enrich>,
+
 	/// If we should transform [Stop::SyscallEnter] and [Stop::SyscallExit] to
 	/// [Event::Syscall]
 	transform_syscalls: bool,
-
-	/// If we should enrich with more detailed data in [Event::Syscall]
-	enrich_all_syscalls: bool,
-
-	/// Specific syscalls we should enrich
-	enrich_syscalls: Vec<usize>,
 
 	/// Only notify when syscall has completed, when used with
 	/// [Self::transform_syscalls], the caller still get all the argument.
@@ -169,8 +176,12 @@ impl Args {
 		self.intercept_all_syscalls || self.syscall_traced.contains(&sysno)
 	}
 	#[cfg(feature = "syscalls")]
-	fn enrich_syscall_sysno(&self, sysno: usize) -> bool {
-		self.enrich_all_syscalls || self.enrich_syscalls.contains(&sysno)
+	fn enrich_syscall_sysno(&self, sysno: usize) -> Enrich {
+		if let Some(enrich) = self.enrich_sysno.get(&sysno) {
+			enrich.clone()
+		} else {
+			self.enrich_default.clone()
+		}
 	}
 	fn handles_signal(&self, signal: i32) -> bool {
 		self.signal_traced.contains(&signal)
@@ -255,9 +266,8 @@ impl ClientArgs {
 	bool_access! { transform_syscalls }
 
 	bool_access! { only_notify_syscall_exit }
-
 	#[cfg(feature = "syscalls")]
-	pub fn enrich_syscall_sysno(&self, tid: Tid, sysno: usize) -> bool {
+	pub fn enrich_syscall_sysno(&self, tid: Tid, sysno: usize) -> Enrich {
 		if let Some(args) = self.threads.get(&tid) {
 			args.enrich_syscall_sysno(sysno)
 		} else {

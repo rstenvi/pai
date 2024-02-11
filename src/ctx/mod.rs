@@ -127,19 +127,22 @@ mod tests {
 	#[cfg(feature = "syscalls")]
 	#[test]
 	fn clientmgr_strace_basic() {
+		use crate::api::args::Enrich;
+
 		let args = ArgsBuilder::new()
 			.intercept_all_syscalls()
 			.transform_syscalls()
+			.enrich_default(Enrich::Basic)
 			.only_notify_syscall_exit()
 			.finish()
 			.unwrap();
 
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
-		sec.set_generic_syscall_handler(|_cl, mut sys| {
-			if sys.is_exit() {
-				let _ = format!("{sys}");
-			}
+		sec.set_generic_syscall_handler(|_cl, sys| {
+			assert!(sys.is_exit());
+			let _sys = format!("{sys}");
+			// log::error!("{sys}");
 			Ok(())
 		});
 
@@ -150,18 +153,18 @@ mod tests {
 	#[cfg(feature = "syscalls")]
 	#[test]
 	fn clientmgr_strace_full() {
+		use crate::api::args::Enrich;
 		let args = ArgsBuilder::new()
 			.intercept_all_syscalls()
 			.transform_syscalls()
-			.enrich_all_syscalls()
+			.enrich_default(Enrich::Full)
 			.only_notify_syscall_exit()
 			.finish()
 			.unwrap();
 
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
-		sec.set_generic_syscall_handler(|cl, mut sys| {
-			// sys.parse_deep(sys.tid, cl, crate::syscalls::Direction::InOut).unwrap();
+		sec.set_generic_syscall_handler(|_cl, sys| {
 			let _sys = format!("{sys}");
 			// log::error!("{sys}");
 			Ok(())

@@ -145,17 +145,26 @@ impl ClientThread {
 		Ok(Some(Response::Event(event)))
 	}
 	#[cfg(feature = "syscalls")]
+	fn enrich(&mut self, sysno: usize, sys: &mut SyscallItem, dir: crate::syscalls::Direction) -> Result<()> {
+		use crate::api::args::Enrich;
+		let enrich = self.args.enrich_syscall_sysno(sys.tid, sysno);
+		match enrich {
+			Enrich::None => {},
+			Enrich::Basic => sys.enrich_values()?,
+			Enrich::Full => sys.parse_deep(sys.tid, &mut self.client, dir)?,
+		}
+		Ok(())
+	}
+	#[cfg(feature = "syscalls")]
 	fn transform_syscall(&mut self, tid: Tid, entry: bool) -> Result<Option<Response>> {
-		use crate::arch::ReadRegisters;
+		use crate::{api::args::Enrich, arch::ReadRegisters, syscalls::Direction};
 		log::trace!("transform syscall {tid} {entry}");
 		let regs = self.client.get_libc_regs(tid)?;
 		if entry {
 			let sysno = regs.sysno();
 			if self.args.handles_syscall_sysno(tid, sysno) {
 				let mut ins = SyscallItem::from_regs(tid, &regs);
-				if self.args.enrich_syscall_sysno(tid, sysno) {
-					ins.parse_deep(tid, &mut self.client, crate::syscalls::Direction::In)?;
-				}
+				self.enrich(sysno, &mut ins, Direction::In)?;
 				let resp = if !self.args.only_notify_syscall_exit(tid) {
 					Some(Response::Syscall(ins.clone()))
 				} else {
@@ -168,9 +177,7 @@ impl ClientThread {
 			}
 		} else if let Some(mut syscall) = self.pending_syscalls.remove(&tid) {
 			syscall.fill_in_output(&regs);
-			if self.args.enrich_syscall_sysno(tid, syscall.sysno) {
-				syscall.parse_deep(tid, &mut self.client, crate::syscalls::Direction::Out)?;
-			}
+			self.enrich(syscall.sysno, &mut syscall, Direction::Out)?;
 			let ret = Some(Response::Syscall(syscall));
 			Ok(ret)
 		} else {
