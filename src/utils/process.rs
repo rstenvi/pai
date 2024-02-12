@@ -49,6 +49,13 @@ impl MemoryMap {
 			_ => false,
 		}
 	}
+	pub fn path_ends_with(&self, name: &str) -> bool {
+		if let Some(path) = self.path() {
+			path.ends_with(name)
+		} else {
+			false
+		}
+	}
 	pub fn path_contains(&self, name: &str) -> bool {
 		match &self.path {
 			MMapPath::Path(p) => p.as_os_str().to_str().unwrap().contains(name),

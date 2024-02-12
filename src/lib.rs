@@ -1,59 +1,9 @@
 //! # Process Analyzer and Instrumenter
 //!
-//! ## Benchmarking and speed
-//!
-//! Speed is not the main goal in the development of this crate, it is however
-//! still recognized as an important attribute of tracing. There are some key
-//! benchmark tests to evaluate speed over time:
-//!
-//! - `bench_baseline_true`
-//!   - Execute the `true` to get a baseline for how long it takes to execute
-//! - `bench_trace_inner` / `bench_trace_outer`
-//!   - Execute program under tracing, but don't do anything
-//!   - Tracing directly at the ptrace-level and at the Context level
-//!   - This is used to measure the overhead of tracing and Context-level code
-//! - `bench_baseline_strace`
-//!   - Execute command under `strace`
-//!   - Gives us something to compare against
-//! - `bench_trace_strace_raw` / `bench_trace_strace_basic` /
-//!   `bench_trace_strace_full`
-//!   - Trace syscalls with various levels of details read about each call
-//!   - If you run these tests, you will likely see a spike in time for
-//!     `bench_trace_strace_full`
-//!     - If you're tracing something time-critical, this is something to be
-//!       aware of.
-//!
-//! ## Architecture
-//!
-//! The crate is logically separated into 4 different components:
-//!
-//! 1. `trace` - currently only `ptrace` in supported
-//! 2. `ctrl` - controls the tracer
-//! 3. Script - program which decides on tracing actions is called client
-//! 4. [ctx] - each client holds a context object to manage the tracee
-//!
-//! ### Tracer
-//!
-//! This is fairly simple and has various low-level operations to read/write
-//! memory, get registers, etc.
-//!
-//! ### Control
-//!
-//! - One control `tracer` which must run on the same thread as the tracer (this
-//!   is a requirement in `ptrace`).
-//! - One control `thread` which is started for each script connected. Since we
-//!   can only have one `main` thread, we offload some work to control `thread`.
-//!
-//! ### Script
-//!
-//! There is generally one main script which is written by the analyst. This is
-//! typically written specifically for a single target to accomplish a specific
-//! purpose. When there are other scripts attached, they are generally referred
-//! to as plugins.
-//!
-//! There are for instance a plugin to detect when `dlopen()` is called. This is
-//! a generic script which could be used in several analysis scenarios.
-//!
+//! ## API
+//! 
+//! Main interface for for controlling the `tracee` is the `Context` objects.
+//! 
 //! ### Context
 //!
 //! This is the interface a script has to control the tracee. It has three
@@ -140,6 +90,29 @@
 //! ```rust
 #![doc = include_str!("../examples/breakpoint-noevent.rs")]
 //! ```
+//! ## Internal stuff
+//! ### Benchmarking and speed
+//!
+//! Speed is not the main goal in the development of this crate, it is however
+//! still recognized as an important attribute of tracing. There are some key
+//! benchmark tests to evaluate speed over time:
+//!
+//! - `bench_baseline_true`
+//!   - Execute the `true` to get a baseline for how long it takes to execute
+//! - `bench_trace_inner` / `bench_trace_outer`
+//!   - Execute program under tracing, but don't do anything
+//!   - Tracing directly at the ptrace-level and at the Context level
+//!   - This is used to measure the overhead of tracing and Context-level code
+//! - `bench_baseline_strace`
+//!   - Execute command under `strace`
+//!   - Gives us something to compare against
+//! - `bench_trace_strace_raw` / `bench_trace_strace_basic` /
+//!   `bench_trace_strace_full`
+//!   - Trace syscalls with various levels of details read about each call
+//!   - If you run these tests, you will likely see a spike in time for
+//!     `bench_trace_strace_full`
+//!     - If you're tracing something time-critical, this is something to be
+//!       aware of.
 
 #![feature(extract_if)]
 #![feature(hash_extract_if)]
@@ -347,6 +320,10 @@ pub type Registers = crate::arch::aarch64::user_regs_struct;
 /// Aarch32 registers the same way they are defined in C
 pub type Registers = crate::arch::aarch32::user_regs_struct;
 
+#[cfg(target_arch = "riscv64")]
+/// x86_64 registers the same way they are defined in C
+pub type Registers = crate::arch::riscv64::user_regs_struct;
+
 /// [api::Client] interface for all non-internal clients.
 pub type Client = crate::api::Client<api::Command, api::Response>;
 
@@ -499,6 +476,10 @@ pub(crate) fn syzarch() -> syzlang_parser::parser::Arch {
 	#[cfg(target_arch = "arm")]
 	{
 		syzlang_parser::parser::Arch::Aarch32
+	}
+	#[cfg(target_arch = "riscv64")]
+	{
+		syzlang_parser::parser::Arch::Riscv64
 	}
 }
 

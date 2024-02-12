@@ -192,6 +192,3 @@ pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
 	code.extend_from_slice(&NOP);
 	code.extend_from_slice(&RET);
 }
-pub(crate) fn as_our_regs(regs: pete::Registers) -> user_regs_struct {
-	regs.into()
-}

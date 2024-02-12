@@ -39,14 +39,16 @@ impl TraceError {
 }
 type TraceResult<T> = std::result::Result<T, TraceError>;
 
-#[cfg(target_arch = "arm")]
-use crate::arch::aarch32::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
-#[cfg(target_arch = "aarch64")]
-use crate::arch::aarch64::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
-#[cfg(target_arch = "x86")]
-use crate::arch::x86::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
-#[cfg(target_arch = "x86_64")]
-use crate::arch::x86_64::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
+use crate::arch::{call_shellcode, ret_shellcode, syscall_shellcode};
+
+// #[cfg(target_arch = "arm")]
+// use crate::arch::aarch32::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
+// #[cfg(target_arch = "aarch64")]
+// use crate::arch::aarch64::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
+// #[cfg(target_arch = "x86")]
+// use crate::arch::x86::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
+// #[cfg(target_arch = "x86_64")]
+// use crate::arch::x86_64::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
 
 impl From<pete::Stop> for Stop {
 	fn from(value: pete::Stop) -> Self {
@@ -821,7 +823,7 @@ impl Tracer {
 		let restoreregs = tracee
 			.registers()
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		let mut regs = as_our_regs(restoreregs);
+		let mut regs: Registers = restoreregs.into();
 
 		// Modify registers to to syscall
 		regs.set_pc(tramp);
@@ -836,11 +838,10 @@ impl Tracer {
 		let mut tracee = self.run_until(tracee, Self::cb_stop_is_bkpt)?;
 
 		// Read register and get return value
-		let regs = as_our_regs(
-			tracee
-				.registers()
-				.map_err(|x| TraceError::new(tracee, x.into()))?,
-		);
+		let regs = tracee
+			.registers()
+			.map_err(|x| TraceError::new(tracee, x.into()))?;
+		let regs: Registers = regs.into();
 		log::trace!("regs after {regs:?}");
 		let ret = regs.ret_syscall();
 
@@ -907,7 +908,8 @@ impl Tracer {
 		let regs = tracee
 			.registers()
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		log::debug!("regs {:?}", as_our_regs(regs));
+
+		// log::debug!("regs {:?}", as_our_regs(regs));
 		self.tracer
 			.restart(tracee, Restart::Continue)
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
@@ -1041,7 +1043,7 @@ impl Tracer {
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
 
 		// Get registers we can modify and prepare mmap() syscall
-		let mut svc_regs = as_our_regs(oregs);
+		let mut svc_regs: Registers = oregs.into();
 		log::debug!("regs {svc_regs:?}");
 
 		// let mut psize: TargetPtr = unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.into();
@@ -1082,7 +1084,7 @@ impl Tracer {
 		let nregs = tracee
 			.registers()
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		let mut svc_regs = as_our_regs(nregs);
+		let mut svc_regs: Registers = nregs.into();
 		let addr = svc_regs.ret_syscall();
 		log::debug!("addr {addr:x}");
 		let naddr: usize = addr.into();

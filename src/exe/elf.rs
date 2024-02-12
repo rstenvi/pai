@@ -114,7 +114,7 @@ pub(crate) struct Elf {
 impl Elf {
 	pub fn new<P: Into<PathBuf>>(path: P, loaded: TargetPtr) -> Result<Self> {
 		let path = path.into();
-		log::info!("creating elf from {path:?}");
+		log::debug!("creating elf from {path:?} @ {loaded:x}");
 		let data = std::fs::read(&path)?;
 		Self::from_bytes(data, loaded)
 	}

@@ -18,6 +18,9 @@ pub mod x86_64;
 #[cfg(target_arch = "x86")]
 pub mod x86;
 
+#[cfg(target_arch = "riscv64")]
+pub mod riscv64;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SystemV;
 
@@ -50,8 +53,6 @@ pub trait ReadRegisters {
 	fn sysno(&self) -> usize;
 	fn arg_syscall(&self, nr: usize) -> TargetPtr;
 	fn ret_syscall(&self) -> TargetPtr;
-	// fn arg_systemv(&self, nr: usize) -> TargetPtr;
-	// fn ret_systemv(&self) -> TargetPtr;
 }
 
 /// Trait to write registers in an architecture-neutral manner
@@ -61,9 +62,6 @@ pub trait WriteRegisters {
 	fn set_sysno(&mut self, pc: usize);
 	fn set_arg_syscall(&mut self, nr: usize, pc: TargetPtr);
 	fn set_ret_syscall(&mut self, ret: TargetPtr);
-	// fn set_arg_systemv(&mut self, nr: usize, arg: TargetPtr);
-	// fn set_ret_systemv(&mut self, ret: TargetPtr);
-	// fn set_call_func(&mut self, addr: TargetPtr);
 }
 
 pub(crate) fn prep_syscall<T>(regs: &mut T, sysno: usize, args: &[TargetPtr]) -> Result<()>
@@ -80,25 +78,58 @@ where
 
 pub(crate) fn bp_code() -> &'static [u8] {
 	#[cfg(target_arch = "aarch64")]
-	{
-		&crate::arch::aarch64::SW_BP
-	}
+	{ &crate::arch::aarch64::SW_BP }
 
 	#[cfg(target_arch = "arm")]
-	{
-		&crate::arch::aarch32::SW_BP
-	}
+	{ &crate::arch::aarch32::SW_BP }
 
 	#[cfg(target_arch = "x86_64")]
-	{
-		&crate::arch::x86_64::SW_BP
-	}
+	{ &crate::arch::x86_64::SW_BP }
 
 	#[cfg(target_arch = "x86")]
-	{
-		&crate::arch::x86::SW_BP
-	}
+	{ &crate::arch::x86::SW_BP }
+
+	#[cfg(target_arch = "riscv64")]
+	{ todo!(); }
 }
+
+pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
+	#[cfg(target_arch = "x86")]
+	{ x86::syscall_shellcode(code) }
+	#[cfg(target_arch = "x86_64")]
+	{ x86_64::syscall_shellcode(code) }
+	#[cfg(target_arch = "arm")]
+	{ arm::syscall_shellcode(code) }
+	#[cfg(target_arch = "aarch64")]
+	{ x86::syscall_shellcode(code) }
+	#[cfg(target_arch = "riscv64")]
+	{ todo!() }
+}
+pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
+	#[cfg(target_arch = "x86")]
+	{ x86::call_shellcode(code) }
+	#[cfg(target_arch = "x86_64")]
+	{ x86_64::call_shellcode(code) }
+	#[cfg(target_arch = "arm")]
+	{ arm::call_shellcode(code) }
+	#[cfg(target_arch = "aarch64")]
+	{ x86::call_shellcode(code) }
+	#[cfg(target_arch = "riscv64")]
+	{ todo!() }
+}
+pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
+	#[cfg(target_arch = "x86")]
+	{ x86::ret_shellcode(code) }
+	#[cfg(target_arch = "x86_64")]
+	{ x86_64::ret_shellcode(code) }
+	#[cfg(target_arch = "arm")]
+	{ arm::ret_shellcode(code) }
+	#[cfg(target_arch = "aarch64")]
+	{ x86::ret_shellcode(code) }
+	#[cfg(target_arch = "riscv64")]
+	{ todo!() }
+}
+
 
 #[cfg(test)]
 mod test {
@@ -107,17 +138,7 @@ mod test {
 
 	#[test]
 	fn test_arch() {
-		#[cfg(target_arch = "x86_64")]
-		let mut r = x86_64::user_regs_struct::default();
-
-		#[cfg(target_arch = "x86")]
-		let mut r = x86::user_regs_struct::default();
-
-		#[cfg(target_arch = "aarch64")]
-		let mut r = aarch64::user_regs_struct::default();
-
-		#[cfg(target_arch = "arm")]
-		let mut r = aarch32::user_regs_struct::default();
+		let mut r = crate::Registers::default();
 
 		assert_eq!(r.pc(), 0.into());
 		r.set_pc(42.into());

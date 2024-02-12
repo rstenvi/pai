@@ -91,6 +91,8 @@ impl BuildTarget {
 			},
 			BuildArch::X86_64 => "x86_64",
 			BuildArch::X86 => "i686",
+			BuildArch::Mips => "mips",
+			BuildArch::RiscV64 => "riscv64",
 		};
 		let abi = match &self.abi {
 			BuildAbi::Undefined => "",
@@ -119,6 +121,8 @@ fn target_triple() -> String {
 		"aarch64" => "aarch64",
 		"arm" => "aarch32",
 		"x86" => "i686",
+		"mips" => "mips",
+		"riscv64" => "riscv64",
 		_ => panic!("unsupported arch {arch}"),
 	};
 	format!("{arch}-{os}")
@@ -315,6 +319,8 @@ fn get_syscall_data(build: &BuildInfo) -> anyhow::Result<String> {
 		BuildArch::Aarch32 => syzlang_parser::parser::Arch::Aarch32,
 		BuildArch::X86_64 => syzlang_parser::parser::Arch::X86_64,
 		BuildArch::X86 => syzlang_parser::parser::Arch::X86,
+		BuildArch::Mips => todo!(),
+		BuildArch::RiscV64 => syzlang_parser::parser::Arch::Riscv64,
 	};
 
 	let data = syzlang_data::linux::PARSED

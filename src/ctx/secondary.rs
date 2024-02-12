@@ -460,6 +460,24 @@ where
 			Err(Error::msg("too many attempts to read exe"))
 		}
 	}
+	pub fn try_find_libc_so(&mut self) -> Result<PathBuf> {
+		let mut mods = self.proc.proc_modules()?
+			.into_iter()
+			.filter(|x| {
+				if let Some(path) = x.path() {
+					path.ends_with("libc.so") || path.ends_with("libc-2.31.so") || path.ends_with("libc.so.6")
+				} else {
+					false
+				}
+			})
+			.collect::<Vec<MemoryMap>>()
+			;
+		if mods.len() == 1 {
+			Ok(mods.remove(0).path().expect("no path after matching path").clone())
+		} else {
+			Err(Error::NotFound)
+		}
+	}
 
 	/// Get entry point of program
 	pub fn resolve_entry(&mut self) -> Result<TargetPtr> {
@@ -530,10 +548,7 @@ where
 		addr: TargetPtr,
 		cbentry: HookEntryCb<T, Err>,
 	) -> Result<()> {
-		self.client.insert_bp(tid, addr)?;
-		self.funcentrycbs
-			.insert(addr, (cbentry, Self::empty_hook_func_exit));
-		Ok(())
+		self.register_function_hook(tid, addr, cbentry, Self::empty_hook_func_exit)
 	}
 	pub fn register_function_hook_exit(
 		&mut self,
@@ -541,10 +556,7 @@ where
 		addr: TargetPtr,
 		cbexit: HookExitCb<T, Err>,
 	) -> Result<()> {
-		self.client.insert_bp(tid, addr)?;
-		self.funcentrycbs
-			.insert(addr, (Self::empty_hook_func_entry, cbexit));
-		Ok(())
+		self.register_function_hook(tid, addr, Self::empty_hook_func_entry, cbexit)
 	}
 	pub fn register_breakpoint_handler(
 		&mut self,
