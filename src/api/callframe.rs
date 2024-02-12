@@ -75,7 +75,7 @@ pub struct CallFrame {
 
 impl CallFrame {
 	pub fn new(tid: Tid, func: TargetPtr, regs: crate::Registers) -> Self {
-		let cc = SystemV::default();
+		let cc = SystemV;
 		Self {
 			tid,
 			regs,

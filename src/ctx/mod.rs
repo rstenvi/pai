@@ -57,32 +57,47 @@ mod tests {
 	#[bench]
 	fn bench_trace_outer(b: &mut Bencher) {
 		clientmgr_basic();
-		b.iter(move || std::hint::black_box(clientmgr_basic()))
+		b.iter(move || {
+			clientmgr_basic();
+			std::hint::black_box(())
+		})
 	}
 
 	#[bench]
 	fn bench_trace_strace_raw(b: &mut Bencher) {
 		clientmgr_strace_raw();
-		b.iter(move || std::hint::black_box(clientmgr_strace_raw()))
+		b.iter(move || {
+			clientmgr_strace_raw();
+			std::hint::black_box(())
+		})
 	}
 	#[cfg(all(feature = "syscalls", target_arch = "x86_64"))]
 	#[bench]
 	fn bench_trace_strace_basic(b: &mut Bencher) {
 		clientmgr_strace_basic();
-		b.iter(move || std::hint::black_box(clientmgr_strace_basic()))
+		b.iter(move || {
+			clientmgr_strace_basic();
+			std::hint::black_box(())
+		})
 	}
 	#[cfg(all(feature = "syscalls", target_arch = "x86_64"))]
 	#[bench]
 	fn bench_trace_strace_full(b: &mut Bencher) {
 		clientmgr_strace_full();
-		b.iter(move || std::hint::black_box(clientmgr_strace_full()))
+		b.iter(move || {
+			clientmgr_strace_full();
+			std::hint::black_box(())
+		})
 	}
 
 	#[cfg(all(feature = "syscalls", target_arch = "x86_64"))]
 	#[bench]
 	fn bench_parsed_syscalls(b: &mut Bencher) {
 		syscalls0();
-		b.iter(|| std::hint::black_box(syscalls0()))
+		b.iter(|| {
+			syscalls0();
+			std::hint::black_box(())
+		})
 	}
 
 	// Disabled on arm just because it's so slow in the emulator
@@ -542,7 +557,7 @@ mod tests {
 			assert!(client.write_bytes(tid, 0x42.into(), vec![0x00]).is_err());
 
 			// This is returning SIGILL on arm
-			let r = client.exec_raw_syscall(tid, usize::MAX.into(), vec![0x00.into()]);
+			let r = client.exec_raw_syscall(tid, usize::MAX, vec![0x00.into()]);
 
 			#[cfg(target_arch = "arm")]
 			{

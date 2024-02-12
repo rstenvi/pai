@@ -83,14 +83,14 @@ impl ElfData {
 
 		let symbols = if let Some(symtab) = &common.symtab {
 			if let Some(dynstr) = sechdrs.get(".strtab") {
-				let strtab = file.section_data_as_strtab(&dynstr)?;
+				let strtab = file.section_data_as_strtab(dynstr)?;
 				Self::symbols(&strtab, symtab)?
 			} else {
 				return Err(Error::msg("found no .strtab"));
 			}
 		} else if let Some(symtab) = &common.dynsyms {
 			if let Some(dynstr) = sechdrs.get(".dynstr") {
-				let strtab = file.section_data_as_strtab(&dynstr)?;
+				let strtab = file.section_data_as_strtab(dynstr)?;
 				Self::symbols(&strtab, symtab)?
 			} else {
 				return Err(Error::msg("found no .dynstr"));
@@ -102,9 +102,9 @@ impl ElfData {
 		let mut relocs = HashMap::new();
 		if let Some(dynsym) = &common.dynsyms {
 			if let Some(rela_plt) = sechdrs.get(".rela.plt") {
-				let relas = file.section_data_as_relas(&rela_plt)?;
+				let relas = file.section_data_as_relas(rela_plt)?;
 				if let Some(dynstr) = sechdrs.get(".dynstr") {
-					let strtab = file.section_data_as_strtab(&dynstr)?;
+					let strtab = file.section_data_as_strtab(dynstr)?;
 					for rela in relas {
 						let sym = dynsym.get(rela.r_sym as usize)?;
 						if let Ok(n) = strtab.get(sym.st_name as usize) {

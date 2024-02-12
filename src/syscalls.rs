@@ -1056,7 +1056,7 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 			.filter(|x| x.is_some())
 			.map(|x| {
 				let r = x.expect("impossible");
-				(r.0.into(), r.1)
+				(r.0, r.1)
 			})
 			.collect::<HashMap<_, _>>();
 		Ok(Self { syscalls })

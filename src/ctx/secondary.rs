@@ -147,7 +147,7 @@ where
 		let resolved = HashMap::new();
 		let funcentrycbs = HashMap::new();
 		let callframes = HashMap::new();
-		let cc = Box::new(SystemV::default());
+		let cc = Box::new(SystemV);
 		let args = ArgsBuilder::default();
 		let gothooks = HashMap::new();
 
@@ -376,10 +376,7 @@ where
 			));
 		}
 		let exepath = self.proc.exe_path()?;
-		let loc = self
-			.proc
-			.exact_match_path(&exepath)?
-			.ok_or(Error::Unknown)?;
+		let loc = self.proc.exact_match_path(exepath)?.ok_or(Error::Unknown)?;
 		let lazylink = if loc.contains(before) {
 			log::warn!("overriding in-file link, we will be overwritten on next resolve");
 			true

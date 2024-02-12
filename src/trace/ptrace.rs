@@ -130,7 +130,7 @@ impl Tracer {
 		let scratch = HashMap::new();
 		let lastaction = HashMap::new();
 		let pendingswbps = HashMap::new();
-		let cc = Box::new(SystemV::default());
+		let cc = Box::new(SystemV);
 		let trampcode = Self::default_trampcode();
 		let s = Self {
 			proc,
@@ -859,7 +859,7 @@ impl Tracer {
 
 		// Modify registers to to syscall
 		regs.set_pc(tramp);
-		prep_syscall(&mut regs, sysno, args).map_err(|x| TraceError::new(tracee, x.into()))?;
+		prep_syscall(&mut regs, sysno, args).map_err(|x| TraceError::new(tracee, x))?;
 
 		// Write registers to tracee
 		tracee
@@ -951,7 +951,7 @@ impl Tracer {
 			.map_err(|x| TraceError::new(tracee, x.into()))?
 		{
 			log::trace!("run_until: got stop {:?} {:?}", tracee.pid, tracee.stop);
-			if dostop(&tracee.stop).map_err(|x| TraceError::new(tracee, x.into()))? {
+			if dostop(&tracee.stop).map_err(|x| TraceError::new(tracee, x))? {
 				return Ok(tracee);
 			} else {
 				match &tracee.stop {
@@ -1053,7 +1053,7 @@ impl Tracer {
 		// our syscall tramp to that region
 		let exespace = self
 			.find_executable_space()
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee, x))?;
 		let shellcode = self
 			.trampcode
 			.get(&TrampType::Syscall)
@@ -1063,7 +1063,7 @@ impl Tracer {
 			.read_memory(exespace.into(), len)
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
 		tracee
-			.write_memory(exespace.into(), &shellcode)
+			.write_memory(exespace.into(), shellcode)
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
 		log::debug!("wrote executable memory {exespace:x} | {shellcode:?}");
 
@@ -1100,7 +1100,7 @@ impl Tracer {
 		];
 		log::debug!("mmap args {mmap_args:?}");
 		prep_syscall(&mut svc_regs, sysno as usize, &mmap_args)
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee, x))?;
 
 		log::debug!("regs2 {svc_regs:?}");
 		tracee
@@ -1116,7 +1116,7 @@ impl Tracer {
 		let nregs = tracee
 			.registers()
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		let mut svc_regs: Registers = nregs.into();
+		let svc_regs: Registers = nregs.into();
 		let addr = svc_regs.ret_syscall();
 		log::debug!("addr {addr:x}");
 		let naddr: usize = addr.into();

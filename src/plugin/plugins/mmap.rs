@@ -51,7 +51,7 @@ impl Mmap {
 		if let Ok(mmap2) = mmap2 {
 			ctx.set_syscall_hook_exit(mmap2, |cl, sys| {
 				debug_assert!(sys.is_exit());
-				let event = Self::gen_mmap(&sys, true)?;
+				let event = Self::gen_mmap(sys, true)?;
 				cl.client_mut().send_event(event)?;
 				Ok(CbAction::None)
 			});
@@ -59,7 +59,7 @@ impl Mmap {
 
 		ctx.set_syscall_hook_exit(mmap, |cl, sys| {
 			debug_assert!(sys.is_exit());
-			let event = Self::gen_mmap(&sys, true)?;
+			let event = Self::gen_mmap(sys, true)?;
 			cl.client_mut().send_event(event)?;
 			Ok(CbAction::None)
 		});
