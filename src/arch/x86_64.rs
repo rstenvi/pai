@@ -158,9 +158,9 @@ impl super::RegsAbiAccess for super::SystemV {
 
 	fn get_arg_ext(
 		&self,
-		regs: &crate::Registers,
-		num: usize,
-		client: &mut crate::Client,
+		_regs: &crate::Registers,
+		_num: usize,
+		_client: &mut crate::Client,
 	) -> Result<TargetPtr> {
 		crate::bug!("get_arg_ext on SystemV not supported")
 	}
@@ -181,10 +181,10 @@ impl super::RegsAbiAccess for super::SystemV {
 
 	fn set_arg_ext(
 		&self,
-		regs: &mut crate::Registers,
-		num: usize,
-		client: &mut crate::Client,
-		val: TargetPtr,
+		_regs: &mut crate::Registers,
+		_num: usize,
+		_client: &mut crate::Client,
+		_val: TargetPtr,
 	) -> Result<()> {
 		crate::bug!("set_arg_ext on SystemV not supported")
 	}

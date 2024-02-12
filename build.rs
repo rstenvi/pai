@@ -352,6 +352,7 @@ fn acquire_lock(scratch: &Path) -> anyhow::Result<File> {
 	lock.push("build.lock");
 	let lock = std::fs::OpenOptions::new()
 		.create(true)
+		.truncate(true)
 		.write(true)
 		.open(lock)
 		.unwrap();

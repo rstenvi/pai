@@ -38,7 +38,7 @@ impl CallFrameArg {
 	pub fn raw(&self) -> TargetPtr {
 		self.raw
 	}
-	pub fn read_ptr_as_str(&self, client: &mut Client) -> Result<String> {
+	pub fn read_ptr_as_str(&self, _client: &mut Client) -> Result<String> {
 		todo!();
 	}
 	arg_as_signed! { i8 }

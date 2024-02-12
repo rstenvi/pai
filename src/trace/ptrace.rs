@@ -579,8 +579,7 @@ impl Tracer {
 		output: &mut Vec<u8>,
 	) -> Result<()> {
 		const READSZ: usize = 32;
-		let mut data = Vec::with_capacity(READSZ);
-		data.resize(READSZ, 0);
+		let mut data = vec![0; READSZ];
 
 		let mut done = false;
 		while !done {
@@ -937,10 +936,9 @@ impl Tracer {
 		dostop: fn(&pete::Stop) -> Result<bool>,
 	) -> TraceResult<Tracee> {
 		log::debug!("entered run_until");
-		let regs = tracee
-			.registers()
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
-
+		// let regs = tracee
+		// 	.registers()
+		// 	.map_err(|x| TraceError::new(tracee, x.into()))?;
 		// log::debug!("regs {:?}", as_our_regs(regs));
 		self.tracer
 			.restart(tracee, Restart::Continue)
@@ -1024,13 +1022,13 @@ impl Tracer {
 			pete::Stop::Group { signal: _ } => todo!(),
 			pete::Stop::SyscallEnter => todo!(),
 			pete::Stop::SyscallExit => todo!(),
-			pete::Stop::Clone { new } => todo!(),
-			pete::Stop::Fork { new } => todo!(),
-			pete::Stop::Exec { old } => todo!(),
-			pete::Stop::Exiting { exit_code } => todo!(),
-			pete::Stop::Vfork { new } => todo!(),
-			pete::Stop::VforkDone { new } => todo!(),
-			pete::Stop::Seccomp { data } => todo!(),
+			pete::Stop::Clone { new: _ } => todo!(),
+			pete::Stop::Fork { new: _ } => todo!(),
+			pete::Stop::Exec { old: _ } => todo!(),
+			pete::Stop::Exiting { exit_code: _ } => todo!(),
+			pete::Stop::Vfork { new: _ } => todo!(),
+			pete::Stop::VforkDone { new: _ } => todo!(),
+			pete::Stop::Seccomp { data: _ } => todo!(),
 		}
 	}
 	fn find_executable_space(&self) -> Result<TargetPtr> {

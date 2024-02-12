@@ -15,7 +15,7 @@ fn main() -> anyhow::Result<()> {
 	println!("{v:?}");
 	let tid = sec.get_first_stopped()?;
 
-	sec.register_function_hook_entry(tid, v.value, |cl, frame| {
+	sec.register_function_hook_entry(tid, v.value, |_cl, _frame| {
 		println!("hit func");
 		Ok(CbAction::None)
 	})?;

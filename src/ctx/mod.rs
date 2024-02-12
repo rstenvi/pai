@@ -233,7 +233,7 @@ mod tests {
 			Ok(CbAction::None)
 		});
 
-		let (rsp, count) = ctx.loop_until_exit().unwrap();
+		let (_rsp, count) = ctx.loop_until_exit().unwrap();
 
 		// We don't know how many we will hit, but should always hit some
 		assert!(count > 0);
