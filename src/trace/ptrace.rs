@@ -465,10 +465,7 @@ impl Tracer {
 			}
 
 			log::trace!("returning breakpoint");
-			let stop = Stop::Breakpoint {
-				pc,
-				clients,
-			};
+			let stop = Stop::Breakpoint { pc, clients };
 			Some(stop)
 		} else if let Some(Cont::Step) = self.lastaction.get(&tid) {
 			let ret = Stop::Step { pc };
@@ -535,7 +532,12 @@ impl Tracer {
 	// 	Ok(())
 	// }
 
-	fn _alloc_and_write_bp(&mut self, cid: usize, tid: Tid, maxattemts: usize) -> Result<TargetPtr> {
+	fn _alloc_and_write_bp(
+		&mut self,
+		cid: usize,
+		tid: Tid,
+		maxattemts: usize,
+	) -> Result<TargetPtr> {
 		let prot = Perms::new().read().exec();
 		let bp = arch::bp_code();
 		let len = bp.len();

@@ -13,10 +13,10 @@ mod tests {
 	use test::Bencher;
 
 	use crate::api::messages::BpRet;
-#[cfg(feature = "syscalls")]
-	use crate::syscalls::Syscalls;
 	#[cfg(feature = "syscalls")]
 	use crate::api::{args::Enrich, messages::CbAction};
+	#[cfg(feature = "syscalls")]
+	use crate::syscalls::Syscalls;
 
 	#[cfg(all(feature = "syscalls", feature = "plugins"))]
 	use crate::api::messages::EventInner;
@@ -274,7 +274,8 @@ mod tests {
 			Main::spawn_in_mem("waitpid", waitpid, pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 
-		let args = sec.take_args_builder()
+		let args = sec
+			.take_args_builder()
 			.push_registered(RegEvent::Clone)
 			.push_registered(RegEvent::Attached);
 		sec.set_args_builder(args);
@@ -310,7 +311,8 @@ mod tests {
 			Main::spawn_in_mem("forkwait", forkwait, pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 
-		let args = sec.take_args_builder()
+		let args = sec
+			.take_args_builder()
 			.push_registered(RegEvent::Attached)
 			.push_registered(RegEvent::Fork);
 		sec.set_args_builder(args);
@@ -456,12 +458,12 @@ mod tests {
 		let mut ctx: Main<usize, crate::Error> =
 			Main::new_spawn(std::process::Command::new("true"), 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
-		let args = sec.take_args_builder()
+		let args = sec
+			.take_args_builder()
 			.push_registered(RegEvent::Files)
 			.push_registered(RegEvent::Prctl)
 			.push_registered(RegEvent::Mmap)
-			.push_registered(RegEvent::Dlopen)
-			;
+			.push_registered(RegEvent::Dlopen);
 		sec.set_args_builder(args);
 
 		sec.new_plugin(&Plugin::Files, false).unwrap();
@@ -502,9 +504,7 @@ mod tests {
 		let pargs = vec!["true".to_string()];
 		let mut ctx: Main<usize, crate::Error> = Main::new_main(false, pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
-		let args = sec.take_args_builder()
-			.push_registered(RegEvent::Files)
-			;
+		let args = sec.take_args_builder().push_registered(RegEvent::Files);
 		sec.set_args_builder(args);
 		let tid = sec.get_first_stopped().unwrap();
 		{

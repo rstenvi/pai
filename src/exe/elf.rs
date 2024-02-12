@@ -5,7 +5,12 @@ use crate::{
 	Error, Result, TargetPtr,
 };
 use elf::{
-	endian::AnyEndian, relocation::Rela, section::SectionHeader, string_table::StringTable, symbol::{Symbol, SymbolTable}, ElfBytes
+	endian::AnyEndian,
+	relocation::Rela,
+	section::SectionHeader,
+	string_table::StringTable,
+	symbol::{Symbol, SymbolTable},
+	ElfBytes,
 };
 use std::{collections::HashMap, path::PathBuf};
 
@@ -62,18 +67,19 @@ impl ElfData {
 			.expect("shdrs offsets should be valid");
 		let (shdrs, strtab) = (
 			shdrs_opt.expect("Should have shdrs"),
-			strtab_opt.expect("Should have strtab")
+			strtab_opt.expect("Should have strtab"),
 		);
 		let sechdrs: HashMap<&str, SectionHeader> = shdrs
 			.iter()
 			.map(|shdr| {
 				(
-					strtab.get(shdr.sh_name as usize).expect("Failed to get section name"),
+					strtab
+						.get(shdr.sh_name as usize)
+						.expect("Failed to get section name"),
 					shdr,
 				)
 			})
 			.collect();
-
 
 		let symbols = if let Some(symtab) = &common.symtab {
 			if let Some(dynstr) = sechdrs.get(".strtab") {
@@ -92,7 +98,6 @@ impl ElfData {
 		} else {
 			Vec::new()
 		};
-
 
 		let mut relocs = HashMap::new();
 		if let Some(dynsym) = &common.dynsyms {
@@ -113,7 +118,11 @@ impl ElfData {
 		}
 
 		let entry = file.ehdr.e_entry.into();
-		let r = Self { symbols, entry, relocs };
+		let r = Self {
+			symbols,
+			entry,
+			relocs,
+		};
 		Ok(r)
 	}
 	pub fn resolve(&self, name: &str) -> Option<ElfSymbol> {
@@ -168,7 +177,9 @@ impl Elf {
 		Ok(self)
 	}
 	pub fn resolve_got(&self, name: &str) -> Option<TargetPtr> {
-		self.data.relocs.get(name)
+		self.data
+			.relocs
+			.get(name)
 			.map(|x| self.loaded + (*x).into())
 	}
 	pub fn resolve(&self, name: &str) -> Option<ElfSymbol> {

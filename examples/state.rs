@@ -11,8 +11,10 @@ fn main() -> anyhow::Result<()> {
 		Ok(CbAction::None)
 	});
 	#[cfg(not(feature = "syscalls"))]
-	println!("program will do noting without 'syscalls' \
-		feature enabled, run: cargo run --features=syscalls --example state");
+	println!(
+		"program will do noting without 'syscalls' \
+		feature enabled, run: cargo run --features=syscalls --example state"
+	);
 
 	let (_, count) = ctx.loop_until_exit()?;
 	println!("hit {count} syscalls");

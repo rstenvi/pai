@@ -240,7 +240,9 @@ impl Process {
 	}
 	pub fn addr_is_in_maps(&self, addr: TargetPtr) -> Result<bool> {
 		let addr: u64 = addr.into();
-		let count = self.proc.maps()?
+		let count = self
+			.proc
+			.maps()?
 			.into_iter()
 			.filter(|x| {
 				let (start, end) = x.address;

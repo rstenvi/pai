@@ -78,58 +78,97 @@ where
 
 pub(crate) fn bp_code() -> &'static [u8] {
 	#[cfg(target_arch = "aarch64")]
-	{ &crate::arch::aarch64::SW_BP }
+	{
+		&crate::arch::aarch64::SW_BP
+	}
 
 	#[cfg(target_arch = "arm")]
-	{ &crate::arch::aarch32::SW_BP }
+	{
+		&crate::arch::aarch32::SW_BP
+	}
 
 	#[cfg(target_arch = "x86_64")]
-	{ &crate::arch::x86_64::SW_BP }
+	{
+		&crate::arch::x86_64::SW_BP
+	}
 
 	#[cfg(target_arch = "x86")]
-	{ &crate::arch::x86::SW_BP }
+	{
+		&crate::arch::x86::SW_BP
+	}
 
 	#[cfg(target_arch = "riscv64")]
-	{ todo!(); }
+	{
+		todo!();
+	}
 }
 
 pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
 	#[cfg(target_arch = "x86")]
-	{ x86::syscall_shellcode(code) }
+	{
+		x86::syscall_shellcode(code)
+	}
 	#[cfg(target_arch = "x86_64")]
-	{ x86_64::syscall_shellcode(code) }
+	{
+		x86_64::syscall_shellcode(code)
+	}
 	#[cfg(target_arch = "arm")]
-	{ arm::syscall_shellcode(code) }
+	{
+		arm::syscall_shellcode(code)
+	}
 	#[cfg(target_arch = "aarch64")]
-	{ x86::syscall_shellcode(code) }
+	{
+		x86::syscall_shellcode(code)
+	}
 	#[cfg(target_arch = "riscv64")]
-	{ todo!() }
+	{
+		todo!()
+	}
 }
 pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
 	#[cfg(target_arch = "x86")]
-	{ x86::call_shellcode(code) }
+	{
+		x86::call_shellcode(code)
+	}
 	#[cfg(target_arch = "x86_64")]
-	{ x86_64::call_shellcode(code) }
+	{
+		x86_64::call_shellcode(code)
+	}
 	#[cfg(target_arch = "arm")]
-	{ arm::call_shellcode(code) }
+	{
+		arm::call_shellcode(code)
+	}
 	#[cfg(target_arch = "aarch64")]
-	{ x86::call_shellcode(code) }
+	{
+		x86::call_shellcode(code)
+	}
 	#[cfg(target_arch = "riscv64")]
-	{ todo!() }
+	{
+		todo!()
+	}
 }
 pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
 	#[cfg(target_arch = "x86")]
-	{ x86::ret_shellcode(code) }
+	{
+		x86::ret_shellcode(code)
+	}
 	#[cfg(target_arch = "x86_64")]
-	{ x86_64::ret_shellcode(code) }
+	{
+		x86_64::ret_shellcode(code)
+	}
 	#[cfg(target_arch = "arm")]
-	{ arm::ret_shellcode(code) }
+	{
+		arm::ret_shellcode(code)
+	}
 	#[cfg(target_arch = "aarch64")]
-	{ x86::ret_shellcode(code) }
+	{
+		x86::ret_shellcode(code)
+	}
 	#[cfg(target_arch = "riscv64")]
-	{ todo!() }
+	{
+		todo!()
+	}
 }
-
 
 #[cfg(test)]
 mod test {

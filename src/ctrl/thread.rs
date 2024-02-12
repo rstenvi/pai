@@ -145,11 +145,16 @@ impl ClientThread {
 		Ok(Some(Response::Event(event)))
 	}
 	#[cfg(feature = "syscalls")]
-	fn enrich(&mut self, sysno: usize, sys: &mut SyscallItem, dir: crate::syscalls::Direction) -> Result<()> {
+	fn enrich(
+		&mut self,
+		sysno: usize,
+		sys: &mut SyscallItem,
+		dir: crate::syscalls::Direction,
+	) -> Result<()> {
 		use crate::api::args::Enrich;
 		let enrich = self.args.enrich_syscall_sysno(sys.tid, sysno);
 		match enrich {
-			Enrich::None => {},
+			Enrich::None => {}
 			Enrich::Basic => sys.enrich_values()?,
 			Enrich::Full => sys.parse_deep(sys.tid, &mut self.client, dir)?,
 		}

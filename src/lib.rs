@@ -1,9 +1,9 @@
 //! # Process Analyzer and Instrumenter
 //!
 //! ## API
-//! 
+//!
 //! Main interface for for controlling the `tracee` is the `Context` objects.
-//! 
+//!
 //! ### Context
 //!
 //! This is the interface a script has to control the tracee. It has three
@@ -171,7 +171,16 @@ cast_signed! { u64, i64 }
 cast_signed! { usize, isize }
 
 #[derive(
-	Copy, Clone, PartialEq, PartialOrd, Default, Debug, Eq, Hash, serde::Deserialize, serde::Serialize,
+	Copy,
+	Clone,
+	PartialEq,
+	PartialOrd,
+	Default,
+	Debug,
+	Eq,
+	Hash,
+	serde::Deserialize,
+	serde::Serialize,
 )]
 pub struct TargetPtr {
 	raw: usize,

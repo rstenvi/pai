@@ -124,7 +124,10 @@ impl ArgsBuilder {
 		Self::default()
 	}
 	pub fn new_dirty() -> Self {
-		Self { args: Args::default(), dirty: true }
+		Self {
+			args: Args::default(),
+			dirty: true,
+		}
 	}
 	pub fn finish(self) -> Result<Args> {
 		self.args.sanity_check()?;
@@ -136,7 +139,9 @@ impl ArgsBuilder {
 		self.dirty = false;
 		Ok(args)
 	}
-	pub fn is_dirty(&self) -> bool { self.dirty }
+	pub fn is_dirty(&self) -> bool {
+		self.dirty
+	}
 	pub fn enrich_default(mut self, enrich: Enrich) -> Self {
 		if enrich != self.args.enrich_default {
 			self.args.enrich_default = enrich;
@@ -154,9 +159,7 @@ impl ArgsBuilder {
 		let v = self.args.enrich_sysno.insert(sysno, enrich.clone());
 
 		// Only set dirty flag if we actually made a change
-		let dirty = if let Some(e) = v {
-			e != enrich
-		} else { true };
+		let dirty = if let Some(e) = v { e != enrich } else { true };
 
 		self.dirty = dirty;
 		self

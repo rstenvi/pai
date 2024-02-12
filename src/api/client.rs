@@ -330,7 +330,12 @@ where
 	client_read_int! { read_u128, u128 }
 	client_read_int! { read_i128, i128 }
 
-	pub fn write_int<T: num_traits::ops::bytes::ToBytes>(&mut self, tid: Tid, addr: TargetPtr, val: T) -> Result<usize> {
+	pub fn write_int<T: num_traits::ops::bytes::ToBytes>(
+		&mut self,
+		tid: Tid,
+		addr: TargetPtr,
+		val: T,
+	) -> Result<usize> {
 		let bytes = val.to_ne_bytes().as_ref().to_vec();
 		let cmd = RemoteCmd::write_bytes(tid, addr, bytes);
 		self.wr_value_remote(cmd)

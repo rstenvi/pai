@@ -32,8 +32,7 @@ pub type SignalCb<T, Err> = fn(&mut Secondary<T, Err>, nix::sys::signal::Signal)
 pub type SyscallCb<T, Err> = fn(&mut Secondary<T, Err>, SyscallItem) -> Result<()>;
 
 pub type BreakpointCb<T, Err> = fn(&mut Secondary<T, Err>, Tid, TargetPtr) -> Result<BpRet>;
-pub type HookEntryCb<T, Err> =
-	fn(&mut Secondary<T, Err>, &CallFrame) -> Result<CbAction>;
+pub type HookEntryCb<T, Err> = fn(&mut Secondary<T, Err>, &CallFrame) -> Result<CbAction>;
 pub type HookExitCb<T, Err> = fn(&mut Secondary<T, Err>, &CallFrame) -> Result<CbAction>;
 
 #[cfg(feature = "syscalls")]
@@ -41,17 +40,16 @@ pub type SyscallEntryCb<T, Err> = fn(&mut Secondary<T, Err>, &SyscallItem) -> Re
 #[cfg(feature = "syscalls")]
 pub type SyscallExitCb<T, Err> = fn(&mut Secondary<T, Err>, &SyscallItem) -> Result<CbAction>;
 
-
 pub type EventCb<T, Err> = fn(&mut Secondary<T, Err>, Event) -> Result<()>;
 pub type StoppedCb<T, Err> = fn(&mut Secondary<T, Err>, Stopped) -> Result<()>;
 pub type RawSyscallCb<T, Err> = fn(&mut Secondary<T, Err>, Tid, bool) -> Result<()>;
 pub type StepCb<T, Err> =
 	fn(&mut Secondary<T, Err>, Tid, TargetPtr) -> std::result::Result<(), Err>;
 
-
 struct GotHook<T, Err>
-	where
-		Err: Into<crate::Error>, {
+where
+	Err: Into<crate::Error>,
+{
 	real: TargetPtr,
 	fake: TargetPtr,
 	lazylink: bool,
@@ -59,13 +57,25 @@ struct GotHook<T, Err>
 	frame: Option<CallFrame>,
 }
 impl<T, Err> GotHook<T, Err>
-	where 
-		Err: Into<crate::Error>, {
-	pub fn new(real: TargetPtr, fake: TargetPtr, lazylink: bool, func: Callback<HookEntryCb<T, Err>, HookExitCb<T, Err>>,) -> Self {
-		Self { real, fake, lazylink, func, frame: None }
+where
+	Err: Into<crate::Error>,
+{
+	pub fn new(
+		real: TargetPtr,
+		fake: TargetPtr,
+		lazylink: bool,
+		func: Callback<HookEntryCb<T, Err>, HookExitCb<T, Err>>,
+	) -> Self {
+		Self {
+			real,
+			fake,
+			lazylink,
+			func,
+			frame: None,
+		}
 	}
 }
-struct Callback<Entry,Exit> {
+struct Callback<Entry, Exit> {
 	pub entry: Entry,
 	pub exit: Exit,
 }
@@ -75,7 +85,6 @@ impl<Entry, Exit> Callback<Entry, Exit> {
 		Self { entry, exit }
 	}
 }
-
 
 /// Each connected client will get access  to this context object.
 ///
@@ -220,7 +229,7 @@ where
 	}
 
 	/// Take ownership over the [ArgsBuilder].
-	/// 
+	///
 	/// This is usually done to make more custom changes to it, you probably
 	/// want to call [Self::set_args_builder] afterwards so that we still keep
 	/// track of changes.
@@ -320,13 +329,32 @@ where
 		let elf = self.resolved.get(&pbuf).ok_or(Error::NotFound)?;
 		elf.resolve_got(name).ok_or(Error::NotFound)
 	}
-	pub fn hook_got_entry(&mut self, tid: Tid, pbuf: &PathBuf, name: &str, cbentry: HookEntryCb<T, Err>) -> Result<()> {
+	pub fn hook_got_entry(
+		&mut self,
+		tid: Tid,
+		pbuf: &PathBuf,
+		name: &str,
+		cbentry: HookEntryCb<T, Err>,
+	) -> Result<()> {
 		self.hook_got(tid, pbuf, name, cbentry, Self::empty_hook_func_exit)
 	}
-	pub fn hook_got_exit(&mut self, tid: Tid, pbuf: &PathBuf, name: &str, cbexit: HookExitCb<T, Err>) -> Result<()> {
+	pub fn hook_got_exit(
+		&mut self,
+		tid: Tid,
+		pbuf: &PathBuf,
+		name: &str,
+		cbexit: HookExitCb<T, Err>,
+	) -> Result<()> {
 		self.hook_got(tid, pbuf, name, Self::empty_hook_func_entry, cbexit)
 	}
-	pub fn hook_got(&mut self, tid: Tid, pbuf: &PathBuf, name: &str, cbentry: HookEntryCb<T, Err>, cbexit: HookExitCb<T, Err>) -> Result<()> {
+	pub fn hook_got(
+		&mut self,
+		tid: Tid,
+		pbuf: &PathBuf,
+		name: &str,
+		cbentry: HookEntryCb<T, Err>,
+		cbexit: HookExitCb<T, Err>,
+	) -> Result<()> {
 		// A couple of different states the GOT entry can be in:
 		// - Completely unlinked (contains offset from start of current file)
 		//   - Could either to lazy linking of pre-linking in the future
@@ -339,19 +367,25 @@ where
 		// Main problem being that anything we write before linking will be
 		// overwritten.
 
-
 		let addr = self.resolve_symbol_got(pbuf, name)?;
 		let before = self.client.read_u64(tid, addr)?;
 		let before: TargetPtr = before.into();
 		if !self.proc.addr_is_in_maps(before)? {
-			return Err(Error::msg("hooking GOT before linking is not (yet) supported, run until EXE entry point"));
+			return Err(Error::msg(
+				"hooking GOT before linking is not (yet) supported, run until EXE entry point",
+			));
 		}
 		let exepath = self.proc.exe_path()?;
-		let loc = self.proc.exact_match_path(&exepath)?.ok_or(Error::Unknown)?;
+		let loc = self
+			.proc
+			.exact_match_path(&exepath)?
+			.ok_or(Error::Unknown)?;
 		let lazylink = if loc.contains(before) {
 			log::warn!("overriding in-file link, we will be overwritten on next resolve");
 			true
-		} else { false };
+		} else {
+			false
+		};
 
 		let bpaddr = self.client.alloc_and_write_bp(tid)?;
 		self.client.write_int(tid, addr, usize::from(bpaddr))?;
@@ -596,19 +630,26 @@ where
 		}
 	}
 	pub fn try_find_libc_so(&mut self) -> Result<PathBuf> {
-		let mut mods = self.proc.proc_modules()?
+		let mut mods = self
+			.proc
+			.proc_modules()?
 			.into_iter()
 			.filter(|x| {
 				if let Some(path) = x.path() {
-					path.ends_with("libc.so") || path.ends_with("libc-2.31.so") || path.ends_with("libc.so.6")
+					path.ends_with("libc.so")
+						|| path.ends_with("libc-2.31.so")
+						|| path.ends_with("libc.so.6")
 				} else {
 					false
 				}
 			})
-			.collect::<Vec<MemoryMap>>()
-			;
+			.collect::<Vec<MemoryMap>>();
 		if mods.len() == 1 {
-			Ok(mods.remove(0).path().expect("no path after matching path").clone())
+			Ok(mods
+				.remove(0)
+				.path()
+				.expect("no path after matching path")
+				.clone())
 		} else {
 			Err(Error::NotFound)
 		}
@@ -673,7 +714,11 @@ where
 		self.args.set_enrich_default(enrich);
 	}
 	#[cfg(feature = "syscalls")]
-	pub fn set_generic_syscall_handler(&mut self, cbentry: SyscallEntryCb<T, Err>, cbexit: SyscallExitCb<T, Err>) {
+	pub fn set_generic_syscall_handler(
+		&mut self,
+		cbentry: SyscallEntryCb<T, Err>,
+		cbexit: SyscallExitCb<T, Err>,
+	) {
 		self.syscallcb = Some(Callback::new(cbentry, cbexit));
 		self.args.set_intercept_all_syscalls(true);
 		self.args.set_transform_syscalls(true);
@@ -687,8 +732,14 @@ where
 		self.set_generic_syscall_handler(Self::empty_hook_syscall_entry, cbexit)
 	}
 	#[cfg(feature = "syscalls")]
-	pub fn set_syscall_hook(&mut self, sysno: usize, cbentry: SyscallEntryCb<T, Err>, cbexit: SyscallExitCb<T, Err>) {
-		self.syscallcbs.insert(sysno, Callback::new(cbentry, cbexit));
+	pub fn set_syscall_hook(
+		&mut self,
+		sysno: usize,
+		cbentry: SyscallEntryCb<T, Err>,
+		cbexit: SyscallExitCb<T, Err>,
+	) {
+		self.syscallcbs
+			.insert(sysno, Callback::new(cbentry, cbexit));
 		self.args.add_syscall_traced(sysno);
 		self.args.set_transform_syscalls(true);
 	}
@@ -709,7 +760,8 @@ where
 		cbexit: HookExitCb<T, Err>,
 	) -> Result<()> {
 		self.client.insert_bp(tid, addr)?;
-		self.funcentrycbs.insert(addr, Callback::new(cbentry, cbexit));
+		self.funcentrycbs
+			.insert(addr, Callback::new(cbentry, cbexit));
 		Ok(())
 	}
 	pub fn register_function_hook_entry(
@@ -762,12 +814,10 @@ where
 				(cb.exit)(self, &syscall)
 			};
 			let remove = match ret {
-				Ok(action) => {
-					match action {
-						CbAction::None => false,
-						CbAction::Remove => true,
-						CbAction::EarlyRet { ret: _ } => todo!(),
-					}
+				Ok(action) => match action {
+					CbAction::None => false,
+					CbAction::Remove => true,
+					CbAction::EarlyRet { ret: _ } => todo!(),
 				},
 				Err(e) => {
 					log::error!("syscall callback on {sysno} returned error: {e:?}");
@@ -784,17 +834,15 @@ where
 				(cb.exit)(self, &syscall)
 			};
 			let remove = match ret {
-				Ok(action) => {
-					match action {
-						CbAction::None => false,
-						CbAction::Remove => true,
-						CbAction::EarlyRet { ret: _ } => todo!(),
-					}
-				}
+				Ok(action) => match action {
+					CbAction::None => false,
+					CbAction::Remove => true,
+					CbAction::EarlyRet { ret: _ } => todo!(),
+				},
 				Err(e) => {
 					log::warn!("syscall cb resulted in error: '{e:?}'");
 					false
-				},
+				}
 			};
 			if remove {
 				self.args.set_intercept_all_syscalls(false);
@@ -832,8 +880,7 @@ where
 			}
 		} else if let Some(mut frame) = std::mem::take(&mut self.callframes.remove(&(tid, addr))) {
 			log::debug!("found function exit BP at {addr:x}");
-			if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&frame.func))
-			{
+			if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&frame.func)) {
 				// if let Some(exit) = std::mem::take(&mut exit) {
 
 				// We maintain the same callframe so that the user can parse
@@ -850,16 +897,14 @@ where
 				let retval = self.cc.get_retval(&regs);
 				frame.set_output(retval);
 				match (cb.exit)(self, &frame) {
-					Ok(action) => {
-						match action {
-							CbAction::None => {},
-							CbAction::Remove => todo!(),
-							CbAction::EarlyRet { ret } => {
-								self.cc.set_retval(&mut regs, ret);
-								self.client.set_libc_regs(tid, regs)?;
-							},
+					Ok(action) => match action {
+						CbAction::None => {}
+						CbAction::Remove => todo!(),
+						CbAction::EarlyRet { ret } => {
+							self.cc.set_retval(&mut regs, ret);
+							self.client.set_libc_regs(tid, regs)?;
 						}
-					}
+					},
 					Err(e) => {
 						log::error!("callback triggered error {e:?}");
 					}
@@ -872,36 +917,34 @@ where
 			let mut frame = CallFrame::new(tid, addr, regs);
 			let retaddr = frame.return_addr(&mut self.client)?;
 			let (skipexit, remove) = match (cb.entry)(self, &frame) {
-				Ok(action) => {
-					match action {
-						CbAction::None => (false, false),
-						CbAction::Remove => (true, true),
-						CbAction::EarlyRet { ret } => {
-							self.cc.set_retval(&mut frame.regs, ret);
-							frame.set_output(ret);
-							self.client.set_libc_regs(tid, frame.regs.clone())?;
-							self.client.exec_ret(tid)?;
-							let rem2 = match (cb.exit)(self, &frame) {
-								Ok(a) => {
-									match a {
-										CbAction::None => false,
-										CbAction::Remove => true,
-										CbAction::EarlyRet { ret: _ } => {
-											log::warn!("got second early ret, but already parsed from entry");
-											false
-										},
-									}
-								},
-								Err(e) => {
-									log::error!("got error on exit callback {e:?}");
+				Ok(action) => match action {
+					CbAction::None => (false, false),
+					CbAction::Remove => (true, true),
+					CbAction::EarlyRet { ret } => {
+						self.cc.set_retval(&mut frame.regs, ret);
+						frame.set_output(ret);
+						self.client.set_libc_regs(tid, frame.regs.clone())?;
+						self.client.exec_ret(tid)?;
+						let rem2 = match (cb.exit)(self, &frame) {
+							Ok(a) => match a {
+								CbAction::None => false,
+								CbAction::Remove => true,
+								CbAction::EarlyRet { ret: _ } => {
+									log::warn!(
+										"got second early ret, but already parsed from entry"
+									);
 									false
-								},
-							};
+								}
+							},
+							Err(e) => {
+								log::error!("got error on exit callback {e:?}");
+								false
+							}
+						};
 
-							(true, rem2)
-						},
+						(true, rem2)
 					}
-				}
+				},
 				Err(e) => {
 					log::error!("callback triggered error {e:?}");
 					(true, false)
@@ -919,25 +962,22 @@ where
 		} else if let Some(mut got) = self.gothooks.remove(&addr) {
 			log::debug!("hit gothook {addr:x} | real: {:x}", got.real);
 			let mut regs = self.client.get_libc_regs(tid)?;
-			
-			
+
 			if let Some(mut frame) = std::mem::take(&mut got.frame) {
 				// Function exit
 				log::trace!("got exit");
 				let retval = self.cc.get_retval(&regs);
 				frame.set_output(retval);
 				let ret = (got.func.exit)(self, &frame);
-				
+
 				let ins = match ret {
-					Ok(action) => {
-						match action {
-							CbAction::None => true,
-							CbAction::Remove => false,
-							CbAction::EarlyRet { ret } => {
-								self.cc.set_retval(&mut regs, ret);
-								self.client.set_libc_regs(tid, regs.clone())?;
-								true
-							},
+					Ok(action) => match action {
+						CbAction::None => true,
+						CbAction::Remove => false,
+						CbAction::EarlyRet { ret } => {
+							self.cc.set_retval(&mut regs, ret);
+							self.client.set_libc_regs(tid, regs.clone())?;
+							true
 						}
 					},
 					Err(e) => {
@@ -962,19 +1002,17 @@ where
 				let mut frame = CallFrame::new(tid, addr, regs.clone());
 				let retaddr = frame.return_addr(&mut self.client)?;
 				let ret = (got.func.entry)(self, &frame);
-				
+
 				let ins = match ret {
-					Ok(action) => {
-						match action {
-							CbAction::None => true,
-							CbAction::Remove => false,
-							CbAction::EarlyRet { ret } => {
-								self.cc.set_retval(&mut regs, ret);
-								frame.set_output(ret);
-								self.client.set_libc_regs(tid, regs.clone())?;
-								self.client.exec_ret(tid)?;
-								false
-							},
+					Ok(action) => match action {
+						CbAction::None => true,
+						CbAction::Remove => false,
+						CbAction::EarlyRet { ret } => {
+							self.cc.set_retval(&mut regs, ret);
+							frame.set_output(ret);
+							self.client.set_libc_regs(tid, regs.clone())?;
+							self.client.exec_ret(tid)?;
+							false
 						}
 					},
 					Err(e) => {

@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use pai::{api::{messages::CbAction, Response}, ctx};
+use pai::{
+	api::{messages::CbAction, Response},
+	ctx,
+};
 fn main() -> anyhow::Result<()> {
 	env_logger::init();
 	let cmd = std::process::Command::new("testdata/sleep");
