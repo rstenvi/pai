@@ -1,3 +1,6 @@
 target/
 output/
 core.*
+scripts/images
+scripts/keys
+runner_config.toml
