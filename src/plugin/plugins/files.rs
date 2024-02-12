@@ -1,6 +1,6 @@
 use crate::{
 	api::{
-		messages::{Event, EventInner, RegEvent},
+		messages::{CbAction, Event, EventInner, RegEvent},
 		ArgsBuilder, Client, Command, Response,
 	},
 	ctx,
@@ -29,15 +29,8 @@ impl Files {
 
 		let openat = client.resolve_syscall("openat")?;
 		let close = client.resolve_syscall("close")?;
-		let args = ArgsBuilder::new()
-			.push_syscall_traced(openat)
-			.push_syscall_traced(close)
-			.transform_syscalls()
-			.only_notify_syscall_exit()
-			.finish()?;
 
-		client.set_config(args)?;
-		ctx.set_specific_syscall_handler(openat, |cl, sys| {
+		ctx.set_syscall_hook_exit(openat, |cl, sys| {
 			debug_assert!(sys.is_exit());
 			let fname = sys.args[1].raw_value();
 			let fname = cl.client_mut().read_c_string(sys.tid, fname)?;
@@ -51,10 +44,10 @@ impl Files {
 				let event = Event::new_attached(tid, event);
 				cl.client_mut().send_event(event)?;
 			}
-			Ok(())
+			Ok(CbAction::None)
 		});
 
-		ctx.set_specific_syscall_handler(close, |cl, sys| {
+		ctx.set_syscall_hook_exit(close, |cl, sys| {
 			debug_assert!(sys.is_exit());
 			let fd = sys.args[0].raw_value();
 			let fd = fd.as_isize();
@@ -65,7 +58,7 @@ impl Files {
 				let event = Event::new_attached(tid, event);
 				cl.client_mut().send_event(event)?;
 			}
-			Ok(())
+			Ok(CbAction::None)
 		});
 
 		Ok(ctx)

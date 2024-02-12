@@ -449,11 +449,15 @@ impl Tracer {
 			swbp.hit();
 			tracee.regs.set_pc(pc);
 			tracee.tracee.set_registers(tracee.regs.clone().into())?;
-			tracee
-				.tracee
-				.write_memory(swbp.addr.into(), &swbp.oldcode)?;
 
-			assert!(swbp.should_remove());
+			let clients = swbp.clients.clone();
+			if swbp.should_remove() {
+				tracee
+					.tracee
+					.write_memory(swbp.addr.into(), &swbp.oldcode)?;
+			} else {
+				self.swbps.insert(pc, swbp);
+			}
 
 			#[cfg(target_arch = "arm")]
 			if let Some(Cont::Step) = self.lastaction.get(&tid) {
@@ -463,7 +467,7 @@ impl Tracer {
 			log::trace!("returning breakpoint");
 			let stop = Stop::Breakpoint {
 				pc,
-				clients: swbp.clients,
+				clients,
 			};
 			Some(stop)
 		} else if let Some(Cont::Step) = self.lastaction.get(&tid) {
@@ -531,7 +535,29 @@ impl Tracer {
 	// 	Ok(())
 	// }
 
+	fn _alloc_and_write_bp(&mut self, cid: usize, tid: Tid, maxattemts: usize) -> Result<TargetPtr> {
+		let prot = Perms::new().read().exec();
+		let bp = arch::bp_code();
+		let len = bp.len();
+		if let Some(alloc) = self.scratch.get_mut(&prot) {
+			let addr = alloc.alloc(len)?;
+			self.write_memory(tid, addr, bp)?;
+			let mut bp = SwBp::new_recurr(addr, bp.to_vec());
+			bp.add_client(cid);
+			self.swbps.insert(addr, bp);
+			Ok(addr)
+		} else if maxattemts > 0 {
+			self.alloc_scratch(tid, 4, prot)?;
+			self._alloc_and_write_bp(cid, tid, maxattemts - 1)
+		} else {
+			Err(Error::TooManyAttempts)
+		}
+	}
+	pub fn alloc_and_write_bp(&mut self, cid: usize, tid: Tid) -> Result<TargetPtr> {
+		self._alloc_and_write_bp(cid, tid, 1)
+	}
 	pub fn write_memory(&mut self, tid: Tid, addr: TargetPtr, data: &[u8]) -> Result<usize> {
+		log::debug!("writing {data:?} to {addr:x}");
 		let tracee = self.get_tracee_mut(tid)?;
 		let r = tracee.tracee.write_memory(addr.into(), data)?;
 		Ok(r)
@@ -708,6 +734,15 @@ impl Tracer {
 	fn get_tracee(&self, tid: Tid) -> Result<&TraceStop> {
 		self.tracee.get(&tid).ok_or(Error::tid_not_found(tid))
 	}
+	fn alloc_scratch(&mut self, tid: Tid, pages: usize, prot: Perms) -> Result<Location> {
+		let page_sz = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+		let size = page_sz * pages;
+		let addr = self.exec_sys_anon_mmap(tid, size as usize, prot.clone())?;
+		let loc = Location::new(addr, addr + size.into());
+		let alloc = AllocedMemory::new(loc.clone());
+		self.scratch.insert(prot, alloc);
+		Ok(loc)
+	}
 	fn _scratch_write_bytes(
 		&mut self,
 		tid: Tid,
@@ -721,12 +756,7 @@ impl Tracer {
 				self.write_memory(tid, memory, &bytes)?;
 				Ok(memory)
 			} else {
-				let page_sz = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-				let size = page_sz * 4;
-				let addr = self.exec_sys_anon_mmap(tid, size as usize, prot.clone())?;
-				let loc = Location::new(addr, addr + size.into());
-				let alloc = AllocedMemory::new(loc);
-				self.scratch.insert(prot, alloc);
+				self.alloc_scratch(tid, 4, prot)?;
 				self._scratch_write_bytes(tid, bytes, attempts - 1)
 			}
 		} else {
@@ -989,7 +1019,7 @@ impl Tracer {
 				core_dumped: _,
 			} => Self::signal_is_bkpt(signal),
 			pete::Stop::Attach => todo!(),
-			pete::Stop::Group { signal } => todo!(),
+			pete::Stop::Group { signal: _ } => todo!(),
 			pete::Stop::SyscallEnter => todo!(),
 			pete::Stop::SyscallExit => todo!(),
 			pete::Stop::Clone { new } => todo!(),

@@ -97,7 +97,7 @@ impl CallFrame {
 		Ok(ins)
 	}
 	pub fn retval(&self) -> Result<CallFrameArg> {
-		todo!();
+		self.output.as_ref().cloned().ok_or(crate::Error::NotFound)
 	}
 	pub fn set_output(&mut self, output: TargetPtr) {
 		self.output = Some(CallFrameArg::new(output));

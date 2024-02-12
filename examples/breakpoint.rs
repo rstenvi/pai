@@ -1,4 +1,4 @@
-use pai::{ctx, utils::process::Tid};
+use pai::{api::messages::BpRet, ctx};
 fn main() -> anyhow::Result<()> {
 	env_logger::init();
 	let cmd = std::process::Command::new("true");
@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
 				log::info!("getpid -> {v}");
 				assert!(v == tid.into());
 			}
-			Ok(true) // keep breakpoint, is never hit again
+			Ok(BpRet::Keep) // keep breakpoint, is never hit again
 		})?;
 
 	let (_, res) = ctx.loop_until_exit()?;

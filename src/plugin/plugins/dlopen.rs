@@ -15,7 +15,7 @@
 
 use crate::{
 	api::{
-		messages::{Event, EventInner, RegEvent},
+		messages::{CbAction, Event, EventInner, RegEvent},
 		ArgsBuilder, Client, Command, Response,
 	},
 	ctx,
@@ -73,15 +73,7 @@ impl DlopenDetect {
 
 		let mmap = client.resolve_syscall("mmap")?;
 
-		let args = ArgsBuilder::new()
-			.push_registered(RegEvent::Files)
-			.push_syscall_traced(mmap)
-			.transform_syscalls()
-			.finish()?;
-
-		client.set_config(args)?;
-
-		ctx.set_specific_syscall_handler(mmap, |cl, sys| {
+		ctx.set_syscall_hook_entry(mmap, |cl, sys| {
 			if sys.is_entry() {
 				let fd = sys.args[4].raw_value();
 				let fd = fd.as_isize();
@@ -91,7 +83,7 @@ impl DlopenDetect {
 			} else {
 				// Could check if successful, but not really a point to it
 			}
-			Ok(())
+			Ok(CbAction::None)
 		});
 
 		ctx.set_event_handler(|cl, event| {

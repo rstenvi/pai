@@ -52,6 +52,7 @@
 //! **strace.rs**
 //!
 //! A slightly more complicated example is the strace-like program below.
+//! Enable feature `syscalls` to run it, like: `cargo run --features=syscalls --example strace`
 //!
 //! This is the example [strace.rs](https://github.com/rstenvi/pai/tree/main/examples/strace.rs)
 //!
@@ -170,7 +171,7 @@ cast_signed! { u64, i64 }
 cast_signed! { usize, isize }
 
 #[derive(
-	Copy, Clone, Default, Debug, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize,
+	Copy, Clone, PartialEq, PartialOrd, Default, Debug, Eq, Hash, serde::Deserialize, serde::Serialize,
 )]
 pub struct TargetPtr {
 	raw: usize,

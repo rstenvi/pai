@@ -5,12 +5,9 @@ use crate::{
 	Error, Result, TargetPtr,
 };
 use elf::{
-	endian::AnyEndian,
-	string_table::StringTable,
-	symbol::{Symbol, SymbolTable},
-	ElfBytes,
+	endian::AnyEndian, relocation::Rela, section::SectionHeader, string_table::StringTable, symbol::{Symbol, SymbolTable}, ElfBytes
 };
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Clone)]
 struct IntElfSymbol {
@@ -48,24 +45,45 @@ impl From<IntElfSymbol> for ElfSymbol {
 	}
 }
 
+#[derive(Debug)]
 pub(crate) struct ElfData {
 	entry: TargetPtr,
 	symbols: Vec<IntElfSymbol>,
+	relocs: HashMap<String, u64>,
 }
 
 impl ElfData {
 	pub fn from_bytes(data: Vec<u8>) -> Result<Self> {
 		let file = ElfBytes::<AnyEndian>::minimal_parse(&data)?;
 		let common = file.find_common_data()?;
+
+		let (shdrs_opt, strtab_opt) = file
+			.section_headers_with_strtab()
+			.expect("shdrs offsets should be valid");
+		let (shdrs, strtab) = (
+			shdrs_opt.expect("Should have shdrs"),
+			strtab_opt.expect("Should have strtab")
+		);
+		let sechdrs: HashMap<&str, SectionHeader> = shdrs
+			.iter()
+			.map(|shdr| {
+				(
+					strtab.get(shdr.sh_name as usize).expect("Failed to get section name"),
+					shdr,
+				)
+			})
+			.collect();
+
+
 		let symbols = if let Some(symtab) = &common.symtab {
-			if let Some(dynstr) = file.section_header_by_name(".strtab")? {
+			if let Some(dynstr) = sechdrs.get(".strtab") {
 				let strtab = file.section_data_as_strtab(&dynstr)?;
 				Self::symbols(&strtab, symtab)?
 			} else {
 				return Err(Error::msg("found no .strtab"));
 			}
 		} else if let Some(symtab) = &common.dynsyms {
-			if let Some(dynstr) = file.section_header_by_name(".dynstr")? {
+			if let Some(dynstr) = sechdrs.get(".dynstr") {
 				let strtab = file.section_data_as_strtab(&dynstr)?;
 				Self::symbols(&strtab, symtab)?
 			} else {
@@ -75,8 +93,27 @@ impl ElfData {
 			Vec::new()
 		};
 
+
+		let mut relocs = HashMap::new();
+		if let Some(dynsym) = &common.dynsyms {
+			if let Some(rela_plt) = sechdrs.get(".rela.plt") {
+				let relas = file.section_data_as_relas(&rela_plt)?;
+				if let Some(dynstr) = sechdrs.get(".dynstr") {
+					let strtab = file.section_data_as_strtab(&dynstr)?;
+					for rela in relas {
+						let sym = dynsym.get(rela.r_sym as usize)?;
+						if let Ok(n) = strtab.get(sym.st_name as usize) {
+							if !n.is_empty() {
+								relocs.insert(n.to_string(), rela.r_offset);
+							}
+						}
+					}
+				}
+			}
+		}
+
 		let entry = file.ehdr.e_entry.into();
-		let r = Self { symbols, entry };
+		let r = Self { symbols, entry, relocs };
 		Ok(r)
 	}
 	pub fn resolve(&self, name: &str) -> Option<ElfSymbol> {
@@ -93,7 +130,6 @@ impl ElfData {
 		log::debug!("getting symbols");
 		let mut ret = Vec::new();
 		for sym in symtab.iter() {
-			// log::trace!("sym {sym:?}");
 			if let Ok(n) = strtab.get(sym.st_name as usize) {
 				if !n.is_empty() {
 					let name = n.to_string();
@@ -106,6 +142,7 @@ impl ElfData {
 	}
 }
 
+#[derive(Debug)]
 pub(crate) struct Elf {
 	data: ElfData,
 	loaded: TargetPtr,
@@ -114,19 +151,25 @@ pub(crate) struct Elf {
 impl Elf {
 	pub fn new<P: Into<PathBuf>>(path: P, loaded: TargetPtr) -> Result<Self> {
 		let path = path.into();
-		log::debug!("creating elf from {path:?} @ {loaded:x}");
+		log::info!("creating elf from {path:?} @ {loaded:x}");
 		let data = std::fs::read(&path)?;
 		Self::from_bytes(data, loaded)
 	}
 	pub fn from_bytes(data: Vec<u8>, loaded: TargetPtr) -> Result<Self> {
 		let data = ElfData::from_bytes(data)?;
-		Ok(Self { data, loaded })
+		let r = Self { data, loaded };
+		// log::error!("{r:?}");
+		Ok(r)
 	}
 	pub fn entry(&self) -> TargetPtr {
 		self.data.entry + self.loaded
 	}
 	pub fn parse(self) -> Result<Self> {
 		Ok(self)
+	}
+	pub fn resolve_got(&self, name: &str) -> Option<TargetPtr> {
+		self.data.relocs.get(name)
+			.map(|x| self.loaded + (*x).into())
 	}
 	pub fn resolve(&self, name: &str) -> Option<ElfSymbol> {
 		self.data.resolve(name).map(|mut x| {

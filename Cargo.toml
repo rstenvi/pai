@@ -1,6 +1,6 @@
 [package]
 name = "pai"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 license-file = "LICENSE"
 description = "Process Analyzer and Instrumenter"
@@ -75,6 +75,9 @@ anyhow = "1"
 # Spawn child from in-memory ELF-file
 # Used for testing, but also a feature for users
 memfd-exec = "0.2.1"
+
+# Generics for numbers
+num-traits = "0.2.18"
 
 [build-dependencies]
 # Used to create files in target directory which contains the data

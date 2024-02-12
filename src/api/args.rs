@@ -54,7 +54,14 @@ macro_rules! builder_set_bool {
 	($name:ident) => {
 		pub fn $name(mut self) -> Self {
 			self.args.$name = true;
+			self.dirty = true;
 			self
+		}
+		paste::paste! {
+			pub fn [<set_ $name>](&mut self, value: bool) {
+				self.dirty = true;
+				self.args.$name = value;
+			}
 		}
 	};
 }
@@ -65,8 +72,29 @@ macro_rules! builder_push_val {
 		paste::paste! {
 			pub fn [<push_ $name>](mut self, $arg: $argtype) -> Self {
 				log::trace!("pusing {:?}", $arg);
-				self.args.$name.push($arg);
+				if !self.args.$name.contains(&$arg) {
+					self.dirty = true;
+					self.args.$name.push($arg);
+				}
 				self
+			}
+		}
+		paste::paste! {
+			pub fn [<add_ $name>](&mut self, $arg: $argtype) {
+				log::trace!("pusing {:?}", $arg);
+				if !self.args.$name.contains(&$arg) {
+					self.dirty = true;
+					self.args.$name.push($arg);
+				}
+			}
+		}
+		paste::paste! {
+			pub fn [<remove_ $name>](&mut self, $arg: $argtype) {
+				log::trace!("pusing {:?}", $arg);
+				if let Some(index) = self.args.$name.iter().position(|x| *x == $arg) {
+					self.args.$name.remove(index);
+					self.dirty = true;
+				}
 			}
 		}
 	};
@@ -86,24 +114,51 @@ macro_rules! builder_push_val {
 ///   .expect("unable to construct args");
 ///
 /// ```
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ArgsBuilder {
 	args: Args,
+	dirty: bool,
 }
 impl ArgsBuilder {
 	pub fn new() -> Self {
 		Self::default()
 	}
+	pub fn new_dirty() -> Self {
+		Self { args: Args::default(), dirty: true }
+	}
 	pub fn finish(self) -> Result<Args> {
 		self.args.sanity_check()?;
 		Ok(self.args)
 	}
+	pub fn borrow_finish(&mut self) -> Result<Args> {
+		let args = self.args.clone();
+		args.sanity_check()?;
+		self.dirty = false;
+		Ok(args)
+	}
+	pub fn is_dirty(&self) -> bool { self.dirty }
 	pub fn enrich_default(mut self, enrich: Enrich) -> Self {
-		self.args.enrich_default = enrich;
+		if enrich != self.args.enrich_default {
+			self.args.enrich_default = enrich;
+			self.dirty = true;
+		}
 		self
 	}
+	pub(crate) fn set_enrich_default(&mut self, enrich: Enrich) {
+		if enrich != self.args.enrich_default {
+			self.args.enrich_default = enrich;
+			self.dirty = true;
+		}
+	}
 	pub fn enrich_sysno(mut self, sysno: usize, enrich: Enrich) -> Self {
-		self.args.enrich_sysno.insert(sysno, enrich);
+		let v = self.args.enrich_sysno.insert(sysno, enrich.clone());
+
+		// Only set dirty flag if we actually made a change
+		let dirty = if let Some(e) = v {
+			e != enrich
+		} else { true };
+
+		self.dirty = dirty;
 		self
 	}
 	builder_set_bool! { intercept_all_syscalls }

@@ -1,27 +1,18 @@
-use pai::api::args::ArgsBuilder;
-use pai::ctx;
+use pai::{api::messages::CbAction, ctx};
 fn main() -> anyhow::Result<()> {
-	let args = ArgsBuilder::new();
-
-	#[cfg(feature = "syscalls")]
-	let args = args.intercept_all_syscalls();
-
-	#[cfg(feature = "syscalls")]
-	let args = args.transform_syscalls();
-
-	let args = args.only_notify_syscall_exit().finish()?;
-
 	let cmd = std::process::Command::new("true");
 	let mut ctx: ctx::Main<usize, pai::Error> = ctx::Main::new_spawn(cmd, 0_usize)?;
+	let sec = ctx.secondary_mut();
 
 	#[cfg(feature = "syscalls")]
-	ctx.secondary_mut().set_generic_syscall_handler(|cl, sys| {
-		assert!(sys.is_exit());
+	sec.set_generic_syscall_handler_entry(|cl, sys| {
+		assert!(sys.is_entry());
 		*(cl.data_mut()) += 1;
-		Ok(())
+		Ok(CbAction::None)
 	});
-
-	ctx.secondary_mut().client_mut().set_config(args)?;
+	#[cfg(not(feature = "syscalls"))]
+	println!("program will do noting without 'syscalls' \
+		feature enabled, run: cargo run --features=syscalls --example state");
 
 	let (_, count) = ctx.loop_until_exit()?;
 	println!("hit {count} syscalls");

@@ -51,9 +51,6 @@ impl SimplyfySyscall {
 		let syscall = Syscall::Open { fname };
 		let evt = Self::sys_to_event(sys, syscall);
 		Ok(evt)
-
-		// let flags = sys.args[next].value.raw_value();
-		// let mode = sys.args[next].value.raw_value();
 	}
 	fn gen_mmap(sys: &SyscallItem, istwo: bool) -> Result<Event> {
 		let addr = sys.args[0].raw_value();
@@ -138,23 +135,7 @@ impl SimplyfySyscall {
 		let inargs = data.args.clone();
 		
 		let mut ctx = ctx::Secondary::new_second(client, data)?;
-
-		let mut args = ArgsBuilder::new()
-			.push_registered(RegEvent::Files)
-			.transform_syscalls();
-
-		if inargs.do_mmap {
-			args = Self::do_mmap(&mut ctx, args)?;
-		}
-		if inargs.do_open {
-			args = Self::do_open(&mut ctx, args)?;
-		}
-
-		let args = args
-			.finish()?;
-
-		ctx.client.set_config(args)?;
-
+		todo!();
 
 		Ok(ctx)
 	}

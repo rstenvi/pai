@@ -12,8 +12,11 @@ mod tests {
 	use serial_test::serial;
 	use test::Bencher;
 
-	#[cfg(feature = "syscalls")]
+	use crate::api::messages::BpRet;
+#[cfg(feature = "syscalls")]
 	use crate::syscalls::Syscalls;
+	#[cfg(feature = "syscalls")]
+	use crate::api::{args::Enrich, messages::CbAction};
 
 	#[cfg(all(feature = "syscalls", feature = "plugins"))]
 	use crate::api::messages::EventInner;
@@ -109,68 +112,46 @@ mod tests {
 
 	#[test]
 	fn clientmgr_strace_raw() {
-		let args = ArgsBuilder::new()
-			.intercept_all_syscalls()
-			.finish()
-			.unwrap();
-
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
 
 		sec.set_raw_syscall_handler(|_cl, tid, entry| {
-			let _ = format!("[{tid}]: {entry}");
+			let _sys = format!("[{tid}]: {entry}");
+			// log::error!("{sys}");
 			Ok(())
 		});
-		sec.client_mut().set_config(args).unwrap();
 		ctx.loop_until_exit().unwrap();
 	}
 	#[cfg(feature = "syscalls")]
 	#[test]
 	fn clientmgr_strace_basic() {
-		use crate::api::args::Enrich;
-
-		let args = ArgsBuilder::new()
-			.intercept_all_syscalls()
-			.transform_syscalls()
-			.enrich_default(Enrich::Basic)
-			.only_notify_syscall_exit()
-			.finish()
-			.unwrap();
-
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
-		sec.set_generic_syscall_handler(|_cl, sys| {
+		sec.args_builder_mut().set_only_notify_syscall_exit(true);
+		sec.set_generic_syscall_handler_exit(|_cl, sys| {
 			assert!(sys.is_exit());
 			let _sys = format!("{sys}");
 			// log::error!("{sys}");
-			Ok(())
+			Ok(CbAction::None)
 		});
+		sec.enrich_syscalls(Enrich::Basic);
 
-		sec.client_mut().set_config(args).unwrap();
 		ctx.loop_until_exit().unwrap();
 	}
 
 	#[cfg(feature = "syscalls")]
 	#[test]
 	fn clientmgr_strace_full() {
-		use crate::api::args::Enrich;
-		let args = ArgsBuilder::new()
-			.intercept_all_syscalls()
-			.transform_syscalls()
-			.enrich_default(Enrich::Full)
-			.only_notify_syscall_exit()
-			.finish()
-			.unwrap();
-
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
-		sec.set_generic_syscall_handler(|_cl, sys| {
+		sec.set_generic_syscall_handler_exit(|_cl, sys| {
+			assert!(sys.is_exit());
 			let _sys = format!("{sys}");
 			// log::error!("{sys}");
-			Ok(())
+			Ok(CbAction::None)
 		});
+		sec.enrich_syscalls(Enrich::Basic);
 
-		sec.client_mut().set_config(args).unwrap();
 		ctx.loop_until_exit().unwrap();
 	}
 
@@ -191,7 +172,6 @@ mod tests {
 	#[test]
 	fn clientmgr_step1() {
 		let mut ctx = set_up_int(42).unwrap();
-		let args = ArgsBuilder::new().handle_steps().finish().unwrap();
 
 		let tid = ctx.secondary_mut().get_first_stopped().unwrap();
 		ctx.secondary_mut().set_step_handler(|cl, tid, _pc| {
@@ -205,7 +185,6 @@ mod tests {
 			Ok(())
 		});
 		let client = ctx.secondary_mut().client_mut();
-		client.set_config(args).unwrap();
 		client.step_ins(tid, 1).unwrap();
 
 		// Finally run until exit
@@ -220,33 +199,29 @@ mod tests {
 	#[cfg(feature = "syscalls")]
 	#[test]
 	fn clientmgr_strace0() {
-		let args = ArgsBuilder::new()
-			.intercept_all_syscalls()
-			.transform_syscalls()
-			.finish()
-			.unwrap();
-
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
-		sec.set_generic_syscall_handler(|cl, mut sys| {
+		sec.set_generic_syscall_handler_exit(|cl, sys| {
 			log::debug!("hit cb handler");
-			if sys.is_exit() {
-				format!("{sys}");
-				sys.enrich_values().unwrap();
-				format!("{sys}");
-				sys.parse_deep::<crate::api::Command>(
-					sys.tid,
-					cl.client_mut(),
-					crate::syscalls::Direction::InOut,
-				)
-				.unwrap();
-				let _sys = format!("{sys}");
-			}
-			Ok(())
+			let mut sys = sys.clone();
+			format!("{sys}");
+			sys.enrich_values().unwrap();
+			format!("{sys}");
+			sys.parse_deep::<crate::api::Command>(
+				sys.tid,
+				cl.client_mut(),
+				crate::syscalls::Direction::InOut,
+			)
+			.unwrap();
+			let _sys = format!("{sys}");
+			*(cl.data_mut()) += 1;
+			Ok(CbAction::None)
 		});
 
-		sec.client_mut().set_config(args).unwrap();
-		ctx.loop_until_exit().unwrap();
+		let (rsp, count) = ctx.loop_until_exit().unwrap();
+
+		// We don't know how many we will hit, but should always hit some
+		assert!(count > 0);
 	}
 
 	#[cfg(not(target_arch = "arm"))]
@@ -277,7 +252,7 @@ mod tests {
 			log::debug!("was supposed to sleep for {secs:x} seconds");
 			assert_eq!(secs, 1);
 			*(cl.data_mut()) += 1;
-			Ok((false, Some(0.into())))
+			Ok(CbAction::EarlyRet { ret: 1.into() })
 		})
 		.unwrap();
 
@@ -289,11 +264,6 @@ mod tests {
 	#[cfg(not(target_arch = "arm"))]
 	#[test]
 	fn clientmgr_strace_clone() {
-		let args = ArgsBuilder::new()
-			.push_registered(RegEvent::Clone)
-			.push_registered(RegEvent::Attached)
-			.finish()
-			.unwrap();
 		let numclones = 10;
 		let mut files = crate::tests::get_all_tar_files().unwrap();
 		let waitpid = files
@@ -304,7 +274,10 @@ mod tests {
 			Main::spawn_in_mem("waitpid", waitpid, pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 
-		sec.client_mut().set_config(args).unwrap();
+		let args = sec.take_args_builder()
+			.push_registered(RegEvent::Clone)
+			.push_registered(RegEvent::Attached);
+		sec.set_args_builder(args);
 
 		sec.set_stop_handler(|cl, stopped| {
 			let add = match stopped.stop {
@@ -327,11 +300,6 @@ mod tests {
 	#[serial]
 	#[test]
 	fn clientmgr_strace_fork() {
-		let args = ArgsBuilder::new()
-			.push_registered(RegEvent::Attached)
-			.push_registered(RegEvent::Fork)
-			.finish()
-			.unwrap();
 		let numclones = 1;
 		let mut files = crate::tests::get_all_tar_files().unwrap();
 		let forkwait = files
@@ -342,7 +310,10 @@ mod tests {
 			Main::spawn_in_mem("forkwait", forkwait, pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 
-		sec.client_mut().set_config(args).unwrap();
+		let args = sec.take_args_builder()
+			.push_registered(RegEvent::Attached)
+			.push_registered(RegEvent::Fork);
+		sec.set_args_builder(args);
 
 		sec.set_stop_handler(|cl, stopped| {
 			let add = match stopped.stop {
@@ -372,7 +343,7 @@ mod tests {
 
 		sec.register_breakpoint_handler(tid, entry, |cl, _tid, _addr| {
 			*(cl.data_mut()) += 1;
-			Ok(false)
+			Ok(BpRet::Remove)
 		})
 		.unwrap();
 
@@ -392,7 +363,7 @@ mod tests {
 		let entry = sec.resolve_entry().unwrap();
 		sec.register_breakpoint_handler(tid, entry, |cl, _tid, _addr| {
 			*(cl.data_mut()) += 1;
-			Ok(true)
+			Ok(BpRet::Keep)
 		})
 		.unwrap();
 
@@ -442,23 +413,6 @@ mod tests {
 		assert_eq!(rsp, Response::TargetExit);
 		assert_eq!(res, 3 + (count * 7));
 	}
-	fn find_libc_so(sec: &mut Secondary<usize, crate::Error>) -> Result<PathBuf> {
-		// let mods = sec.proc.maps()?;
-		// for m in mods.into_iter() {
-		// 	log::error!("{m:?}");
-		// }
-		// /usr/lib/x86_64-linux-gnu/libc-2.31.so
-		let mut mods = sec.proc.proc_modules_contains("libc.so")?;
-		if mods.is_empty() {
-			mods = sec.proc.proc_modules_contains("libc-2.31.so")?;
-		}
-		log::debug!("mods {mods:?}");
-		let m = mods.remove(0);
-		assert!(mods.is_empty());
-		let p = m.path().unwrap().clone();
-		log::debug!("libc @ {p:?}");
-		Ok(p)
-	}
 
 	// Breakpoint at entry and call a function when bp is hit
 	#[test]
@@ -474,10 +428,8 @@ mod tests {
 			let data = cl.client_mut().read_bytes(tid, addr, 4).unwrap();
 			assert!(cl.client_mut().write_bytes(tid, addr, data).unwrap() == 4);
 
-			let libc = find_libc_so(cl).unwrap();
+			let libc = cl.try_find_libc_so().unwrap();
 			if let Some(getpid) = cl.resolve_symbol(&libc, "getpid")? {
-				// if let Some(getpid) = cl.resolve_symbol(&PathBuf::from("/apex/com.android.runtime/lib64/bionic/libc.so"), "getpid")? {
-				// if let Some(getpid) = cl.lookup_symbol("getpid")? {
 				log::debug!("resolved getpid {getpid:?}");
 				let pid = cl.call_func(tid, getpid.value, &[])?;
 				assert_eq!(pid, tid.into());
@@ -486,7 +438,7 @@ mod tests {
 			}
 			let _v = cl.client_mut().read_u32(tid, addr).unwrap();
 			*(cl.data_mut()) += 1;
-			Ok(true)
+			Ok(BpRet::Keep)
 		})
 		.unwrap();
 
@@ -500,17 +452,17 @@ mod tests {
 	#[test]
 	fn clientmgr_plugins() {
 		use crate::plugin::Plugin;
-		let args = ArgsBuilder::new()
-			.push_registered(RegEvent::Files)
-			.push_registered(RegEvent::Prctl)
-			.push_registered(RegEvent::Mmap)
-			.push_registered(RegEvent::Dlopen)
-			.finish()
-			.unwrap();
 
 		let mut ctx: Main<usize, crate::Error> =
 			Main::new_spawn(std::process::Command::new("true"), 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
+		let args = sec.take_args_builder()
+			.push_registered(RegEvent::Files)
+			.push_registered(RegEvent::Prctl)
+			.push_registered(RegEvent::Mmap)
+			.push_registered(RegEvent::Dlopen)
+			;
+		sec.set_args_builder(args);
 
 		sec.new_plugin(&Plugin::Files, false).unwrap();
 		sec.new_plugin(&Plugin::DlopenDetect, false).unwrap();
@@ -541,20 +493,19 @@ mod tests {
 		});
 		let client = sec.client_mut();
 		client.init_done().unwrap();
-		client.set_config(args).unwrap();
+		// client.set_config(args).unwrap();
 		let _res = ctx.loop_until_exit().unwrap();
 	}
 
 	#[test]
 	fn clientmgr_do_stuff() {
-		let args = ArgsBuilder::new()
-			.push_registered(RegEvent::Files)
-			.finish()
-			.unwrap();
-
 		let pargs = vec!["true".to_string()];
 		let mut ctx: Main<usize, crate::Error> = Main::new_main(false, pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
+		let args = sec.take_args_builder()
+			.push_registered(RegEvent::Files)
+			;
+		sec.set_args_builder(args);
 		let tid = sec.get_first_stopped().unwrap();
 		{
 			let client = sec.client_mut();
@@ -603,8 +554,6 @@ mod tests {
 				let code = r.as_i32();
 				assert_eq!(-code, libc::ENOSYS);
 			}
-
-			client.set_config(args).unwrap();
 		}
 
 		let mut mods = sec.proc.proc_modules().unwrap();

@@ -1,6 +1,6 @@
 use crate::{
 	api::{
-		messages::{Event, EventInner, EventPrctl, RegEvent},
+		messages::{CbAction, Event, EventInner, EventPrctl, RegEvent},
 		ArgsBuilder, Client, Command, Response,
 	},
 	ctx,
@@ -26,16 +26,8 @@ impl Prctl {
 
 		let prctl = client.resolve_syscall("prctl")?;
 
-		let args = ArgsBuilder::new()
-			.push_registered(RegEvent::Files)
-			.push_syscall_traced(prctl)
-			.only_notify_syscall_exit()
-			.transform_syscalls()
-			.finish()?;
-
-		client.set_config(args)?;
-
-		ctx.set_specific_syscall_handler(prctl, |cl, sys| {
+		ctx.set_syscall_hook_exit(prctl, |cl, sys| {
+			assert!(sys.is_exit());
 			if sys.args.len() < 5 {
 				let msg = format!("too few arguments for prctl {:?}", sys.args);
 				return Err(Error::msg(msg));
@@ -72,7 +64,7 @@ impl Prctl {
 			let event = Event::new_attached(sys.tid, event);
 			log::trace!("sending {event:?}");
 			cl.client_mut().send_event(event)?;
-			Ok(())
+			Ok(CbAction::None)
 		});
 		Ok(ctx)
 	}

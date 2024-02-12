@@ -1,20 +1,20 @@
+use std::path::PathBuf;
+
 use pai::{api::{messages::CbAction, Response}, ctx};
 fn main() -> anyhow::Result<()> {
 	env_logger::init();
 	let cmd = std::process::Command::new("testdata/sleep");
 	let mut ctx: ctx::Main<usize, pai::Error> = ctx::Main::new_spawn(cmd, 0_usize)?;
 	let sec = ctx.secondary_mut();
-	let entry = sec.resolve_entry()?;
-	let stopped = sec.run_until_entry()?;
-	assert_eq!(stopped.expect("didn't hit breakpoint"), entry);
+	let _stopped = sec.run_until_entry()?;
 
-	let v = sec.lookup_symbol("sleep")?.expect("unable to find sleep");
-	println!("{v:?}");
+	let pbuf = PathBuf::from("testdata/sleep");
+
 	let tid = sec.get_first_stopped()?;
-
-	sec.register_function_hook_entry(tid, v.value, |cl, frame| {
-		println!("hit func");
-		Ok(CbAction::None)
+	sec.hook_got_entry(tid, &pbuf, "sleep", |cl, frame| {
+		log::info!("sleep({:x})", frame.arg(0, cl.client_mut())?.as_usize());
+		Ok(CbAction::EarlyRet { ret: 1.into() })
+		// Ok(CbAction::None)
 	})?;
 
 	let (r, _res) = ctx.loop_until_exit()?;

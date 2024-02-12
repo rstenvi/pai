@@ -80,8 +80,9 @@ where
 
 		let mut ctx = ctx::Secondary::new_master(client, data, req)?;
 
-		let args = ArgsBuilder::new().handle_exec().finish()?;
-		ctx.client_mut().set_config(args)?;
+		// Need to set a temporary config so that we can handle exec
+		let args = ArgsBuilder::new().handle_exec();
+		ctx.set_args_builder(args);
 		let tid = ctx.get_first_stopped()?;
 		let old = ctx.run_until_exec()?;
 		assert!(tid == old);
@@ -93,8 +94,9 @@ where
 
 		ctx.set_main_exe(mainloc.addr(), elf)?;
 
-		// Restore back default config
-		ctx.client_mut().set_config(Args::default())?;
+		// Restore back default config and set to dirty so that it's written on
+		// next round
+		ctx.set_args_builder(ArgsBuilder::new_dirty());
 
 		Ok(Self::new(ctx, handle))
 	}

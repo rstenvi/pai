@@ -104,6 +104,9 @@ impl Location {
 	pub fn addr(&self) -> TargetPtr {
 		self.start
 	}
+	pub fn contains(&self, addr: TargetPtr) -> bool {
+		addr >= self.start && addr <= self.end
+	}
 }
 
 pub(crate) struct AllocedMemory {

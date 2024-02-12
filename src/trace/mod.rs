@@ -17,7 +17,7 @@ impl std::fmt::Debug for SwBp {
 	}
 }
 impl SwBp {
-	#[cfg(any())]
+	// #[cfg(any())]
 	pub fn new_recurr(addr: TargetPtr, oldcode: Vec<u8>) -> Self {
 		Self {
 			addr,

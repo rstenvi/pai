@@ -330,8 +330,17 @@ where
 	client_read_int! { read_u128, u128 }
 	client_read_int! { read_i128, i128 }
 
+	pub fn write_int<T: num_traits::ops::bytes::ToBytes>(&mut self, tid: Tid, addr: TargetPtr, val: T) -> Result<usize> {
+		let bytes = val.to_ne_bytes().as_ref().to_vec();
+		let cmd = RemoteCmd::write_bytes(tid, addr, bytes);
+		self.wr_value_remote(cmd)
+	}
 	pub fn insert_bp(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {
 		let cmd = RemoteCmd::insert_bp(tid, addr);
+		self.wr_value_remote(cmd)
+	}
+	pub fn alloc_and_write_bp(&mut self, tid: Tid) -> Result<TargetPtr> {
+		let cmd = RemoteCmd::alloc_and_write_bp(tid);
 		self.wr_value_remote(cmd)
 	}
 	// pub fn remove_bp(&mut self, tid: Tid, addr: TargetPtr) -> Result<()> {

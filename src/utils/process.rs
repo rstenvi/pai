@@ -238,6 +238,17 @@ impl Process {
 			.collect();
 		Ok(r)
 	}
+	pub fn addr_is_in_maps(&self, addr: TargetPtr) -> Result<bool> {
+		let addr: u64 = addr.into();
+		let count = self.proc.maps()?
+			.into_iter()
+			.filter(|x| {
+				let (start, end) = x.address;
+				addr >= start && addr <= end
+			})
+			.count();
+		Ok(count > 0)
+	}
 	pub fn maps(&self) -> Result<Vec<MemoryMap>> {
 		log::trace!("getting maps for {}", self.pid());
 		self.proc

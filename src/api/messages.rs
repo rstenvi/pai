@@ -20,6 +20,19 @@ pub enum TrampType {
 	Ret,
 }
 
+#[derive(Eq, PartialEq, Hash, Debug, Clone, Serialize, Deserialize)]
+pub enum CbAction {
+	None,
+	Remove,
+	EarlyRet { ret: TargetPtr },
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone, Serialize, Deserialize)]
+pub enum BpRet {
+	Keep,
+	Remove,
+}
+
 /// Type of symbol, read ELF-specification for more details
 #[repr(u8)]
 #[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
@@ -459,6 +472,10 @@ pub enum ThreadCmd {
 		addr: TargetPtr,
 	},
 
+	/// Allocate some executable region and write a breakpoint to it, returning
+	/// the address back to the caller.
+	AllocAndWriteBp,
+
 	// Remove the breakpoint inserted at addr.
 	// RemoveBp {
 	// 	addr: TargetPtr,
@@ -511,9 +528,6 @@ impl ThreadCmd {
 	pub fn free_scratch_addr(addr: TargetPtr) -> Self {
 		Self::FreeScratchAddr { addr }
 	}
-	// pub fn call_func(func: TargetPtr, args: Vec<TargetPtr>) -> Self {
-	// 	Self::CallFunc { func, args }
-	// }
 	pub fn syscall(sysno: usize, args: Vec<TargetPtr>) -> Self {
 		Self::ExecRawSyscall { sysno, args }
 	}
@@ -526,9 +540,6 @@ impl ThreadCmd {
 	pub fn insert_bp(addr: TargetPtr) -> Self {
 		Self::InsertBp { addr }
 	}
-	// pub fn remove_bp(addr: TargetPtr) -> Self {
-	// 	Self::RemoveBp { addr }
-	// }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -568,6 +579,10 @@ impl RemoteCmd {
 	}
 	pub fn insert_bp(tid: Tid, addr: TargetPtr) -> Self {
 		let cmd = ThreadCmd::insert_bp(addr);
+		Self::Thread { tid, cmd }
+	}
+	pub fn alloc_and_write_bp(tid: Tid) -> Self {
+		let cmd = ThreadCmd::AllocAndWriteBp;
 		Self::Thread { tid, cmd }
 	}
 	// pub fn remove_bp(tid: Tid, addr: TargetPtr) -> Self {

@@ -329,7 +329,15 @@ impl CtrlTracer {
 				}
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
-			}
+			},
+			ThreadCmd::AllocAndWriteBp => {
+				let ins = self.tracer.alloc_and_write_bp(client.id, tid);
+				if let Ok(addr) = &ins {
+					client.args.insert_bp(*addr);
+				}
+				let val = serde_json::to_value(ins)?;
+				Response::Value(val)
+			},
 			// ThreadCmd::RemoveBp { addr } => {
 			// 	let ins = self.tracer.remove_bp(tid, addr);
 			// 	let val = serde_json::to_value(ins)?;

@@ -32,34 +32,6 @@ impl Reads {
 		let preadv = client.resolve_syscall("preadv");
 		let preadv2 = client.resolve_syscall("preadv2");
 
-		let mut args = ArgsBuilder::new()
-			.push_registered(RegEvent::Files)
-			.push_syscall_traced(read)
-			.only_notify_syscall_exit()
-			.transform_syscalls();
-
-		if let Ok(n) = pread {
-			args = args.push_syscall_traced(n)
-		}
-		if let Ok(n) = pread64 {
-			args = args.push_syscall_traced(n)
-		}
-		if let Ok(n) = readv {
-			args = args.push_syscall_traced(n)
-		}
-		if let Ok(n) = preadv {
-			args = args.push_syscall_traced(n)
-		}
-		if let Ok(n) = preadv2 {
-			args = args.push_syscall_traced(n)
-		}
-
-		let args = args.finish()?;
-
-		client.set_config(args)?;
-
-		ctx.set_specific_syscall_handler(read, |_cl, _sys| Ok(()));
-
 		Ok(ctx)
 	}
 }
