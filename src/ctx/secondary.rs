@@ -399,6 +399,23 @@ where
 		Ok(())
 	}
 
+	pub fn write_got(
+		&mut self,
+		tid: Tid,
+		pbuf: &PathBuf,
+		name: &str,
+		value: TargetPtr
+	) -> Result<()> {
+		let addr = self.resolve_symbol_got(pbuf, name)?;
+		self.client.write_int(tid, addr, usize::from(value))?;
+		#[cfg(debug_assertions)]
+		{
+			let wrote = self.client.read_u64(tid, addr)?;
+			assert_eq!(wrote, u64::from(value));
+		}
+		Ok(())
+	}
+
 	/// Enumerate all symbols of the given type. See [SymbolType] for more
 	/// details on type of symbols.
 	pub fn symbols_of_type(
@@ -442,7 +459,7 @@ where
 		}
 		Ok(())
 	}
-	fn new_regular(&self) -> Result<crate::Client> {
+	pub(crate) fn new_regular(&self) -> Result<crate::Client> {
 		log::debug!("req {:?}", self.req);
 		let req = self.req.as_ref().ok_or(Error::msg("req was not set"))?;
 		req.new_regular()

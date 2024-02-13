@@ -118,7 +118,7 @@ pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
 	}
 	#[cfg(target_arch = "aarch64")]
 	{
-		x86::syscall_shellcode(code)
+		aarch64::syscall_shellcode(code)
 	}
 	#[cfg(target_arch = "riscv64")]
 	{
@@ -140,7 +140,7 @@ pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
 	}
 	#[cfg(target_arch = "aarch64")]
 	{
-		x86::call_shellcode(code)
+		aarch64::call_shellcode(code)
 	}
 	#[cfg(target_arch = "riscv64")]
 	{
@@ -162,7 +162,7 @@ pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
 	}
 	#[cfg(target_arch = "aarch64")]
 	{
-		x86::ret_shellcode(code)
+		aarch64::ret_shellcode(code)
 	}
 	#[cfg(target_arch = "riscv64")]
 	{

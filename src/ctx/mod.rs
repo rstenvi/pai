@@ -516,8 +516,8 @@ mod tests {
 
 	#[test]
 	fn clientmgr_do_stuff() {
-		let pargs = vec!["true".to_string()];
-		let mut ctx: Main<usize, crate::Error> = Main::new_main(false, pargs, 0_usize).unwrap();
+		let pargs = vec![];
+		let mut ctx: Main<usize, crate::Error> = Main::new_main(false, "true".to_string(), pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 		let args = sec.take_args_builder().push_registered(RegEvent::Files);
 		sec.set_args_builder(args);

@@ -173,6 +173,21 @@ impl PluginExec {
 		});
 		Ok(handle)
 	}
+
+	pub fn get_num_incoming_tcp<A: std::net::ToSocketAddrs>(ctx: ctx::Secondary<(), crate::Error>, addr: A, num: usize) -> Result<Vec<JoinHandle<Result<()>>>> {
+		let mut rets = Vec::new();
+		let listener = std::net::TcpListener::bind(addr)?;
+
+		for stream in listener.incoming() {
+			let stream = stream.unwrap();
+			let client = ctx.new_regular()?;
+			let handle = Self::connect_tcp_stream(stream, client)?;
+			rets.push(handle);
+			if rets.len() >= num { break; }
+		}
+		Ok(rets)
+	}
+
 }
 
 #[cfg(test)]

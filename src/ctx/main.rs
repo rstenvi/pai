@@ -34,18 +34,17 @@ where
 	}
 
 	/// Create new, either by attaching to existing or by spawning program in `args`
-	pub fn new_main(attach: bool, mut args: Vec<String>, state: T) -> Result<Self> {
+	pub fn new_main(attach: bool, prog: String, args: Vec<String>, state: T) -> Result<Self> {
 		let ctx = if attach {
-			let name = args.remove(0);
 			if !args.is_empty() {
 				log::warn!("extra args '{args:?}' will be ignored");
 			}
-			let pid = Process::arg_to_pid(&name)?;
+			let pid = Process::arg_to_pid(&prog)?;
 			let proc = Process::from_pid(pid as u32)?;
 			Self::new_attach(proc, state)?
 		} else {
-			let name = args.remove(0);
-			let mut cmd = std::process::Command::new(name);
+			// let name = args.remove(0);
+			let mut cmd = std::process::Command::new(prog);
 			cmd.args(args);
 			Self::new_spawn(cmd, state)?
 		};
@@ -155,6 +154,12 @@ where
 		let rsp = self.ctx.loop_until_exit()?;
 		let t = self.join()?;
 		Ok((rsp, t))
+	}
+
+	pub fn detach(mut self) -> Result<T> {
+		self.ctx.client_mut().detach()?;
+		let t = self.join()?;
+		Ok(t)
 	}
 
 	/// When all [ctx::Secondary] contexts are detached, call this to join all
