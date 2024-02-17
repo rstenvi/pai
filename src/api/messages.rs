@@ -643,7 +643,6 @@ impl RemoteCmd {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum ClientCmd {
 	ResolveEntry,
-	StoppedTids,
 	FirstStoppedTid,
 	GetModule { path: PathBuf },
 	ResolveSymbol { path: PathBuf, symbol: String },

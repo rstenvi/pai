@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Command, Response};
 use crate::{
-	arch::{RegsAbiAccess, SystemV},
-	utils::process::Tid,
-	Client, Result, TargetPtr,
+	arch::{RegsAbiAccess, SystemV}, utils::process::Tid, Client, Error, Result, TargetPtr
 };
 
 macro_rules! arg_as_signed {
@@ -38,8 +36,12 @@ impl CallFrameArg {
 	pub fn raw(&self) -> TargetPtr {
 		self.raw
 	}
-	pub fn read_ptr_as_str(&self, _client: &mut Client) -> Result<String> {
-		todo!();
+	pub fn read_ptr_as_str(&self, client: &mut Client) -> Result<String> {
+		log::debug!("reading {:x} as c_str", self.raw);
+		let tids = client.get_stopped_tids()?;
+		let tid = tids.first().ok_or(Error::msg("No stopped thread"))?;
+		let s = client.read_c_string(*tid, self.raw)?;
+		Ok(s)
 	}
 	arg_as_signed! { i8 }
 	arg_as_signed! { i16 }

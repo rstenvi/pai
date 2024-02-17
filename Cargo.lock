@@ -569,6 +569,7 @@ dependencies = [
  "nix 0.26.4",
  "nix 0.27.1",
  "num-traits",
+ "pai-macros",
  "paste",
  "pete",
  "procfs",
@@ -582,6 +583,16 @@ dependencies = [
  "thiserror",
  "uneval",
  "xattr",
+]
+
+[[package]]
+name = "pai-macros"
+version = "0.1.0"
+source = "git+https://github.com/rstenvi/pai-macros#acf47e3a18d08eee82070e9439a96be8c4818221"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

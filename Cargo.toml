@@ -101,6 +101,8 @@ env_logger = "0.11.1"
 # Some ptrace(2) tests don't play nice with eachother
 serial_test = "3.0.0"
 
+pai-macros = { git = "https://github.com/rstenvi/pai-macros" }
+
 [features]
 std = []
 syscalls = [ "syzlang-data/linux" ]

@@ -253,6 +253,16 @@ where
 		let cmd = RemoteCmd::syscall(tid, sysno, args.into());
 		self.wr_value_remote(cmd)
 	}
+	/// Get all [Tid]s which have stopped
+	pub fn get_stopped_tids(&mut self) -> Result<Vec<Tid>> {
+		let r: Vec<Tid> = self
+			.get_threads_status()?
+			.into_iter()
+			.filter(|x| x.status.is_stopped())
+			.map(|x| x.id)
+			.collect();
+		Ok(r)
+	}
 	pub fn get_libc_regs(&mut self, tid: Tid) -> Result<crate::Registers> {
 		let cmd = RemoteCmd::get_libc_regs(tid);
 		self.wr_value_remote(cmd)

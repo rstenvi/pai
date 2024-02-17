@@ -580,11 +580,6 @@ where
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
-			ClientCmd::StoppedTids => {
-				let ins = self.get_stopped_tids();
-				let val = serde_json::to_value(ins)?;
-				Response::Value(val)
-			}
 			ClientCmd::FirstStoppedTid => {
 				let ins = self.get_first_stopped();
 				let val = serde_json::to_value(ins)?;
@@ -609,24 +604,12 @@ where
 		Ok(ret)
 	}
 
-	/// Get all [Tid]s which have stopped
-	pub fn get_stopped_tids(&mut self) -> Result<Vec<Tid>> {
-		let r: Vec<Tid> = self
-			.client
-			.get_threads_status()?
-			.into_iter()
-			.filter(|x| x.status.is_stopped())
-			.map(|x| x.id)
-			.collect();
-		Ok(r)
-	}
-
 	/// Get a single [Tid] which has stopped.
 	///
 	/// This is useful in the beginning as some commands need to operate on a
 	/// specific [Tid].
 	pub fn get_first_stopped(&mut self) -> Result<Tid> {
-		let a = self.get_stopped_tids()?;
+		let a = self.client.get_stopped_tids()?;
 		let n = a.first().ok_or(Error::msg("No stopped thread"))?;
 		Ok(*n)
 	}

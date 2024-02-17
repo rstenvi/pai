@@ -11,10 +11,11 @@ pub use secondary::Secondary;
 mod tests {
 	use serial_test::serial;
 	use test::Bencher;
+	use crate::api::messages::CbAction;
 
 	use crate::api::messages::BpRet;
 	#[cfg(feature = "syscalls")]
-	use crate::api::{args::Enrich, messages::CbAction};
+	use crate::api::args::Enrich;
 	#[cfg(feature = "syscalls")]
 	use crate::syscalls::Syscalls;
 
