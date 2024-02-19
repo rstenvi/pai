@@ -16,9 +16,7 @@ STRIP ?= $(CROSS_COMPILE)strip
 
 ### -------------- Object files ------------ ###
 
-OBJ += traceme
 OBJ += threads
-OBJ += waitpid
 OBJ += forkwait
 OBJ += sleep
 OBJ += getpid

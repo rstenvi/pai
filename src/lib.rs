@@ -588,7 +588,7 @@ pub(crate) mod tests {
 	#[test]
 	fn extract_tar_files() {
 		let maps = get_all_tar_files().unwrap();
-		assert!(maps.get("waitpid").is_some());
+		assert!(maps.get("threads").is_some());
 	}
 
 	#[test]

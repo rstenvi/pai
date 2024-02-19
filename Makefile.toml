@@ -20,6 +20,19 @@ command = "cross"
 install_crate = "clippy"
 args = ["clippy", "@@split(clippyargs,|)", "--fix"]
 
+[tasks.update]
+command = "cargo"
+args = ["update"]
+
+[tasks.publish]
+dependencies = ["fixclippy", "fixfmt", "update"]
+command = "cargo"
+args = ["publish"]
+
+[tasks.publishdry]
+extend = "publish"
+args = ["publish", "--dry-run"]
+
 
 # Various checks which should be executed before publish
 [tasks.checkfmt]

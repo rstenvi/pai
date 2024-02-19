@@ -414,7 +414,7 @@ fn main() -> anyhow::Result<()> {
 	println!("cargo:rerun-if-changed=testdata/Makefile");
 	println!("cargo:rerun-if-changed=testdata/sleep.c");
 	println!("cargo:rerun-if-changed=testdata/forkwait.c");
-	println!("cargo:rerun-if-changed=testdata/waitpid.c");
+	println!("cargo:rerun-if-changed=testdata/threads.c");
 	println!("cargo:rerun-if-changed=testdata/getpid.c");
 	println!("cargo:rerun-if-env-changed=CARGO_CFG_FEATURE");
 	println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET");

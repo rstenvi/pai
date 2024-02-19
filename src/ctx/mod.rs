@@ -280,14 +280,14 @@ mod tests {
 	#[cfg(not(target_arch = "arm"))]
 	#[test]
 	fn clientmgr_strace_clone() {
-		let numclones = 10;
+		let numclones = 2;	// This is hard-coded in program
 		let mut files = crate::tests::get_all_tar_files().unwrap();
-		let waitpid = files
-			.remove("waitpid")
-			.expect("waitpid not present in testdata");
-		let pargs = vec![format!("{numclones}")];
+		let threads = files
+			.remove("threads")
+			.expect("threads not present in testdata");
+
 		let mut ctx: Main<usize, crate::Error> =
-			Main::spawn_in_mem("waitpid", waitpid, pargs, 0_usize).unwrap();
+			Main::spawn_in_mem("threads", threads, &[], 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 
 		let args = sec
