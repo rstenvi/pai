@@ -41,7 +41,7 @@ impl From<user_regs_struct> for pete::Registers {
 	}
 }
 impl CallFrame {
-	pub fn return_addr(&self, client: &mut crate::Client) -> Result<TargetPtr> {
+	pub fn return_addr(&self, _client: &mut crate::Client) -> Result<TargetPtr> {
 		let lr = self.regs.regs[30];
 		Ok(lr.into())
 	}
@@ -64,7 +64,7 @@ impl super::RegsAbiAccess for super::SystemV {
 		&self,
 		_regs: &crate::Registers,
 		_num: usize,
-		client: &mut crate::Client,
+		_client: &mut crate::Client,
 	) -> Result<TargetPtr> {
 		crate::bug!("set_arg_ext on SystemV not supported")
 	}
@@ -80,7 +80,7 @@ impl super::RegsAbiAccess for super::SystemV {
 		_regs: &mut crate::Registers,
 		_num: usize,
 		_client: &mut crate::Client,
-		val: TargetPtr,
+		_val: TargetPtr,
 	) -> Result<()> {
 		crate::bug!("set_arg_ext on SystemV not supported")
 	}

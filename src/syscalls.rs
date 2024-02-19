@@ -601,10 +601,13 @@ impl SyscallItem {
 					} = n
 					{
 						let len = lens.get(&inarg.name);
-						if let Some(v) =
-							Self::parse_ptr(inarg.raw_value(), tid, client, arg, opts, len)?
-						{
-							inarg.set_parsed(v);
+						let v = Self::parse_ptr(inarg.raw_value(), tid, client, arg, opts, len);
+						match v {
+							Ok(v) => match v {
+								Some(v) => inarg.set_parsed(v),
+								None => log::warn!("reading of ptr {:x} with len {len:?} returned None", inarg.raw_value()),
+							}
+							Err(e) => log::warn!("reading of ptr {:x} with len {len:?} returned error: {e:?}", inarg.raw_value()),
 						}
 					}
 				} else {
@@ -781,7 +784,7 @@ impl SyscallItem {
 	}
 
 	pub fn enrich_values(&mut self) -> crate::Result<()> {
-		log::debug!("enriching values");
+		log::debug!("enriching values sysno: {}", self.sysno);
 		if let Some(sys) = crate::SYSCALLS
 			.read()
 			.expect("unable to lock syscalls")
