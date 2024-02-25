@@ -94,7 +94,7 @@ uneval = "0.2.4"
 flate2 = "1.0.28"
 paste = "1.0.14"
 tar = "0.4.40"
-nix = { version = "0.27.1", features = ["fs"] }
+nix = { version = "0.28", features = ["fs"] }
 
 [dev-dependencies]
 ctor = "0.2.6"

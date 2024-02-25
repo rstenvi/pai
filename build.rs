@@ -1,8 +1,8 @@
-use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{fs::File, io::Write};
 
+use nix::fcntl::Flock;
 #[cfg(feature = "syscalls")]
 use syzlang_parser::parser::{
 	Arch, ArgOpt, ArgType, Argument, Const, Direction, Flag, Function, Parsed, Value,
@@ -348,7 +348,7 @@ fn get_syscall_data(build: &BuildInfo) -> anyhow::Result<String> {
 	Ok(out)
 }
 
-fn acquire_lock(scratch: &Path) -> anyhow::Result<File> {
+fn acquire_lock(scratch: &Path) -> anyhow::Result<Flock<File>> {
 	let mut lock = PathBuf::from(scratch);
 	lock.push("build.lock");
 	let lock = std::fs::OpenOptions::new()
@@ -357,8 +357,8 @@ fn acquire_lock(scratch: &Path) -> anyhow::Result<File> {
 		.write(true)
 		.open(lock)
 		.unwrap();
-	let fd = lock.as_raw_fd();
-	nix::fcntl::flock(fd, nix::fcntl::FlockArg::LockExclusive)?;
+	let lock = nix::fcntl::Flock::lock(lock, nix::fcntl::FlockArg::LockExclusive)
+		.expect("Unable to acquire lock");
 	Ok(lock)
 }
 
@@ -409,7 +409,7 @@ fn main() -> anyhow::Result<()> {
 	let mut tar = tar::Builder::new(enc);
 	tar.append_dir_all("testdata", testdata)?;
 
-	drop(lock);
+	lock.unlock().expect("unable to unlock lock");
 
 	println!("cargo:rerun-if-changed=build.rs");
 	println!("cargo:rerun-if-changed=testdata/Makefile");
