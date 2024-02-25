@@ -76,6 +76,7 @@ pub enum BuildEnv {
 	Undefined,
 	Gnu,
 	Musl,
+	Uclibc,
 }
 
 impl std::str::FromStr for BuildEnv {
@@ -86,6 +87,7 @@ impl std::str::FromStr for BuildEnv {
 			"" => Ok(Self::Undefined),
 			"gnu" => Ok(Self::Gnu),
 			"musl" => Ok(Self::Musl),
+			"uclibc" => Ok(Self::Uclibc),
 			_ => Err(anyhow::Error::msg(format!("unknown env {s}"))),
 		}
 	}

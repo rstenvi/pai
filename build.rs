@@ -78,6 +78,7 @@ impl BuildTarget {
 				BuildEnv::Undefined => "",
 				BuildEnv::Gnu => "gnu",
 				BuildEnv::Musl => "musl",
+				BuildEnv::Uclibc => "uclibcgnu",
 			}
 		} else {
 			""

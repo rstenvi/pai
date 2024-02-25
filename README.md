@@ -21,6 +21,7 @@ There are some example of use under `examples/` more information will be written
 ## Standalone tools using pai
 
 - [pai-strace](https://github.com/rstenvi/pai-strace) - strace-like tool
+- [pai-inject-so](https://github.com/rstenvi/pai-inject-so) - inject SO-file into process
 
 ## Cross-compilation
 

@@ -25,6 +25,7 @@ serde = { version = "1.0", features = ["derive"]}
 
 # We have added some constants to libc which have yet to be merged
 libc = { git = "https://github.com/rstenvi/libc", branch = "libc-0.2", version = "0.2" }
+# libc = { path = "../libc" }
 
 # We use an older one, because we match the one used in pete
 # nix = {version = "0.27.1", features = ["process", "ptrace"]}
@@ -42,7 +43,8 @@ procfs = {version = "0.16.0", features = ["serde1"]}
 # Used as a more convenient wrapper around ptrace
 # It currently has some changes to support extra targets
 pete = { version = "0.12.0", git = "https://github.com/rstenvi/pete" }
-# pete = { version = "0.12.0" }
+# pete = { version = "0.12.0", path = "../pete" }
+
 
 # Used to create a bitmap
 bit-vec = "0.6"
