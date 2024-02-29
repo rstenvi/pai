@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use super::{Command, Response};
-use crate::{
-	arch::{RegsAbiAccess, SystemV}, utils::process::Tid, Client, Error, Result, TargetPtr
-};
+use crate::{target::GenericCc, utils::process::Tid, Client, Error, Result, TargetPtr};
 
 macro_rules! arg_as_signed {
 	($t:ty) => {
@@ -40,7 +38,7 @@ impl CallFrameArg {
 		log::debug!("reading {:x} as c_str", self.raw);
 		let tids = client.get_stopped_tids()?;
 		let tid = tids.first().ok_or(Error::msg("No stopped thread"))?;
-		let s = client.read_c_string(*tid, self.raw)?;
+		let s = client.read_c_string(*tid, self.raw.into())?;
 		Ok(s)
 	}
 	arg_as_signed! { i8 }
@@ -53,31 +51,20 @@ impl CallFrameArg {
 	arg_as_signed! { u32 }
 	arg_as_signed! { u64 }
 	arg_as_signed! { usize }
-	// pub fn as_i8(&self) -> i8 {
-	// 	crate::utils::twos_complement(self.raw as u8 as TargetPtr) as i8
-	// }
-	// pub fn read_ptr_as_u64(&mut self, client: &mut Client) -> Result<u64> {
-	// 	todo!();
-	// }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallFrame {
-	// #[serde(skip)]
-	// cc: Box<dyn RegsAbiAccess + Send + 'static>,
 	pub tid: Tid,
 	pub regs: crate::Registers,
-	pub func: TargetPtr,
-	// loc: CallLocation,
+	pub func: u64,
 	output: Option<CallFrameArg>,
-
-	// TODO: Should make it possible to change this
-	cc: SystemV,
+	cc: GenericCc,
 }
 
 impl CallFrame {
-	pub fn new(tid: Tid, func: TargetPtr, regs: crate::Registers) -> Self {
-		let cc = SystemV;
+	pub fn new(tid: Tid, func: u64, regs: crate::Registers) -> Self {
+		let cc = GenericCc::new_host_systemv().unwrap();
 		Self {
 			tid,
 			regs,
@@ -88,21 +75,15 @@ impl CallFrame {
 	}
 
 	pub fn arg(&self, idx: usize, client: &mut crate::Client) -> Result<CallFrameArg> {
-		let val = if let Ok(val) = self.cc.get_arg(&self.regs, idx) {
-			val
-		} else if let Ok(val) = self.cc.get_arg_ext(&self.regs, idx, client) {
-			val
-		} else {
-			return Err(crate::Error::Unsupported);
-		};
-		let ins = CallFrameArg::new(val);
+		let val = self.cc.get_arg(idx, &self.regs, client)?;
+		let ins = CallFrameArg::new(val.into());
 		Ok(ins)
 	}
 	pub fn retval(&self) -> Result<CallFrameArg> {
 		self.output.as_ref().cloned().ok_or(crate::Error::NotFound)
 	}
 	pub fn set_output(&mut self, output: TargetPtr) {
-		self.output = Some(CallFrameArg::new(output));
+		self.output = Some(CallFrameArg::new(output.into()));
 	}
 }
 
@@ -118,7 +99,7 @@ mod test {
 		assert_eq!(arg.as_i32(), 0);
 
 		let arg = CallFrameArg::new(u64::MAX.into());
-		assert_eq!(arg.raw(), usize::MAX.into());
+		assert_eq!(arg.raw(), u64::MAX.into());
 		assert_eq!(arg.as_i16(), -1);
 		assert_eq!(arg.as_i64(), -1);
 

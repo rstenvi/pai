@@ -1,5 +1,5 @@
 use crate::api::{Client, Command, Response};
-use crate::arch::ReadRegisters;
+use crate::arch::NamedRegs;
 use crate::{
 	ctx,
 	utils::{self, process::Tid},
@@ -930,8 +930,8 @@ impl SyscallItem {
 		}
 	}
 
-	pub fn from_regs(tid: Tid, regs: &dyn ReadRegisters) -> Self {
-		let sysno = regs.sysno();
+	pub fn from_regs(tid: Tid, sysno: usize, args: &[u64]) -> Self {
+		// let sysno = regs.get_sysno();
 		let (name, args) = if let Some(sys) = crate::SYSCALLS
 			.read()
 			.expect("unable to lock syscalls")
@@ -941,7 +941,8 @@ impl SyscallItem {
 			for (i, arg) in sys.args.iter().enumerate() {
 				let dir = arg.direction().into();
 				let (_atype, _resource) = Self::get_shallow_value(arg.arg_type());
-				let value = regs.arg_syscall(i);
+				// let value = regs.arg_syscall(i);
+				let value = args[i].into();
 				let ins = SysArg::new_basic(arg.identifier().safe_name(), value, dir);
 				shallows.push(ins);
 			}
@@ -957,8 +958,8 @@ impl SyscallItem {
 			output: None,
 		}
 	}
-	pub fn fill_in_output(&mut self, regs: &dyn ReadRegisters) {
-		let retval = regs.ret_syscall();
+	pub fn fill_in_output(&mut self, retval: TargetPtr) {
+		// let retval = regs.ret_syscall();
 		let ins = SysValue::new(retval, None);
 		self.output = Some(ins);
 	}

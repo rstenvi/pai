@@ -1,7 +1,5 @@
 use crate::{
-	api::{client::IdWrapper, messages::Stopped},
-	utils::process::Tid,
-	Result,
+	api::{client::IdWrapper, messages::Stopped}, arch::NamedRegs, evtlog::Loggers, target::GenericCc, utils::process::Tid, Result
 };
 use crossbeam_channel::{Receiver, Sender};
 
@@ -38,6 +36,10 @@ pub(crate) struct ClientThread {
 	/// [Stop::SyscallExit]
 	#[cfg(feature = "syscalls")]
 	pending_syscalls: std::collections::HashMap<Tid, SyscallItem>,
+
+	loggers: Loggers,
+
+	syscallcc: GenericCc,
 }
 
 impl ClientThread {
@@ -52,6 +54,8 @@ impl ClientThread {
 		let wrap = Box::new(wrap);
 		let client = Client::new_master_comm(mtx, mrx, wrap);
 		let args = ClientArgs::default();
+		let loggers = Loggers::default();
+		let syscallcc = GenericCc::new_syscall_host().unwrap();
 		Self {
 			id,
 			client,
@@ -61,6 +65,8 @@ impl ClientThread {
 			#[cfg(feature = "syscalls")]
 			pending_syscalls: std::collections::HashMap::new(),
 			done: false,
+			loggers,
+			syscallcc,
 		}
 	}
 	fn set_config(&mut self, config: Args) -> Option<MasterComm> {
@@ -128,16 +134,24 @@ impl ClientThread {
 					},
 				);
 				Ok(Some(r))
-			}
+			},
+    		ClientProxy::AddLogger { format, output } => {
+				self.loggers.add_logger(format, output)?;
+				self.tx.send(Response::Ack)?;
+				Ok(None)
+			},
 		}
 	}
 	fn next_client_command(&mut self) -> Result<Option<MasterComm>> {
 		log::debug!("recv next from client");
 		let r = self.rx.recv()?;
+		self.loggers.log_command(&r)?;
 		log::debug!("got {r:?}");
 		match r {
 			Command::ClientProxy { cmd } => self.handle_client_proxy(cmd),
-			_ => Ok(Some(MasterComm::new(self.id, r))),
+			_ => {
+				Ok(Some(MasterComm::new(self.id, r)))
+			},
 		}
 	}
 
@@ -160,15 +174,25 @@ impl ClientThread {
 		}
 		Ok(())
 	}
+	fn fill_syscall_regs(args: &mut Vec<u64>, cc: &GenericCc, regs: &dyn NamedRegs) -> Result<()> {
+		let len = args.capacity();
+		for i in 0..len {
+			let ins = cc.get_arg_regonly(i, regs)?;
+			args.push(ins);
+		}
+		Ok(())
+	}
 	#[cfg(feature = "syscalls")]
 	fn transform_syscall(&mut self, tid: Tid, entry: bool) -> Result<Option<Response>> {
-		use crate::{api::args::Enrich, arch::ReadRegisters, syscalls::Direction};
+		use crate::{api::args::Enrich, arch::NamedRegs, syscalls::Direction};
 		log::trace!("transform syscall {tid} {entry}");
 		let regs = self.client.get_libc_regs(tid)?;
 		if entry {
-			let sysno = regs.sysno();
+			let sysno = regs.get_sysno();
 			if self.args.handles_syscall_sysno(tid, sysno) {
-				let mut ins = SyscallItem::from_regs(tid, &regs);
+				let mut args = Vec::with_capacity(6);
+				Self::fill_syscall_regs(&mut args, &self.syscallcc, &regs)?;
+				let mut ins = SyscallItem::from_regs(tid, sysno, &args);
 				self.enrich(sysno, &mut ins, Direction::In)?;
 				let resp = if !self.args.only_notify_syscall_exit(tid) {
 					Some(Response::Syscall(ins.clone()))
@@ -181,7 +205,8 @@ impl ClientThread {
 				Ok(None)
 			}
 		} else if let Some(mut syscall) = self.pending_syscalls.remove(&tid) {
-			syscall.fill_in_output(&regs);
+			let retval = self.syscallcc.get_retval(&regs)?;
+			syscall.fill_in_output(retval.into());
 			self.enrich(syscall.sysno, &mut syscall, Direction::Out)?;
 			let ret = Some(Response::Syscall(syscall));
 			Ok(ret)
@@ -238,6 +263,7 @@ impl ClientThread {
 				let r = self.client.read()?;
 				if let Some(r) = self.process_response(r)? {
 					log::debug!("sending to clients {r:?}");
+					self.loggers.log_response(&r)?;
 					self.tx.send(r)?;
 					break;
 				} else {
@@ -247,6 +273,7 @@ impl ClientThread {
 				}
 			}
 		}
+		self.loggers.finish()?;
 		log::info!("{}: exiting loop", self.id);
 		Ok(())
 	}

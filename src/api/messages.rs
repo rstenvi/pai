@@ -138,6 +138,7 @@ pub enum RegEvent {
 	Prctl,
 	Read,
 	Mmap,
+	MsgLog,
 }
 impl RegEvent {
 	#[allow(non_snake_case)]
@@ -167,6 +168,7 @@ impl RegEvent {
 				fd: _,
 				offset: _,
 			} => Self::Mmap,
+    		EventInner::MsgLog { source: _, msg: _ } => Self::MsgLog,
 		}
 	}
 }
@@ -314,6 +316,10 @@ pub enum EventInner {
 		fd: TargetPtr,
 		offset: TargetPtr,
 	},
+	MsgLog {
+		source: String,
+		msg: serde_json::Value,
+	},
 }
 
 impl std::fmt::Display for EventInner {
@@ -343,6 +349,7 @@ impl std::fmt::Display for EventInner {
 				fd: _,
 				offset: _,
 			} => todo!(),
+    		EventInner::MsgLog { source: _, msg: _ } => todo!(),
 		}
 	}
 }
@@ -670,6 +677,26 @@ pub enum ClientProxy {
 	#[cfg(feature = "syscalls")]
 	ResolveSyscall(String),
 	Detach,
+
+	AddLogger { format: LogFormat, output: LogOutput },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum LogFormat {
+	Display,
+	Json,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum LogOutput {
+	File { path: PathBuf },
+	Tcp { addr: std::net::SocketAddr },
+}
+impl LogOutput {
+	pub fn file<P: Into<PathBuf>>(path: P) -> Self {
+		let path = path.into();
+		Self::File { path }
+	}
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -683,6 +710,7 @@ pub enum ManagerCmd {
 	RemoveClient { cid: usize },
 	SetConfig { config: Args },
 	SetConfigThread { tid: Tid, config: Args },
+	AddLogger { format: LogFormat, output: LogOutput },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -707,6 +735,10 @@ impl Command {
 	pub fn detach_thread(tid: Tid) -> Self {
 		let cmd = ManagerCmd::DetachThread { tid };
 		Self::Manager { cmd }
+	}
+	pub fn add_logger(format: LogFormat, output: LogOutput) -> Self {
+		let cmd = ClientProxy::AddLogger { format, output };
+		Self::ClientProxy { cmd }
 	}
 	pub fn prepare_load_client() -> Self {
 		let cmd = ManagerCmd::PrepareLoadClient;

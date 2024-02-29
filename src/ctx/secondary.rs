@@ -5,11 +5,12 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::api::args::Enrich;
 use crate::api::messages::{BpRet, CbAction, ElfSymbol, Stop, Stopped, SymbolType, TrampType};
 use crate::api::{ArgsBuilder, CallFrame};
-use crate::arch::{ReadRegisters, RegsAbiAccess, SystemV, WriteRegisters};
+use crate::arch::NamedRegs;
 use crate::exe::elf::Elf;
 #[cfg(feature = "plugins")]
 use crate::plugin::{plugins::*, Plugin};
 
+use crate::target::GenericCc;
 #[cfg(feature = "plugins")]
 use crate::utils::{LoadDependency, LoadedPlugin};
 
@@ -127,7 +128,8 @@ where
 	resolved: HashMap<PathBuf, Elf>,
 	pub(crate) req: Option<ReqNewClient>,
 
-	cc: Box<dyn RegsAbiAccess + Send + 'static>,
+	// cc: Box<dyn RegsAbiAccess + Send + 'static>,
+	cc: GenericCc,
 
 	args: ArgsBuilder,
 }
@@ -147,7 +149,8 @@ where
 		let resolved = HashMap::new();
 		let funcentrycbs = HashMap::new();
 		let callframes = HashMap::new();
-		let cc = Box::new(SystemV);
+		// let cc = Box::new(SystemV);
+		let cc = GenericCc::new_host_systemv().unwrap();
 		let args = ArgsBuilder::default();
 		let gothooks = HashMap::new();
 
@@ -218,10 +221,10 @@ where
 		&self.data
 	}
 
-	/// Override with a custom implementation of the ABI
-	pub fn set_cc(&mut self, cc: Box<dyn RegsAbiAccess + Send + 'static>) {
-		self.cc = cc;
-	}
+	// Override with a custom implementation of the ABI
+	// pub fn set_cc(&mut self, cc: Box<dyn RegsAbiAccess + Send + 'static>) {
+	// 	self.cc = cc;
+	// }
 
 	/// Get a mutable reference to stored data
 	pub fn data_mut(&mut self) -> &mut T {
@@ -667,24 +670,24 @@ where
 		let oregs = regs.clone();
 		for (i, arg) in args.iter().enumerate() {
 			log::debug!("arg[{i}]: = {arg:x}");
-			self.cc.set_arg(&mut regs, i, *arg)?;
+			self.cc.set_arg(i, (*arg).into(), &mut regs, &mut self.client)?;
 			// regs.set_arg_systemv(i, *arg);
 		}
 		let pc = self.client.get_trampoline_addr(tid, TrampType::Call)?;
 		log::debug!("setting pc {pc:x}");
 		let pc = pc + 4.into();
-		regs.set_pc(pc);
+		regs.set_pc(pc.into());
 		log::debug!("setting pc {pc:x}");
-		self.cc.set_reg_call_tramp(&mut regs, addr);
+		self.cc.set_reg_call_tramp(&mut regs, addr)?;
 		self.client.set_libc_regs(tid, regs)?;
 		self.client.run_until_trap(tid)?;
 
 		let regs = self.client.get_libc_regs(tid)?;
-		let ret = self.cc.get_retval(&regs);
+		let ret = self.cc.get_retval(&regs)?;
 
 		self.client.set_libc_regs(tid, oregs)?;
 
-		Ok(ret)
+		Ok(ret.into())
 	}
 
 	pub fn set_step_handler(&mut self, cb: StepCb<T, Err>) {
@@ -877,7 +880,7 @@ where
 			}
 		} else if let Some(mut frame) = std::mem::take(&mut self.callframes.remove(&(tid, addr))) {
 			log::debug!("found function exit BP at {addr:x}");
-			if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&frame.func)) {
+			if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&frame.func.into())) {
 				// if let Some(exit) = std::mem::take(&mut exit) {
 
 				// We maintain the same callframe so that the user can parse
@@ -891,14 +894,14 @@ where
 				// and not input. This code simply supplies the values as
 				// they were when the function call was made.
 				let mut regs = self.client.get_libc_regs(tid)?;
-				let retval = self.cc.get_retval(&regs);
-				frame.set_output(retval);
+				let retval = self.cc.get_retval(&regs)?;
+				frame.set_output(retval.into());
 				match (cb.exit)(self, &frame) {
 					Ok(action) => match action {
 						CbAction::None => {}
 						CbAction::Remove => todo!(),
 						CbAction::EarlyRet { ret } => {
-							self.cc.set_retval(&mut regs, ret);
+							self.cc.set_retval(ret.into(), &mut regs)?;
 							self.client.set_libc_regs(tid, regs)?;
 						}
 					},
@@ -906,19 +909,19 @@ where
 						log::error!("callback triggered error {e:?}");
 					}
 				}
-				self.funcentrycbs.insert(frame.func, cb);
+				self.funcentrycbs.insert(frame.func.into(), cb);
 			}
 		} else if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&addr)) {
 			log::debug!("found function entry BP at {addr:x}");
 			let regs = self.client.get_libc_regs(tid)?;
-			let mut frame = CallFrame::new(tid, addr, regs);
-			let retaddr = frame.return_addr(&mut self.client)?;
+			let retaddr = self.cc.get_return_addr(&regs, &mut self.client)?;
+			let mut frame = CallFrame::new(tid, addr.into(), regs);
 			let (skipexit, remove) = match (cb.entry)(self, &frame) {
 				Ok(action) => match action {
 					CbAction::None => (false, false),
 					CbAction::Remove => (true, true),
 					CbAction::EarlyRet { ret } => {
-						self.cc.set_retval(&mut frame.regs, ret);
+						self.cc.set_retval(ret.into(), &mut frame.regs)?;
 						frame.set_output(ret);
 						self.client.set_libc_regs(tid, frame.regs.clone())?;
 						self.client.exec_ret(tid)?;
@@ -948,8 +951,8 @@ where
 				}
 			};
 			if !skipexit {
-				self.callframes.insert((tid, retaddr), frame);
-				self.client.insert_bp(tid, retaddr)?;
+				self.callframes.insert((tid, retaddr.into()), frame);
+				self.client.insert_bp(tid, retaddr.into())?;
 			}
 			if !remove {
 				self.client.step_ins(tid, 1)?;
@@ -963,8 +966,8 @@ where
 			if let Some(mut frame) = std::mem::take(&mut got.frame) {
 				// Function exit
 				log::trace!("got exit");
-				let retval = self.cc.get_retval(&regs);
-				frame.set_output(retval);
+				let retval = self.cc.get_retval(&regs)?;
+				frame.set_output(retval.into());
 				let ret = (got.func.exit)(self, &frame);
 
 				let ins = match ret {
@@ -972,7 +975,7 @@ where
 						CbAction::None => true,
 						CbAction::Remove => false,
 						CbAction::EarlyRet { ret } => {
-							self.cc.set_retval(&mut regs, ret);
+							self.cc.set_retval(ret.into(), &mut regs)?;
 							self.client.set_libc_regs(tid, regs.clone())?;
 							true
 						}
@@ -993,11 +996,11 @@ where
 				log::trace!("got entry");
 
 				// Make sure we execute from real func when we continue
-				regs.set_pc(got.real);
+				regs.set_pc(got.real.into());
 				self.client.set_libc_regs(tid, regs.clone())?;
 
-				let mut frame = CallFrame::new(tid, addr, regs.clone());
-				let retaddr = frame.return_addr(&mut self.client)?;
+				let mut frame = CallFrame::new(tid, addr.into(), regs.clone());
+				let retaddr = self.cc.get_return_addr(&regs, &mut self.client)?;
 				let ret = (got.func.entry)(self, &frame);
 
 				let ins = match ret {
@@ -1005,7 +1008,7 @@ where
 						CbAction::None => true,
 						CbAction::Remove => false,
 						CbAction::EarlyRet { ret } => {
-							self.cc.set_retval(&mut regs, ret);
+							self.cc.set_retval(ret.into(), &mut regs)?;
 							frame.set_output(ret);
 							self.client.set_libc_regs(tid, regs.clone())?;
 							self.client.exec_ret(tid)?;
@@ -1020,8 +1023,8 @@ where
 				if ins {
 					got.frame = Some(frame);
 					log::debug!("[entry]: insert bp @ {retaddr:x}");
-					self.client.insert_bp(tid, retaddr)?;
-					self.gothooks.insert(retaddr, got);
+					self.client.insert_bp(tid, retaddr.into())?;
+					self.gothooks.insert(retaddr.into(), got);
 				} else if !got.lazylink {
 					log::debug!("[entry]: inserting hook back in");
 					self.gothooks.insert(addr, got);

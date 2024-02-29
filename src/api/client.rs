@@ -1,5 +1,6 @@
 //! Code relevant to sending a command to a different thread/process/machine.
 
+use crate::api::messages::{LogOutput, LogFormat};
 use std::{
 	io::{BufReader, BufWriter, Write},
 	net::TcpStream,
@@ -449,6 +450,11 @@ impl Client<Command, Response> {
 		log::debug!("Sending detach");
 		let cmd = Command::detach();
 		self.wr_ack(cmd)
+	}
+	pub fn add_logger(&mut self, format: LogFormat, output: LogOutput) -> Result<()> {
+		let cmd = Command::add_logger(format, output);
+		self.wr_ack(cmd)?;
+		Ok(())
 	}
 	pub fn detach_thread(&mut self, tid: Tid) -> Result<()> {
 		log::debug!("Sending detach");

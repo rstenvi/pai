@@ -1,13 +1,9 @@
 use crate::{
 	api::{
 		args::ClientArgs,
-		messages::{Cont, Event, ExecSyscall, MasterComm, NewClientReq, RegEvent, Stopped},
+		messages::{Cont, Event, ExecSyscall, LogFormat, LogOutput, MasterComm, NewClientReq, RegEvent, Stopped},
 		Client, Command, ManagerCmd, ProcessCmd, RemoteCmd, Response, ThreadCmd,
-	},
-	ctrl::ClientState,
-	trace::ptrace::Tracer,
-	utils::process::Tid,
-	Error, Result,
+	}, ctrl::ClientState, evtlog::{Logger, Loggers, RealLogger}, trace::ptrace::Tracer, utils::process::Tid, Error, Result
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::{collections::HashMap, thread::JoinHandle};
@@ -36,6 +32,8 @@ pub struct CtrlTracer {
 	threads_stopped: Vec<Tid>,
 
 	config: CtrlTracerConfig,
+
+	loggers: Loggers,
 }
 
 impl CtrlTracer {
@@ -45,6 +43,7 @@ impl CtrlTracer {
 		let (mtx, rx) = unbounded();
 		let config = CtrlTracerConfig::default();
 		let threads_stopped = Vec::new();
+		let loggers = Loggers::default();
 		let r = Self {
 			lastclientid,
 			clients,
@@ -55,6 +54,7 @@ impl CtrlTracer {
 			config,
 			threads_stopped,
 			check_new_client: 0,
+			loggers,
 		};
 		Ok(r)
 	}
@@ -151,6 +151,7 @@ impl CtrlTracer {
 				.join()
 				.unwrap_or_else(|_| panic!("thread for client {i} failed"))?;
 		}
+		self.loggers.finish()?;
 		Ok(())
 	}
 
@@ -217,6 +218,8 @@ impl CtrlTracer {
 				client.send_stop(stop.clone())?;
 			}
 		}
+		let rsp = Response::Stopped(stop);
+		self.loggers.log_response(&rsp)?;
 		Ok(())
 	}
 	fn find_cont(&mut self, tid: Tid) -> Cont {
@@ -247,6 +250,7 @@ impl CtrlTracer {
 	}
 	fn handle_cmd(&mut self, client: &mut ClientMaster, ocmd: Command) -> Result<()> {
 		log::debug!("got cmd {ocmd:?}");
+		self.loggers.log_command(&ocmd)?;
 		let resp = match ocmd {
 			Command::Tracer { cmd } => self.handle_cmd_remote(client, cmd)?,
 			Command::Manager { cmd } => self.handle_cmd_manager(client, cmd)?,
@@ -259,6 +263,7 @@ impl CtrlTracer {
 		};
 
 		if let Some(resp) = resp {
+			self.loggers.log_response(&resp)?;
 			client.send_answer(resp)?;
 		} else {
 			client.set_state_noresp()?;
@@ -338,22 +343,11 @@ impl CtrlTracer {
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
-			// ThreadCmd::RemoveBp { addr } => {
-			// 	let ins = self.tracer.remove_bp(tid, addr);
-			// 	let val = serde_json::to_value(ins)?;
-			// 	Response::Value(val)
-			// }
-			// ThreadCmd::GetAgnosticReg { reg: _ } => todo!(),
 			ThreadCmd::WriteBytes { addr, bytes } => {
 				let ins = self.tracer.write_memory(tid, addr, &bytes);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
-			// ThreadCmd::CallFunc { func, args } => {
-			// 	let ins = self.tracer.call_func(tid, func, &args);
-			// 	let val = serde_json::to_value(ins)?;
-			// 	Response::Value(val)
-			// }
 			ThreadCmd::ExecRawSyscall { sysno, args } => {
 				let ins = self.tracer.exec_syscall(tid, sysno, &args);
 				let val = serde_json::to_value(ins)?;
@@ -426,7 +420,6 @@ impl CtrlTracer {
 		}
 		Ok(())
 	}
-
 	fn handle_cmd_manager(
 		&mut self,
 		client: &mut ClientMaster,
@@ -470,6 +463,10 @@ impl CtrlTracer {
 				client.detach_thread(tid);
 				Ok(Some(Response::Ack))
 			}
+    		ManagerCmd::AddLogger { format, output } => {
+				self.loggers.add_logger(format, output)?;
+				Ok(Some(Response::Ack))
+			},
 		}
 	}
 
@@ -502,9 +499,10 @@ impl CtrlTracer {
 		let (tx2, rx2) = unbounded();
 		let (tx3, rx3) = unbounded();
 
-		let client_thread = ClientThread::new(nid, self.mtx.clone(), rx1, rx2, tx3);
 
+		let mtx = self.mtx.clone();
 		let handle = std::thread::spawn(move || -> Result<()> {
+			let client_thread = ClientThread::new(nid, mtx, rx1, rx2, tx3);
 			client_thread.enter_loop()?;
 			Ok(())
 		});

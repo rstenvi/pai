@@ -603,7 +603,7 @@ dependencies = [
 [[package]]
 name = "pai-macros"
 version = "0.1.0"
-source = "git+https://github.com/rstenvi/pai-macros#80d7af1d98b78b32d07c449833a81b8d5924be92"
+source = "git+https://github.com/rstenvi/pai-macros#96fb82a8f0a1515398ff3aa703f4e47198950ec1"
 dependencies = [
  "proc-macro2",
  "quote",

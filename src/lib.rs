@@ -134,6 +134,8 @@ pub mod api;
 pub mod arch;
 pub mod ctx;
 pub mod utils;
+pub(crate) mod evtlog;
+pub mod target;
 
 pub(crate) mod buildinfo;
 pub(crate) mod ctrl;
@@ -314,25 +316,24 @@ impl std::fmt::Display for TargetPtr {
 /// The main Result-type used is most functions
 pub type Result<T> = std::result::Result<T, crate::Error>;
 
-#[cfg(target_arch = "x86_64")]
-/// x86_64 registers the same way they are defined in C
-pub type Registers = crate::arch::x86_64::user_regs_struct;
+// #[cfg(target_arch = "x86_64")]
+pub type Registers = crate::arch::ArchRegisters;
 
-#[cfg(target_arch = "x86")]
-/// x86 registers the same way they are defined in C
-pub type Registers = crate::arch::x86::user_regs_struct;
+// #[cfg(target_arch = "x86")]
+// /// x86 registers the same way they are defined in C
+// pub type Registers = crate::arch::x86::user_regs_struct;
 
-#[cfg(target_arch = "aarch64")]
-/// Aarch64 registers the same way they are defined in C
-pub type Registers = crate::arch::aarch64::user_regs_struct;
+// #[cfg(target_arch = "aarch64")]
+// /// Aarch64 registers the same way they are defined in C
+// pub type Registers = crate::arch::aarch64::user_regs_struct;
 
-#[cfg(target_arch = "arm")]
-/// Aarch32 registers the same way they are defined in C
-pub type Registers = crate::arch::aarch32::user_regs_struct;
+// #[cfg(target_arch = "arm")]
+// /// Aarch32 registers the same way they are defined in C
+// pub type Registers = crate::arch::aarch32::user_regs_struct;
 
-#[cfg(target_arch = "riscv64")]
-/// x86_64 registers the same way they are defined in C
-pub type Registers = crate::arch::riscv64::user_regs_struct;
+// #[cfg(target_arch = "riscv64")]
+// /// x86_64 registers the same way they are defined in C
+// pub type Registers = crate::arch::riscv64::user_regs_struct;
 
 /// [api::Client] interface for all non-internal clients.
 pub type Client = crate::api::Client<api::Command, api::Response>;
@@ -496,7 +497,16 @@ pub(crate) fn syzarch() -> syzlang_parser::parser::Arch {
 lazy_static::lazy_static! {
 	#[derive(Default)]
 	static ref BUILD_INFO: std::sync::RwLock<buildinfo::BuildInfo> = {
-		// This is slower than unencoded, but saves ~6MB in final ELF file
+		let raw = include_bytes!(concat!(env!("OUT_DIR"), "/build_info.json"));
+		let str = std::str::from_utf8(raw).expect("build_info.json not valid utf-8");
+		let info: buildinfo::BuildInfo = serde_json::from_str(str)
+			.expect("unable to parse json from build.rs as variable");
+		std::sync::RwLock::new(info)
+	};
+}
+lazy_static::lazy_static! {
+	#[derive(Default)]
+	static ref TARGET_INFO: std::sync::RwLock<buildinfo::BuildInfo> = {
 		let raw = include_bytes!(concat!(env!("OUT_DIR"), "/build_info.json"));
 		let str = std::str::from_utf8(raw).expect("build_info.json not valid utf-8");
 		let info: buildinfo::BuildInfo = serde_json::from_str(str)

@@ -1,8 +1,5 @@
 use crate::{
-	api::messages::{Cont, Stop, Stopped, Thread, ThreadStatus, TrampType},
-	arch::{self, prep_syscall, ReadRegisters, RegsAbiAccess, SystemV, WriteRegisters},
-	utils::process::Pid,
-	utils::{AllocedMemory, MmapBuild},
+	api::messages::{Cont, Stop, Stopped, Thread, ThreadStatus, TrampType}, arch::{self, prep_native_syscall, NamedRegs}, target::GenericCc, utils::{process::Pid, AllocedMemory, MmapBuild}
 };
 use std::{collections::HashMap, process::Command};
 
@@ -16,6 +13,7 @@ use crate::{
 	utils::{Location, Perms},
 	Error, Registers, Result, TargetPtr,
 };
+use crate::arch::{call_shellcode, ret_shellcode, syscall_shellcode};
 
 use super::SwBp;
 
@@ -38,17 +36,6 @@ impl TraceError {
 	}
 }
 type TraceResult<T> = std::result::Result<T, TraceError>;
-
-use crate::arch::{call_shellcode, ret_shellcode, syscall_shellcode};
-
-// #[cfg(target_arch = "arm")]
-// use crate::arch::aarch32::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
-// #[cfg(target_arch = "aarch64")]
-// use crate::arch::aarch64::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
-// #[cfg(target_arch = "x86")]
-// use crate::arch::x86::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
-// #[cfg(target_arch = "x86_64")]
-// use crate::arch::x86_64::{as_our_regs, call_shellcode, ret_shellcode, syscall_shellcode};
 
 impl From<pete::Stop> for Stop {
 	fn from(value: pete::Stop) -> Self {
@@ -113,9 +100,7 @@ pub struct Tracer {
 	scratch: HashMap<Perms, AllocedMemory>,
 	lastaction: HashMap<Tid, Cont>,
 	pendingswbps: HashMap<Tid, SwBp>,
-
-	// No way for the end-user to override this with a completely custom one.
-	cc: Box<dyn RegsAbiAccess + Send + 'static>,
+	syscallcc: GenericCc,
 }
 
 impl Tracer {
@@ -130,7 +115,7 @@ impl Tracer {
 		let scratch = HashMap::new();
 		let lastaction = HashMap::new();
 		let pendingswbps = HashMap::new();
-		let cc = Box::new(SystemV);
+		let syscallcc = GenericCc::new_syscall_host()?;
 		let trampcode = Self::default_trampcode();
 		let s = Self {
 			proc,
@@ -143,7 +128,7 @@ impl Tracer {
 			scratch,
 			lastaction,
 			pendingswbps,
-			cc,
+			syscallcc,
 		};
 		Ok(s)
 	}
@@ -226,15 +211,6 @@ impl Tracer {
 	fn _detach(&mut self, tracee: Tracee) -> Result<()> {
 		let Tracee { pid, pending, .. } = tracee;
 		let signal = pending.unwrap_or(Signal::SIGCONT);
-
-		// TODO:
-		// - If we update to newer nix crate, this is one way to bypass type
-		//   check.
-		// - This is really ugly, but the problem is that we use Pid and Signal
-		//   re-exported from Pete and this is detected as a different type than
-		//   the actual ones in nix crate let pid = unsafe {
-		// std::mem::transmute(pid) }; let signal: nix::sys::signal::Signal =
-		// unsafe { std::mem::transmute(signal) };
 		nix::sys::ptrace::detach(pid, Some(signal))?;
 		Ok(())
 	}
@@ -418,7 +394,7 @@ impl Tracer {
 
 			let mut tracee = TraceStop::new(tracee)?;
 
-			let pc = tracee.regs.pc();
+			let pc = tracee.regs.get_pc();
 			let stop = tracee.tracee.stop;
 			let stop = self.handle_wait(&mut tracee, stop, tid)?;
 			if let Some(swbp) = self.pendingswbps.remove(&tid) {
@@ -427,7 +403,7 @@ impl Tracer {
 			}
 
 			self.tracee.insert(tid, tracee);
-			let ret = Stopped::new(pc, stop, tid);
+			let ret = Stopped::new(pc.into(), stop, tid);
 			log::debug!("rstop {ret:?}");
 			Ok(Some(ret))
 		} else if force {
@@ -447,7 +423,7 @@ impl Tracer {
 		let ret = if let Some(mut swbp) = self.swbps.remove(&pc) {
 			log::trace!("hit bp {swbp:?}");
 			swbp.hit();
-			tracee.regs.set_pc(pc);
+			tracee.regs.set_pc(pc.into());
 			tracee.tracee.set_registers(tracee.regs.clone().into())?;
 
 			let clients = swbp.clients.clone();
@@ -481,15 +457,15 @@ impl Tracer {
 		signal: pete::Signal,
 		tid: Tid,
 	) -> Result<Stop> {
-		let pc = tracee.regs.pc();
+		let pc = tracee.regs.get_pc();
 		log::trace!("signal @ {pc:x}");
 		if signal == pete::Signal::SIGTRAP {
 			// The program counter can either point to BP instruction or next
 			// instruction
 			#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-			let pc = pc - arch::bp_code().len().into();
+			let pc = pc - arch::bp_code().len() as u64;
 
-			if let Some(stop) = self.check_if_swbp(tracee, tid, pc)? {
+			if let Some(stop) = self.check_if_swbp(tracee, tid, pc.into())? {
 				return Ok(stop);
 			}
 		} else if signal == pete::Signal::SIGBUS {
@@ -636,7 +612,8 @@ impl Tracer {
 			let oldcode = tracee.tracee.read_memory(addr.into(), code.len())?;
 			let mut bp = SwBp::new_limit(addr, oldcode, 1);
 			bp.add_client(cid);
-			if tracee.regs.pc() == addr {
+			let addr: u64 = addr.into();
+			if tracee.regs.get_pc() == addr {
 				log::debug!("setting BP as pending");
 				self.pendingswbps.insert(tid, bp);
 			} else {
@@ -809,7 +786,7 @@ impl Tracer {
 		mut regs: Registers,
 		pc: TargetPtr,
 	) -> TraceResult<Tracee> {
-		regs.set_pc(pc);
+		regs.set_pc(pc.into());
 		tracee
 			.set_registers(regs.into())
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
@@ -857,8 +834,8 @@ impl Tracer {
 		let mut regs: Registers = restoreregs.into();
 
 		// Modify registers to to syscall
-		regs.set_pc(tramp);
-		prep_syscall(&mut regs, sysno, args).map_err(|x| TraceError::new(tracee, x))?;
+		regs.set_pc(tramp.into());
+		prep_native_syscall(&mut regs, sysno, args).map_err(|x| TraceError::new(tracee, x))?;
 
 		// Write registers to tracee
 		tracee
@@ -874,13 +851,14 @@ impl Tracer {
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
 		let regs: Registers = regs.into();
 		log::trace!("regs after {regs:?}");
-		let ret = regs.ret_syscall();
+		let ret = self.syscallcc.get_retval(&regs).unwrap();
+		// let ret = regs.ret_syscall();
 
 		// Restore original registers
 		tracee
 			.set_registers(restoreregs)
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		Ok((tracee, ret))
+		Ok((tracee, ret.into()))
 	}
 	fn _exec_syscall(
 		&mut self,
@@ -1087,7 +1065,8 @@ impl Tracer {
 			libc::SYS_mmap,
 		);
 
-		svc_regs.set_pc(exespace + 4.into());
+		let npc: u64 = exespace.into();
+		svc_regs.set_pc(npc + 4);
 		let mmap_args = vec![
 			0.into(), // addr
 			psize,    // len
@@ -1097,7 +1076,7 @@ impl Tracer {
 			0.into(),          // offset
 		];
 		log::debug!("mmap args {mmap_args:?}");
-		prep_syscall(&mut svc_regs, sysno as usize, &mmap_args)
+		prep_native_syscall(&mut svc_regs, sysno as usize, &mmap_args)
 			.map_err(|x| TraceError::new(tracee, x))?;
 
 		log::debug!("regs2 {svc_regs:?}");
@@ -1115,14 +1094,15 @@ impl Tracer {
 			.registers()
 			.map_err(|x| TraceError::new(tracee, x.into()))?;
 		let svc_regs: Registers = nregs.into();
-		let addr = svc_regs.ret_syscall();
+		let addr = self.syscallcc.get_retval(&svc_regs).unwrap();
+		// let addr = svc_regs.ret_syscall();
 		log::debug!("addr {addr:x}");
-		let naddr: usize = addr.into();
+		let naddr: usize = addr as usize;
 		let _ntracee = if naddr < usize::MAX - 100 {
 			log::debug!("mmapped {addr:x}");
 
 			// Store the mmapped-region so that we can free it when we detach
-			let mmapped = (addr, psize.into());
+			let mmapped = (addr.into(), psize.into());
 			self.mmapped.push(mmapped);
 
 			// Prepare all our tramps and store the individual location of them
@@ -1132,12 +1112,12 @@ impl Tracer {
 			inscode.extend(a);
 			// syscall_shellcode(&mut inscode);
 
-			let calltramp = addr + inscode.len().into();
+			let calltramp = (addr + inscode.len() as u64).into();
 			// call_shellcode(&mut inscode);
 			let a = self.trampcode.get(&TrampType::Call).unwrap();
 			inscode.extend(a);
 
-			let rettramp = addr + inscode.len().into();
+			let rettramp = (addr + inscode.len() as u64).into();
 			// ret_shellcode(&mut inscode);
 			let a = self.trampcode.get(&TrampType::Ret).unwrap();
 			inscode.extend(a);
@@ -1149,7 +1129,7 @@ impl Tracer {
 				.map_err(|x| TraceError::new(tracee, x.into()))?;
 
 			// Everything succeeded and we can insert our tramps
-			self.tramps.insert(TrampType::Syscall, syscalltramp);
+			self.tramps.insert(TrampType::Syscall, syscalltramp.into());
 			self.tramps.insert(TrampType::Call, calltramp);
 			self.tramps.insert(TrampType::Ret, rettramp);
 			tracee

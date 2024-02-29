@@ -22,6 +22,7 @@ thiserror = "1.0"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"]}
 
+pai-macros = { git = "https://github.com/rstenvi/pai-macros" }
 
 # We have added some constants to libc which have yet to be merged
 libc = { git = "https://github.com/rstenvi/libc", branch = "libc-0.2", version = "0.2" }
@@ -102,8 +103,6 @@ env_logger = "0.11.1"
 
 # Some ptrace(2) tests don't play nice with eachother
 serial_test = "3.0.0"
-
-pai-macros = { git = "https://github.com/rstenvi/pai-macros" }
 
 [features]
 std = []

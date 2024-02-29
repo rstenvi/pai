@@ -8,7 +8,7 @@ pub struct BuildVersion {
 	patch: usize,
 }
 
-#[derive(Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BuildArch {
 	Aarch64,
 	Aarch32,
@@ -52,10 +52,11 @@ impl std::str::FromStr for BuildOs {
 	}
 }
 
-#[derive(Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BuildEndian {
 	Little,
 	Big,
+	Native,
 }
 
 impl std::str::FromStr for BuildEndian {
@@ -65,6 +66,7 @@ impl std::str::FromStr for BuildEndian {
 		match s.to_lowercase().as_str() {
 			"little" => Ok(Self::Little),
 			"big" => Ok(Self::Big),
+			"native" => Ok(Self::Native),
 			_ => Err(anyhow::Error::msg(format!("unknown endian {s}"))),
 		}
 	}

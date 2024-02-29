@@ -28,7 +28,6 @@ mod tests {
 			messages::{RegEvent, Stop, SymbolType},
 			ArgsBuilder, Response,
 		},
-		arch::ReadRegisters,
 		exe::elf::Elf,
 		utils::{self, process::Tid},
 		Result, TargetPtr,
