@@ -133,9 +133,9 @@ extern crate test;
 pub mod api;
 pub mod arch;
 pub mod ctx;
-pub mod utils;
 pub(crate) mod evtlog;
 pub mod target;
+pub mod utils;
 
 pub(crate) mod buildinfo;
 pub(crate) mod ctrl;
@@ -185,10 +185,10 @@ cast_signed! { usize, isize }
 	serde::Serialize,
 )]
 pub struct TargetPtr {
-	raw: usize,
+	raw: u64,
 }
 impl TargetPtr {
-	fn new(raw: usize) -> Self {
+	fn new(raw: u64) -> Self {
 		Self { raw }
 	}
 	pub fn as_u8(&self) -> u8 {
@@ -210,19 +210,16 @@ impl TargetPtr {
 		self.as_u32().cast_signed()
 	}
 	pub fn as_u64(&self) -> u64 {
-		self.raw as u64
+		self.raw
 	}
-
-	// For this to be correct on 32- and 64-bit we cast as isize first and then to i64
 	pub fn as_i64(&self) -> i64 {
-		self.as_usize().cast_signed() as i64
+		self.raw.cast_signed() as i64
 	}
-
 	pub fn as_isize(&self) -> isize {
-		self.raw.cast_signed()
+		self.as_usize().cast_signed()
 	}
 	pub fn as_usize(&self) -> usize {
-		self.raw
+		self.raw as usize
 	}
 }
 
@@ -230,9 +227,7 @@ macro_rules! conv_target_int {
 	($int:ty) => {
 		impl From<$int> for TargetPtr {
 			fn from(value: $int) -> Self {
-				Self {
-					raw: value as usize,
-				}
+				Self { raw: value as u64 }
 			}
 		}
 		impl From<TargetPtr> for $int {
@@ -258,9 +253,6 @@ conv_target_int! { u8 }
 conv_target_int! { u16 }
 conv_target_int! { i16 }
 conv_target_int! { *const libc::c_void }
-
-// conv_target_int! { libc::c_long }
-// conv_target_int! { libc::c_int }
 
 impl From<TargetPtr> for serde_json::value::Number {
 	fn from(value: TargetPtr) -> Self {
@@ -316,24 +308,7 @@ impl std::fmt::Display for TargetPtr {
 /// The main Result-type used is most functions
 pub type Result<T> = std::result::Result<T, crate::Error>;
 
-// #[cfg(target_arch = "x86_64")]
 pub type Registers = crate::arch::ArchRegisters;
-
-// #[cfg(target_arch = "x86")]
-// /// x86 registers the same way they are defined in C
-// pub type Registers = crate::arch::x86::user_regs_struct;
-
-// #[cfg(target_arch = "aarch64")]
-// /// Aarch64 registers the same way they are defined in C
-// pub type Registers = crate::arch::aarch64::user_regs_struct;
-
-// #[cfg(target_arch = "arm")]
-// /// Aarch32 registers the same way they are defined in C
-// pub type Registers = crate::arch::aarch32::user_regs_struct;
-
-// #[cfg(target_arch = "riscv64")]
-// /// x86_64 registers the same way they are defined in C
-// pub type Registers = crate::arch::riscv64::user_regs_struct;
 
 /// [api::Client] interface for all non-internal clients.
 pub type Client = crate::api::Client<api::Command, api::Response>;

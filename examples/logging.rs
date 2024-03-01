@@ -1,5 +1,5 @@
+use pai::api::messages::{CbAction, LogFormat, LogOutput};
 use pai::ctx;
-use pai::api::messages::{LogOutput, LogFormat, CbAction};
 
 fn main() -> anyhow::Result<()> {
 	env_logger::init();

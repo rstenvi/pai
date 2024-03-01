@@ -407,7 +407,7 @@ where
 		tid: Tid,
 		pbuf: &PathBuf,
 		name: &str,
-		value: TargetPtr
+		value: TargetPtr,
 	) -> Result<()> {
 		let addr = self.resolve_symbol_got(pbuf, name)?;
 		self.client.write_int(tid, addr, usize::from(value))?;
@@ -670,7 +670,8 @@ where
 		let oregs = regs.clone();
 		for (i, arg) in args.iter().enumerate() {
 			log::debug!("arg[{i}]: = {arg:x}");
-			self.cc.set_arg(i, (*arg).into(), &mut regs, &mut self.client)?;
+			self.cc
+				.set_arg(i, (*arg).into(), &mut regs, &mut self.client)?;
 			// regs.set_arg_systemv(i, *arg);
 		}
 		let pc = self.client.get_trampoline_addr(tid, TrampType::Call)?;

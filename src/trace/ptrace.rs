@@ -1,5 +1,8 @@
 use crate::{
-	api::messages::{Cont, Stop, Stopped, Thread, ThreadStatus, TrampType}, arch::{self, prep_native_syscall, NamedRegs}, target::GenericCc, utils::{process::Pid, AllocedMemory, MmapBuild}
+	api::messages::{Cont, Stop, Stopped, Thread, ThreadStatus, TrampType},
+	arch::{self, prep_native_syscall, NamedRegs},
+	target::GenericCc,
+	utils::{process::Pid, AllocedMemory, MmapBuild},
 };
 use std::{collections::HashMap, process::Command};
 
@@ -8,12 +11,12 @@ use nix::{sys::ptrace, unistd::ForkResult};
 use pete::{Restart, Signal, Tracee};
 use procfs::process::MMPermissions;
 
+use crate::arch::{call_shellcode, ret_shellcode, syscall_shellcode};
 use crate::{
 	utils::process::{MemoryMap, Process, Tid},
 	utils::{Location, Perms},
 	Error, Registers, Result, TargetPtr,
 };
-use crate::arch::{call_shellcode, ret_shellcode, syscall_shellcode};
 
 use super::SwBp;
 

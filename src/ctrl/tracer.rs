@@ -1,9 +1,17 @@
 use crate::{
 	api::{
 		args::ClientArgs,
-		messages::{Cont, Event, ExecSyscall, LogFormat, LogOutput, MasterComm, NewClientReq, RegEvent, Stopped},
+		messages::{
+			Cont, Event, ExecSyscall, LogFormat, LogOutput, MasterComm, NewClientReq, RegEvent,
+			Stopped,
+		},
 		Client, Command, ManagerCmd, ProcessCmd, RemoteCmd, Response, ThreadCmd,
-	}, ctrl::ClientState, evtlog::{Logger, Loggers, RealLogger}, trace::ptrace::Tracer, utils::process::Tid, Error, Result
+	},
+	ctrl::ClientState,
+	evtlog::{Logger, Loggers, RealLogger},
+	trace::ptrace::Tracer,
+	utils::process::Tid,
+	Error, Result,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::{collections::HashMap, thread::JoinHandle};
@@ -463,10 +471,10 @@ impl CtrlTracer {
 				client.detach_thread(tid);
 				Ok(Some(Response::Ack))
 			}
-    		ManagerCmd::AddLogger { format, output } => {
+			ManagerCmd::AddLogger { format, output } => {
 				self.loggers.add_logger(format, output)?;
 				Ok(Some(Response::Ack))
-			},
+			}
 		}
 	}
 
@@ -498,7 +506,6 @@ impl CtrlTracer {
 		let (tx1, rx1) = unbounded();
 		let (tx2, rx2) = unbounded();
 		let (tx3, rx3) = unbounded();
-
 
 		let mtx = self.mtx.clone();
 		let handle = std::thread::spawn(move || -> Result<()> {

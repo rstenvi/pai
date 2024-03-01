@@ -1,5 +1,16 @@
-use std::{fs::{File, OpenOptions}, io::{BufWriter, Write}, net::{SocketAddr, TcpStream}, path::PathBuf};
-use crate::{api::{messages::{Event, LogFormat, LogOutput, RegEvent}, Command, Response}, Result};
+use crate::{
+	api::{
+		messages::{Event, LogFormat, LogOutput, RegEvent},
+		Command, Response,
+	},
+	Result,
+};
+use std::{
+	fs::{File, OpenOptions},
+	io::{BufWriter, Write},
+	net::{SocketAddr, TcpStream},
+	path::PathBuf,
+};
 
 trait Matches {
 	fn cmd_matches(&self, cmd: &Command) -> Option<bool>;
@@ -12,20 +23,23 @@ pub enum SyscallFilter {
 	Name { name: String },
 }
 impl Matches for SyscallFilter {
-    fn cmd_matches(&self, _cmd: &Command) -> Option<bool> {
-        todo!()
-    }
+	fn cmd_matches(&self, _cmd: &Command) -> Option<bool> {
+		todo!()
+	}
 
-    fn rsp_matches(&self, _rsp: &Response) -> Option<bool> {
-        todo!()
-    }
+	fn rsp_matches(&self, _rsp: &Response) -> Option<bool> {
+		todo!()
+	}
 }
 
 struct CheckEntry<T> {
 	want: Vec<T>,
 	nowant: Vec<T>,
 }
-impl<T> CheckEntry<T> where T: Matches {
+impl<T> CheckEntry<T>
+where
+	T: Matches,
+{
 	fn add_want(&mut self, want: T) {
 		self.want.push(want);
 	}
@@ -34,9 +48,7 @@ impl<T> CheckEntry<T> where T: Matches {
 	}
 }
 
-
-pub enum EventFilter {
-}
+pub enum EventFilter {}
 
 struct LogFilter {
 	ignore_unmatch: bool,
@@ -69,14 +81,11 @@ impl From<LogFormat> for Box<dyn LogSerializer> {
 	}
 }
 
-
-
 #[derive(Default, Debug)]
 pub struct Display;
 
 impl LogSerializer for Display {
 	fn response(&mut self, val: &Response, out: &mut String) -> Result<()> {
-		
 		let s = format!("{val:?}");
 		out.push_str(s.as_str());
 		Ok(())
@@ -151,8 +160,12 @@ pub struct Loggers {
 impl Loggers {
 	pub fn add_logger(&mut self, format: LogFormat, output: LogOutput) -> Result<()> {
 		let r = match output {
-			LogOutput::File { path } => Box::new(RealLogger::new_file(path, format)?) as Box<dyn Logger>,
-			LogOutput::Tcp { addr } => Box::new(RealLogger::new_connect(addr, format)?) as Box<dyn Logger>,
+			LogOutput::File { path } => {
+				Box::new(RealLogger::new_file(path, format)?) as Box<dyn Logger>
+			}
+			LogOutput::Tcp { addr } => {
+				Box::new(RealLogger::new_connect(addr, format)?) as Box<dyn Logger>
+			}
 		};
 		self.loggers.push(r);
 		Ok(())
@@ -183,7 +196,6 @@ pub trait Logger {
 	fn finish(&mut self) -> Result<()>;
 }
 
-
 impl<W: std::io::Write> Logger for RealLogger<W> {
 	fn log_cmd(&mut self, cmd: &Command) -> Result<()> {
 		let mut s = String::new();
@@ -207,7 +219,6 @@ impl<W: std::io::Write> Logger for RealLogger<W> {
 	}
 }
 
-
 pub struct RealLogger<W: ?Sized + std::io::Write> {
 	serialize: Box<dyn LogSerializer>,
 	write: BufWriter<W>,
@@ -225,7 +236,11 @@ impl RealLogger<TcpStream> {
 impl RealLogger<File> {
 	pub fn new_file(path: PathBuf, format: LogFormat) -> Result<Self> {
 		let serialize = format.into();
-		let file = OpenOptions::new().create(true).truncate(true).write(true).open(path)?;
+		let file = OpenOptions::new()
+			.create(true)
+			.truncate(true)
+			.write(true)
+			.open(path)?;
 		let write = BufWriter::new(file);
 		let ret = Self { serialize, write };
 		Ok(ret)

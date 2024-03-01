@@ -6,12 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{target::GenericCc, Registers, Result, TargetPtr};
 
-
-pub mod aarch64;
 pub mod aarch32;
-pub mod x86_64;
-pub mod x86;
+pub mod aarch64;
 pub mod riscv64;
+pub mod x86;
+pub mod x86_64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum ArchRegisters {
@@ -99,17 +98,21 @@ macro_rules! impl_named_regs {
 				self._set_sysno(sysno)
 			}
 			fn offset_of(&self, regs: &str) -> Result<usize> {
-				self._offset_of(regs).ok_or(crate::Error::msg(format!("reg {regs} not found")))
+				self._offset_of(regs)
+					.ok_or(crate::Error::msg(format!("reg {regs} not found")))
 			}
 			fn size_of(&self, regs: &str) -> Result<usize> {
-				self._size_of(regs).ok_or(crate::Error::msg(format!("reg {regs} not found")))
+				self._size_of(regs)
+					.ok_or(crate::Error::msg(format!("reg {regs} not found")))
 			}
 			fn get_value(&self, offset: usize, size: usize, data: &mut Vec<u8>) -> Result<()> {
 				if offset + size <= std::mem::size_of::<Self>() {
 					unsafe { self._get_value(offset, size, data) }
 					Ok(())
 				} else {
-					Err(crate::Error::msg(format!("addr 0x{offset:x} + 0x{size:x} goes beyond register space")))
+					Err(crate::Error::msg(format!(
+						"addr 0x{offset:x} + 0x{size:x} goes beyond register space"
+					)))
 				}
 			}
 			fn set_value(&mut self, offset: usize, data: &[u8]) -> Result<()> {
@@ -117,7 +120,10 @@ macro_rules! impl_named_regs {
 					unsafe { self._set_value(offset, data) }
 					Ok(())
 				} else {
-					Err(crate::Error::msg(format!("addr 0x{offset:x} + 0x{:x} goes beyond register space", data.len())))
+					Err(crate::Error::msg(format!(
+						"addr 0x{offset:x} + 0x{:x} goes beyond register space",
+						data.len()
+					)))
 				}
 			}
 		}
@@ -140,7 +146,6 @@ macro_rules! impl_from_pete {
 	};
 }
 pub(crate) use impl_from_pete;
-
 
 macro_rules! impl_from_generic {
 	($regs:ident, $ident:ident) => {
@@ -181,7 +186,6 @@ macro_rules! impl_conv_pete_generic {
 }
 pub(crate) use impl_conv_pete_generic;
 
-
 pub trait NamedRegs {
 	fn get_sp(&self) -> u64;
 	fn get_pc(&self) -> u64;
@@ -197,7 +201,11 @@ pub trait NamedRegs {
 	fn set_value(&mut self, offset: usize, data: &[u8]) -> Result<()>;
 }
 
-pub(crate) fn prep_native_syscall(regs: &mut dyn NamedRegs, sysno: usize, args: &[TargetPtr]) -> Result<()> {
+pub(crate) fn prep_native_syscall(
+	regs: &mut dyn NamedRegs,
+	sysno: usize,
+	args: &[TargetPtr],
+) -> Result<()> {
 	log::trace!("sysno {sysno} | args {args:?}");
 	let cc = GenericCc::new_syscall_host()?;
 	regs.set_sysno(sysno);

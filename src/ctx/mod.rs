@@ -9,13 +9,13 @@ pub use secondary::Secondary;
 
 #[cfg(test)]
 mod tests {
+	use crate::api::messages::CbAction;
 	use serial_test::serial;
 	use test::Bencher;
-	use crate::api::messages::CbAction;
 
-	use crate::api::messages::BpRet;
 	#[cfg(feature = "syscalls")]
 	use crate::api::args::Enrich;
+	use crate::api::messages::BpRet;
 	#[cfg(feature = "syscalls")]
 	use crate::syscalls::Syscalls;
 
@@ -279,7 +279,7 @@ mod tests {
 	#[cfg(not(target_arch = "arm"))]
 	#[test]
 	fn clientmgr_strace_clone() {
-		let numclones = 2;	// This is hard-coded in program
+		let numclones = 2; // This is hard-coded in program
 		let mut files = crate::tests::get_all_tar_files().unwrap();
 		let threads = files
 			.remove("threads")
@@ -517,7 +517,8 @@ mod tests {
 	#[test]
 	fn clientmgr_do_stuff() {
 		let pargs = vec![];
-		let mut ctx: Main<usize, crate::Error> = Main::new_main(false, "true".to_string(), pargs, 0_usize).unwrap();
+		let mut ctx: Main<usize, crate::Error> =
+			Main::new_main(false, "true".to_string(), pargs, 0_usize).unwrap();
 		let sec = ctx.secondary_mut();
 		let args = sec.take_args_builder().push_registered(RegEvent::Files);
 		sec.set_args_builder(args);

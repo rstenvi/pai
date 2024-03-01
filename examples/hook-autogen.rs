@@ -4,7 +4,7 @@ use pai::{
 };
 
 /// Procedural macro to generate callback function is in a separate crate
-/// 
+///
 /// Use `cargo expand --example hook-autogen` to see the generated code, will
 /// look something like this:
 /// ```

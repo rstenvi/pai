@@ -45,21 +45,24 @@ impl CcArgAccess {
 		let reg: String = reg.into();
 		let offset = d.offset_of(&reg)?;
 		let size = d.size_of(&reg)?;
-		let arg = ArgAccess::Register { regname: reg, offset };
+		let arg = ArgAccess::Register {
+			regname: reg,
+			offset,
+		};
 		let ret = Self { size, arg };
 		Ok(ret)
 	}
 	fn from_sp_offset(offset: usize, size: usize) -> Self {
 		Self {
 			size,
-			arg: ArgAccess::Stack { offset }
+			arg: ArgAccess::Stack { offset },
 		}
 	}
 	fn from_reg_offset<S: Into<String>>(regname: S, offset: usize, size: usize) -> Self {
 		let regname = regname.into();
 		Self {
 			size,
-			arg: ArgAccess::Register { regname, offset }
+			arg: ArgAccess::Register { regname, offset },
 		}
 	}
 }
@@ -77,29 +80,41 @@ trait ToBytes: Sized {
 
 impl FromBytes for u64 {
 	fn try_from_ne_bytes(bytes: &[u8]) -> Result<Self> {
-		bytes.try_into().map(u64::from_ne_bytes)
+		bytes
+			.try_into()
+			.map(u64::from_ne_bytes)
 			.map_err(|_e| crate::Error::Unknown)
 	}
 	fn try_from_le_bytes(bytes: &[u8]) -> Result<Self> {
-		bytes.try_into().map(u64::from_le_bytes)
+		bytes
+			.try_into()
+			.map(u64::from_le_bytes)
 			.map_err(|_e| crate::Error::Unknown)
 	}
 	fn try_from_be_bytes(bytes: &[u8]) -> Result<Self> {
-		bytes.try_into().map(u64::from_be_bytes)
+		bytes
+			.try_into()
+			.map(u64::from_be_bytes)
 			.map_err(|_e| crate::Error::Unknown)
 	}
 }
 impl FromBytes for u32 {
 	fn try_from_ne_bytes(bytes: &[u8]) -> Result<Self> {
-		bytes.try_into().map(u32::from_ne_bytes)
+		bytes
+			.try_into()
+			.map(u32::from_ne_bytes)
 			.map_err(|_e| crate::Error::Unknown)
 	}
 	fn try_from_le_bytes(bytes: &[u8]) -> Result<Self> {
-		bytes.try_into().map(u32::from_le_bytes)
+		bytes
+			.try_into()
+			.map(u32::from_le_bytes)
 			.map_err(|_e| crate::Error::Unknown)
 	}
 	fn try_from_be_bytes(bytes: &[u8]) -> Result<Self> {
-		bytes.try_into().map(u32::from_be_bytes)
+		bytes
+			.try_into()
+			.map(u32::from_be_bytes)
 			.map_err(|_e| crate::Error::Unknown)
 	}
 }
@@ -174,17 +189,22 @@ impl GenericCc {
 		let regs = crate::arch::x86::user_regs_struct::default();
 		let args = vec![
 			CcArgAccess::from_sp_offset(4, 4),
-			CcArgAccess::from_sp_offset((1* 4) + 4, 4),
-			CcArgAccess::from_sp_offset((2* 4) + 4, 4),
-			CcArgAccess::from_sp_offset((3* 4) + 4, 4),
-			CcArgAccess::from_sp_offset((4* 4) + 4, 4),
-			CcArgAccess::from_sp_offset((5* 4) + 4, 4),
+			CcArgAccess::from_sp_offset((1 * 4) + 4, 4),
+			CcArgAccess::from_sp_offset((2 * 4) + 4, 4),
+			CcArgAccess::from_sp_offset((3 * 4) + 4, 4),
+			CcArgAccess::from_sp_offset((4 * 4) + 4, 4),
+			CcArgAccess::from_sp_offset((5 * 4) + 4, 4),
 		];
 		let retval = CcArgAccess::from_named_reg("eax", &regs)?;
 		let calltramp = CcArgAccess::from_named_reg("eax", &regs)?;
 		let returnaddr = Some(CcArgAccess::from_sp_offset(0, 4));
 
-		let ret = Self { args, retval, calltramp, returnaddr };
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
 		Ok(ret)
 	}
 	fn new_systemv_aarch32() -> Result<Self> {
@@ -201,24 +221,34 @@ impl GenericCc {
 		let calltramp = CcArgAccess::from_named_reg("arm_r9", &regs)?;
 		let returnaddr = Some(CcArgAccess::from_named_reg("arm_lr", &regs)?);
 
-		let ret = Self { args, retval, calltramp, returnaddr };
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
 		Ok(ret)
 	}
 	fn new_systemv_aarch64() -> Result<Self> {
 		let args = vec![
 			CcArgAccess::from_reg_offset("x0", 0, 8),
-			CcArgAccess::from_reg_offset("x1", 1*8, 8),
-			CcArgAccess::from_reg_offset("x2", 2*8, 8),
-			CcArgAccess::from_reg_offset("x3", 3*8, 8),
-			CcArgAccess::from_reg_offset("x4", 4*8, 8),
-			CcArgAccess::from_reg_offset("x5", 5*8, 8),
-			CcArgAccess::from_reg_offset("x6", 6*8, 8),
+			CcArgAccess::from_reg_offset("x1", 1 * 8, 8),
+			CcArgAccess::from_reg_offset("x2", 2 * 8, 8),
+			CcArgAccess::from_reg_offset("x3", 3 * 8, 8),
+			CcArgAccess::from_reg_offset("x4", 4 * 8, 8),
+			CcArgAccess::from_reg_offset("x5", 5 * 8, 8),
+			CcArgAccess::from_reg_offset("x6", 6 * 8, 8),
 		];
 		let retval = CcArgAccess::from_reg_offset("x0", 0, 8);
-		let calltramp = CcArgAccess::from_reg_offset("x9", 9*8, 8);
-		let returnaddr = Some(CcArgAccess::from_reg_offset("lr", 30*8, 8));
+		let calltramp = CcArgAccess::from_reg_offset("x9", 9 * 8, 8);
+		let returnaddr = Some(CcArgAccess::from_reg_offset("lr", 30 * 8, 8));
 
-		let ret = Self { args, retval, calltramp, returnaddr };
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
 		Ok(ret)
 	}
 	fn new_systemv_x86_64() -> Result<Self> {
@@ -235,7 +265,12 @@ impl GenericCc {
 		let calltramp = CcArgAccess::from_named_reg("r10", &regs)?;
 		let returnaddr = Some(CcArgAccess::from_sp_offset(0, 8));
 
-		let ret = Self { args, retval, calltramp, returnaddr };
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
 		Ok(ret)
 	}
 	pub fn new_host_systemv() -> Result<Self> {
@@ -246,18 +281,23 @@ impl GenericCc {
 		// let regs = crate::arch::x86::user_regs_struct::default();
 		let args = vec![
 			CcArgAccess::from_reg_offset("x0", 0, 8),
-			CcArgAccess::from_reg_offset("x1", 1*8, 8),
-			CcArgAccess::from_reg_offset("x2", 2*8, 8),
-			CcArgAccess::from_reg_offset("x3", 3*8, 8),
-			CcArgAccess::from_reg_offset("x4", 4*8, 8),
-			CcArgAccess::from_reg_offset("x5", 5*8, 8),
-			CcArgAccess::from_reg_offset("x6", 6*8, 8),
+			CcArgAccess::from_reg_offset("x1", 1 * 8, 8),
+			CcArgAccess::from_reg_offset("x2", 2 * 8, 8),
+			CcArgAccess::from_reg_offset("x3", 3 * 8, 8),
+			CcArgAccess::from_reg_offset("x4", 4 * 8, 8),
+			CcArgAccess::from_reg_offset("x5", 5 * 8, 8),
+			CcArgAccess::from_reg_offset("x6", 6 * 8, 8),
 		];
 		let retval = CcArgAccess::from_reg_offset("x0", 0, 8);
 		let calltramp = CcArgAccess::from_reg_offset("x9", 9 * 8, 8);
 		let returnaddr = None;
 
-		let ret = Self { args, retval, calltramp, returnaddr };
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
 		Ok(ret)
 	}
 	fn new_syscall_aarch32() -> Result<Self> {
@@ -275,7 +315,12 @@ impl GenericCc {
 		let calltramp = CcArgAccess::from_named_reg("arm_r9", &regs)?;
 		let returnaddr = None;
 
-		let ret = Self { args, retval, calltramp, returnaddr };
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
 		Ok(ret)
 	}
 	fn new_syscall_x86() -> Result<Self> {
@@ -292,7 +337,12 @@ impl GenericCc {
 		let calltramp = CcArgAccess::from_named_reg("eax", &regs)?;
 		let returnaddr = None;
 
-		let ret = Self { args, retval, calltramp, returnaddr };
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
 		Ok(ret)
 	}
 	fn new_syscall_x86_64() -> Result<Self> {
@@ -309,11 +359,21 @@ impl GenericCc {
 		let calltramp = CcArgAccess::from_named_reg("r10", &regs)?;
 		let returnaddr = None;
 
-		let ret = Self { args, retval, calltramp, returnaddr };
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
 		Ok(ret)
 	}
 
-	fn _set_arg(arg: &CcArgAccess, regs: &mut dyn NamedRegs, val: u64, client: Option<&mut crate::Client>) -> Result<()> {
+	fn _set_arg(
+		arg: &CcArgAccess,
+		regs: &mut dyn NamedRegs,
+		val: u64,
+		client: Option<&mut crate::Client>,
+	) -> Result<()> {
 		let endian = &crate::TARGET_INFO.read().unwrap().target.endian;
 		let data = if arg.size == 8 {
 			match endian {
@@ -342,15 +402,21 @@ impl GenericCc {
 				let tids = client.get_stopped_tids()?;
 				let tid = tids.first().ok_or(Error::msg("No stopped thread"))?;
 				client.write_bytes(*tid, addr, data)?;
-			},
+			}
 		}
 		Ok(())
 	}
-	fn _get_arg(arg: &CcArgAccess, regs: &dyn NamedRegs, client: Option<&mut crate::Client>) -> Result<u64> {
+	fn _get_arg(
+		arg: &CcArgAccess,
+		regs: &dyn NamedRegs,
+		client: Option<&mut crate::Client>,
+	) -> Result<u64> {
 		let endian = &crate::TARGET_INFO.read().unwrap().target.endian;
 		let mut data = Vec::with_capacity(arg.size);
 		match &arg.arg {
-			ArgAccess::Register { regname: _, offset } => regs.get_value(*offset, arg.size, &mut data)?,
+			ArgAccess::Register { regname: _, offset } => {
+				regs.get_value(*offset, arg.size, &mut data)?
+			}
 			ArgAccess::Stack { offset } => {
 				let sp = regs.get_sp();
 				let addr = (sp + *offset as u64).into();
@@ -359,7 +425,7 @@ impl GenericCc {
 				let tid = tids.first().ok_or(Error::msg("No stopped thread"))?;
 				let mut res = client.read_bytes(*tid, addr, arg.size)?;
 				data.append(&mut res);
-			},
+			}
 		}
 		let ret = if arg.size == 4 {
 			match endian {
@@ -379,11 +445,22 @@ impl GenericCc {
 		};
 		Ok(ret)
 	}
-	pub fn get_arg(&self, num: usize, regs: &dyn NamedRegs, client: &mut crate::Client) -> Result<u64> {
+	pub fn get_arg(
+		&self,
+		num: usize,
+		regs: &dyn NamedRegs,
+		client: &mut crate::Client,
+	) -> Result<u64> {
 		let arg = self.args.get(num).ok_or(Error::Unknown)?;
 		Self::_get_arg(arg, regs, Some(client))
 	}
-	pub fn set_arg(&self, num: usize, val: u64, regs: &mut dyn NamedRegs, client: &mut crate::Client) -> Result<()> {
+	pub fn set_arg(
+		&self,
+		num: usize,
+		val: u64,
+		regs: &mut dyn NamedRegs,
+		client: &mut crate::Client,
+	) -> Result<()> {
 		let arg = self.args.get(num).ok_or(Error::Unknown)?;
 		Self::_set_arg(arg, regs, val, Some(client))
 	}
@@ -393,7 +470,11 @@ impl GenericCc {
 	pub fn set_retval(&self, val: u64, regs: &mut dyn NamedRegs) -> Result<()> {
 		Self::_set_arg(&self.retval, regs, val, None)
 	}
-	pub fn set_reg_call_tramp(&self, regs: &mut dyn NamedRegs, value: crate::TargetPtr) -> Result<()> {
+	pub fn set_reg_call_tramp(
+		&self,
+		regs: &mut dyn NamedRegs,
+		value: crate::TargetPtr,
+	) -> Result<()> {
 		Self::_set_arg(&self.calltramp, regs, value.into(), None)
 	}
 	pub fn set_arg_regonly(&self, num: usize, val: u64, regs: &mut dyn NamedRegs) -> Result<()> {
@@ -408,7 +489,6 @@ impl GenericCc {
 		let arg = self.returnaddr.as_ref().ok_or(Error::unsupported())?;
 		Self::_get_arg(arg, regs, Some(client))
 	}
-
 }
 
 #[cfg(test)]

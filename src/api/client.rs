@@ -1,6 +1,6 @@
 //! Code relevant to sending a command to a different thread/process/machine.
 
-use crate::api::messages::{LogOutput, LogFormat};
+use crate::api::messages::{LogFormat, LogOutput};
 use std::{
 	io::{BufReader, BufWriter, Write},
 	net::TcpStream,

@@ -605,9 +605,15 @@ impl SyscallItem {
 						match v {
 							Ok(v) => match v {
 								Some(v) => inarg.set_parsed(v),
-								None => log::warn!("reading of ptr {:x} with len {len:?} returned None", inarg.raw_value()),
-							}
-							Err(e) => log::warn!("reading of ptr {:x} with len {len:?} returned error: {e:?}", inarg.raw_value()),
+								None => log::warn!(
+									"reading of ptr {:x} with len {len:?} returned None",
+									inarg.raw_value()
+								),
+							},
+							Err(e) => log::warn!(
+								"reading of ptr {:x} with len {len:?} returned error: {e:?}",
+								inarg.raw_value()
+							),
 						}
 					}
 				} else {

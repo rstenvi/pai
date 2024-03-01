@@ -1,5 +1,10 @@
 use crate::{
-	api::{client::IdWrapper, messages::Stopped}, arch::NamedRegs, evtlog::Loggers, target::GenericCc, utils::process::Tid, Result
+	api::{client::IdWrapper, messages::Stopped},
+	arch::NamedRegs,
+	evtlog::Loggers,
+	target::GenericCc,
+	utils::process::Tid,
+	Result,
 };
 use crossbeam_channel::{Receiver, Sender};
 
@@ -134,12 +139,12 @@ impl ClientThread {
 					},
 				);
 				Ok(Some(r))
-			},
-    		ClientProxy::AddLogger { format, output } => {
+			}
+			ClientProxy::AddLogger { format, output } => {
 				self.loggers.add_logger(format, output)?;
 				self.tx.send(Response::Ack)?;
 				Ok(None)
-			},
+			}
 		}
 	}
 	fn next_client_command(&mut self) -> Result<Option<MasterComm>> {
@@ -149,9 +154,7 @@ impl ClientThread {
 		log::debug!("got {r:?}");
 		match r {
 			Command::ClientProxy { cmd } => self.handle_client_proxy(cmd),
-			_ => {
-				Ok(Some(MasterComm::new(self.id, r)))
-			},
+			_ => Ok(Some(MasterComm::new(self.id, r))),
 		}
 	}
 

@@ -168,7 +168,7 @@ impl RegEvent {
 				fd: _,
 				offset: _,
 			} => Self::Mmap,
-    		EventInner::MsgLog { source: _, msg: _ } => Self::MsgLog,
+			EventInner::MsgLog { source: _, msg: _ } => Self::MsgLog,
 		}
 	}
 }
@@ -349,7 +349,7 @@ impl std::fmt::Display for EventInner {
 				fd: _,
 				offset: _,
 			} => todo!(),
-    		EventInner::MsgLog { source: _, msg: _ } => todo!(),
+			EventInner::MsgLog { source: _, msg: _ } => todo!(),
 		}
 	}
 }
@@ -678,7 +678,10 @@ pub enum ClientProxy {
 	ResolveSyscall(String),
 	Detach,
 
-	AddLogger { format: LogFormat, output: LogOutput },
+	AddLogger {
+		format: LogFormat,
+		output: LogOutput,
+	},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -703,14 +706,28 @@ impl LogOutput {
 pub enum ManagerCmd {
 	Wait,
 	Detach,
-	DetachThread { tid: Tid },
+	DetachThread {
+		tid: Tid,
+	},
 	InitDone,
 	PrepareLoadClient,
-	SendEvent { event: Event },
-	RemoveClient { cid: usize },
-	SetConfig { config: Args },
-	SetConfigThread { tid: Tid, config: Args },
-	AddLogger { format: LogFormat, output: LogOutput },
+	SendEvent {
+		event: Event,
+	},
+	RemoveClient {
+		cid: usize,
+	},
+	SetConfig {
+		config: Args,
+	},
+	SetConfigThread {
+		tid: Tid,
+		config: Args,
+	},
+	AddLogger {
+		format: LogFormat,
+		output: LogOutput,
+	},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
