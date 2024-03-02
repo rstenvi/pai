@@ -276,7 +276,7 @@ impl Args {
 			Stop::Signal { signal, group: _ } => Some(self.handles_signal(*signal)),
 			Stop::Clone { pid: _ } => Some(self.registered.contains(&RegEvent::Clone)),
 			Stop::Attach => Some(self.registered.contains(&RegEvent::Attached)),
-			Stop::Breakpoint { pc: _, clients: _ } => None,
+			Stop::Breakpoint { pc: _ } => None,
 			Stop::Fork { newpid: _ } => Some(self.registered.contains(&RegEvent::Fork)),
 			Stop::Step { pc: _ } => Some(self.handle_steps),
 			Stop::Exec { old: _ } => Some(self.handle_exec),
@@ -375,7 +375,7 @@ impl ClientArgs {
 			ret
 		} else {
 			// Breakpoint are always global, so we check this here instead
-			if let Stop::Breakpoint { pc, clients: _ } = stop {
+			if let Stop::Breakpoint { pc } = stop {
 				self.handles_breakpint(*pc)
 			} else {
 				false

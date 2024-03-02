@@ -89,13 +89,15 @@ impl<Entry, Exit> Callback<Entry, Exit> {
 
 /// Each connected client will get access  to this context object.
 ///
-/// This object will always belong to a [super::Main] and will never be created
-/// on its own.
+/// This object will always belong to a [crate::ctx::Main] and will never be
+/// created on its own.
 pub struct Secondary<T, Err>
 where
 	Err: Into<crate::Error>,
 {
 	/// Can be used to query information from OS about the process.
+	///
+	/// This is exposed here as a convenience.
 	pub proc: Process,
 	client: crate::Client,
 
@@ -221,11 +223,6 @@ where
 		&self.data
 	}
 
-	// Override with a custom implementation of the ABI
-	// pub fn set_cc(&mut self, cc: Box<dyn RegsAbiAccess + Send + 'static>) {
-	// 	self.cc = cc;
-	// }
-
 	/// Get a mutable reference to stored data
 	pub fn data_mut(&mut self) -> &mut T {
 		&mut self.data
@@ -239,6 +236,8 @@ where
 	pub fn take_args_builder(&mut self) -> ArgsBuilder {
 		std::mem::take(&mut self.args)
 	}
+
+	/// Get a mutable reference to the [ArgsBuilder].
 	pub fn args_builder_mut(&mut self) -> &mut ArgsBuilder {
 		&mut self.args
 	}
@@ -250,6 +249,10 @@ where
 
 	/// Write the config we've been tracking to the tracee so that it takes
 	/// effect.
+	///
+	/// **NB!** This is generally not necessary, if the config has been
+	/// modified, this function will be called when the client is done
+	/// interacting with the target.
 	pub fn write_config(&mut self) -> Result<()> {
 		log::trace!("writing new config");
 		let args = self.args.borrow_finish()?;
@@ -273,16 +276,14 @@ where
 	}
 
 	/// Get a [MemoryMap] which exactly matches the name in `pbuf`
-	pub fn get_module(&mut self, pbuf: &PathBuf) -> Result<MemoryMap> {
+	pub fn get_memory_map_exact(&mut self, pbuf: &PathBuf) -> Result<MemoryMap> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		let mods = self.proc.proc_modules()?;
 		let mut mods: Vec<_> = mods.iter().filter(|x| x.file_name_matches(&pbuf)).collect();
-		if mods.len() == 1 {
-			Ok(mods.remove(0).clone())
-		} else {
-			Err(Error::msg(format!(
-				"found incorrect modules matching {pbuf:?}"
-			)))
+		match mods.len() {
+			0 => Err(Error::NotFound),
+			1 => Ok(mods.remove(0).clone()),
+			_ => Err(Error::TooManyMatches),
 		}
 	}
 
@@ -291,7 +292,8 @@ where
 	/// This function will not search in the order they are retrieved, which
 	/// should not be considered deterministic. If a symbol is defined multiple
 	/// times, there is no guarantee on which is returned.
-	pub fn lookup_symbol(&mut self, name: &str) -> Result<Option<ElfSymbol>> {
+	pub fn lookup_symbol_in_any(&mut self, name: &str) -> Result<Option<ElfSymbol>> {
+		log::trace!("searching for {name:?}");
 		let paths = self
 			.proc
 			.proc_modules()?
@@ -302,10 +304,13 @@ where
 			.collect::<Vec<PathBuf>>();
 
 		for path in paths.iter() {
-			if let Ok(Some(n)) = self.resolve_symbol(path, name) {
+			log::trace!("searching for {name:?} in {path:?}");
+			if let Ok(Some(n)) = self.resolve_symbol_in_mod(path, name) {
+				log::trace!("found {name:?} in {path:?}");
 				return Ok(Some(n));
 			}
 		}
+		log::debug!("no match found for {name:?}");
 		Ok(None)
 	}
 	fn ensure_elf_exists(&mut self, pbuf: &PathBuf) -> Result<()> {
@@ -319,19 +324,28 @@ where
 	}
 
 	/// Resolve a given symbol `name` in a given module with path `pbuf`
-	pub fn resolve_symbol(&mut self, pbuf: &PathBuf, name: &str) -> Result<Option<ElfSymbol>> {
+	pub fn resolve_symbol_in_mod(
+		&mut self,
+		pbuf: &PathBuf,
+		name: &str,
+	) -> Result<Option<ElfSymbol>> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		self.ensure_elf_exists(&pbuf)?;
 		log::info!("resolving  in {pbuf:?}");
 		let elf = self.resolved.get(&pbuf).ok_or(Error::NotFound)?;
 		Ok(elf.resolve(name))
 	}
+
+	/// Resolve a given GOT symbol `name` in a given module with path `pbuf`
 	pub fn resolve_symbol_got(&mut self, pbuf: &PathBuf, name: &str) -> Result<TargetPtr> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		self.ensure_elf_exists(&pbuf)?;
 		let elf = self.resolved.get(&pbuf).ok_or(Error::NotFound)?;
 		elf.resolve_got(name).ok_or(Error::NotFound)
 	}
+
+	/// Insert a hook to be executed every time the function `name` in `pbuf` is
+	/// called.
 	pub fn hook_got_entry(
 		&mut self,
 		tid: Tid,
@@ -402,13 +416,7 @@ where
 		Ok(())
 	}
 
-	pub fn write_got(
-		&mut self,
-		tid: Tid,
-		pbuf: &PathBuf,
-		name: &str,
-		value: TargetPtr,
-	) -> Result<()> {
+	fn write_got(&mut self, tid: Tid, pbuf: &PathBuf, name: &str, value: TargetPtr) -> Result<()> {
 		let addr = self.resolve_symbol_got(pbuf, name)?;
 		self.client.write_int(tid, addr, usize::from(value))?;
 		#[cfg(debug_assertions)]
@@ -421,7 +429,7 @@ where
 
 	/// Enumerate all symbols of the given type. See [SymbolType] for more
 	/// details on type of symbols.
-	pub fn symbols_of_type(
+	pub fn enumerate_symbols_of_type(
 		&mut self,
 		pbuf: &PathBuf,
 		symtype: SymbolType,
@@ -436,8 +444,8 @@ where
 			.cloned()
 			.collect())
 	}
-	pub fn symbols_functions(&mut self, pbuf: &PathBuf) -> Result<Vec<ElfSymbol>> {
-		self.symbols_of_type(pbuf, SymbolType::Func)
+	pub fn enumerate_functions(&mut self, pbuf: &PathBuf) -> Result<Vec<ElfSymbol>> {
+		self.enumerate_symbols_of_type(pbuf, SymbolType::Func)
 	}
 	#[cfg(feature = "plugins")]
 	fn start_plugin<X: Send + 'static>(
@@ -519,7 +527,7 @@ where
 		}
 	}
 	#[cfg(feature = "plugins")]
-	pub fn new_plugin(&mut self, plugin: &Plugin, reglisten: bool) -> Result<()> {
+	pub(crate) fn new_plugin(&mut self, plugin: &Plugin, reglisten: bool) -> Result<()> {
 		self._new_plugin(plugin, LoadDependency::Manual)?;
 		if reglisten {
 			log::error!("reqlisten = true is not yet supported");
@@ -536,7 +544,7 @@ where
 
 	/// Remove a plugin with the identifier in `plugin`
 	#[cfg(feature = "plugins")]
-	pub fn remove_plugin(&mut self, plugin: &Plugin) -> Result<()> {
+	pub(crate) fn remove_plugin(&mut self, plugin: &Plugin) -> Result<()> {
 		log::info!("removing {plugin:?}");
 		if let Some(cid) = self.plugins.remove(plugin) {
 			self.client.remove_client(cid.id)?;
@@ -567,7 +575,7 @@ where
 	/// This function is mostly useful when we have a client in a different
 	/// process/thread/machine from this context object. Data must then be
 	/// serialized somehow and the [Command] object is used for this.
-	pub fn handle_cmd(&mut self, cmd: Command) -> Result<Response> {
+	pub(crate) fn handle_cmd(&mut self, cmd: Command) -> Result<Response> {
 		match cmd {
 			Command::Client { tid, cmd } => self.handle_client_cmd(tid, cmd),
 			_ => self.client.write_read(cmd),
@@ -589,17 +597,17 @@ where
 				Response::Value(val)
 			}
 			ClientCmd::GetModule { path } => {
-				let ins = self.get_module(&path);
+				let ins = self.get_memory_map_exact(&path);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ClientCmd::ResolveSymbol { path, symbol } => {
-				let ins = self.resolve_symbol(&path, &symbol);
+				let ins = self.resolve_symbol_in_mod(&path, &symbol);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
 			ClientCmd::SymbolsOfType { path, symtype } => {
-				let ins = self.symbols_of_type(&path, symtype);
+				let ins = self.enumerate_symbols_of_type(&path, symtype);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
@@ -660,6 +668,9 @@ where
 		let exe = self.proc.exe_path()?;
 		self._resolve_entry(&exe, 1)
 	}
+
+	/// Call the function at `addr` with the arguments in `args`. The return
+	/// value is what we got from the tracee.
 	pub fn call_func(
 		&mut self,
 		tid: Tid,
@@ -672,7 +683,6 @@ where
 			log::debug!("arg[{i}]: = {arg:x}");
 			self.cc
 				.set_arg(i, (*arg).into(), &mut regs, &mut self.client)?;
-			// regs.set_arg_systemv(i, *arg);
 		}
 		let pc = self.client.get_trampoline_addr(tid, TrampType::Call)?;
 		log::debug!("setting pc {pc:x}");
@@ -699,10 +709,6 @@ where
 		self.args.set_handle_steps(false);
 		self.stepcb = None;
 	}
-	// #[cfg(feature = "syscalls")]
-	// pub fn set_specific_syscall_handler(&mut self, sysno: usize, cb: SyscallCb<T, Err>) {
-	// 	self.syscallcbs.insert(sysno, cb);
-	// }
 	pub fn set_raw_syscall_handler(&mut self, cb: RawSyscallCb<T, Err>) {
 		self.raw_syscall_cb = Some(cb);
 		self.args.set_intercept_all_syscalls(true);
@@ -1072,7 +1078,7 @@ where
 				}
 			}
 			Stop::Signal { signal, group: _ } => self.event_signal(signal)?,
-			Stop::Breakpoint { pc, clients: _ } => self.event_breakpoint(stopped.tid, pc)?,
+			Stop::Breakpoint { pc } => self.event_breakpoint(stopped.tid, pc)?,
 			Stop::Step { pc } => self.handle_step(stopped.tid, pc)?,
 			_ => {
 				if let Some(cb) = self.stoppedcb {
@@ -1136,12 +1142,15 @@ where
 		Ok(ret.expect("impossible"))
 	}
 
+	/// Run until target has stopped.
 	pub fn run_until_stop(&mut self) -> Result<Stopped> {
 		log::info!("running until stop");
 		let rsp = self.loop_until(|rsp| Ok(matches!(rsp, Response::Stopped(_))))?;
 		let stop: Stopped = rsp.try_into()?;
 		Ok(stop)
 	}
+
+	/// Run until target hits an exec
 	pub fn run_until_exec(&mut self) -> Result<Tid> {
 		log::info!("running until exec");
 		loop {
@@ -1158,7 +1167,7 @@ where
 		self.client.insert_bp(tid, addr)?;
 		let ret = self.loop_until(|rsp| {
 			let ret = if let Response::Stopped(stopped) = rsp {
-				if let Stop::Breakpoint { pc, clients: _ } = &stopped.stop {
+				if let Stop::Breakpoint { pc } = &stopped.stop {
 					*pc == addr
 				} else {
 					false
@@ -1169,7 +1178,7 @@ where
 			Ok(ret)
 		})?;
 		let ret = if let Response::Stopped(stopped) = ret {
-			if let Stop::Breakpoint { pc, clients: _ } = stopped.stop {
+			if let Stop::Breakpoint { pc } = stopped.stop {
 				Some(pc)
 			} else {
 				None

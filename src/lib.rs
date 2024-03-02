@@ -103,7 +103,7 @@
 //! Enable feature `syscalls` to run it, like: `cargo run --features=syscalls --example strace`
 //!
 //! This is the example [strace.rs](https://github.com/rstenvi/pai/tree/main/examples/strace.rs)
-//! 
+//!
 //! A more feature-complete strace program can be found in [pai-strace](https://github.com/rstenvi/pai-strace).
 //!
 //! ```rust
@@ -426,6 +426,9 @@ pub enum Error {
 
 	#[error("Too many attempts")]
 	TooManyAttempts,
+
+	#[error("Too many matches")]
+	TooManyMatches,
 
 	#[error("Tid '{tid}' not found")]
 	TidNotFound { tid: crate::utils::process::Tid },

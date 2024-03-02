@@ -1,6 +1,7 @@
 use crate::{
-	api::messages::{Cont, Stop, Stopped, Thread, ThreadStatus, TrampType},
+	api::messages::{BpType, Cont, Stop, Stopped, Thread, ThreadStatus, TrampType},
 	arch::{self, prep_native_syscall, NamedRegs},
+	buildinfo::BuildArch,
 	target::GenericCc,
 	utils::{process::Pid, AllocedMemory, MmapBuild},
 };
@@ -21,11 +22,18 @@ use crate::{
 use super::SwBp;
 
 struct TraceError {
-	tracee: Option<Tracee>,
+	tracee: Option<TraceStop>,
 	error: crate::Error,
 }
 impl TraceError {
+	pub fn new_stop(tracee: TraceStop, error: crate::Error) -> Self {
+		Self {
+			tracee: Some(tracee),
+			error,
+		}
+	}
 	pub fn new(tracee: Tracee, error: crate::Error) -> Self {
+		let tracee = TraceStop::new(tracee).expect("fatal error when stopping target");
 		Self {
 			tracee: Some(tracee),
 			error,
@@ -90,6 +98,9 @@ impl TraceStop {
 		let regs = regs.into();
 		Ok(Self { tracee, regs })
 	}
+	pub fn tid(&self) -> Tid {
+		self.tracee.pid.as_raw() as Tid
+	}
 }
 
 pub struct Tracer {
@@ -150,6 +161,14 @@ impl Tracer {
 
 		ret
 	}
+	pub fn target_arch(&self) -> BuildArch {
+		crate::BUILD_INFO
+			.read()
+			.expect("Unable to read BUILD_INFO")
+			.target
+			.arch
+			.clone()
+	}
 	pub fn cont(&mut self, tid: Tid, cont: Cont) -> Result<()> {
 		log::debug!("cont {tid} {cont:?}");
 		self.lastaction.insert(tid, cont);
@@ -166,7 +185,7 @@ impl Tracer {
 			let pc: usize = tracee.regs.pc().into();
 			// No support for Thumb mode yet
 			assert!(pc & 0b11 == 0);
-			self.insert_single_sw_bp(0, tid, &mut tracee, (pc + 8).into())?;
+			self.insert_single_sw_bp(/*0, */ tid, &mut tracee, (pc + 8).into())?;
 			Cont::Cont.into()
 		} else {
 			cont.into()
@@ -253,12 +272,10 @@ impl Tracer {
 			Ok(*addr)
 		} else if maxattempts > 0 {
 			let tracee = self.remove_tracee(tid)?;
-			let tracee = self.init_tramps(tracee.tracee).map_err(|x| {
-				self.fix_non_fatal(&x);
-				x.error
-			})?;
+			let tracee = self
+				.init_tramps(tracee)
+				.map_err(|x| self.fix_non_fatal(x))?;
 			let v = self._get_trampoline_addr(tid, t, maxattempts - 1);
-			let tracee = TraceStop::new(tracee)?;
 			self.tracee.insert(tid, tracee);
 			v
 		} else {
@@ -429,7 +446,7 @@ impl Tracer {
 			tracee.regs.set_pc(pc.into());
 			tracee.tracee.set_registers(tracee.regs.clone().into())?;
 
-			let clients = swbp.clients.clone();
+			//let clients = swbp.clients.clone();
 			if swbp.should_remove() {
 				tracee
 					.tracee
@@ -444,7 +461,7 @@ impl Tracer {
 			}
 
 			log::trace!("returning breakpoint");
-			let stop = Stop::Breakpoint { pc, clients };
+			let stop = Stop::Breakpoint { pc, /*, clients*/ };
 			Some(stop)
 		} else if let Some(Cont::Step) = self.lastaction.get(&tid) {
 			let ret = Stop::Step { pc };
@@ -494,9 +511,13 @@ impl Tracer {
 			_ => Ok(stop.into()),
 		}
 	}
-	pub fn insert_single_bp(&mut self, cid: usize, tid: Tid, pc: TargetPtr) -> Result<()> {
+	pub fn insert_bp(&mut self, cid: usize, tid: Tid, pc: TargetPtr, bptype: BpType) -> Result<()> {
+		if !matches!(bptype, BpType::SingleUse) {
+			log::error!("BP type {bptype:?} not supported on ptrace backend");
+			return Err(Error::Unsupported);
+		}
 		let mut tracee = self.remove_tracee(tid)?;
-		self.insert_single_sw_bp(cid, tid, &mut tracee, pc)?;
+		self.insert_single_sw_bp(/*cid,*/ tid, &mut tracee, pc)?;
 		self.tracee.insert(tid, tracee);
 		Ok(())
 	}
@@ -511,32 +532,39 @@ impl Tracer {
 	// 	Ok(())
 	// }
 
-	fn _alloc_and_write_bp(
-		&mut self,
-		cid: usize,
-		tid: Tid,
-		maxattemts: usize,
-	) -> Result<TargetPtr> {
-		let prot = Perms::new().read().exec();
-		let bp = arch::bp_code();
-		let len = bp.len();
-		if let Some(alloc) = self.scratch.get_mut(&prot) {
-			let addr = alloc.alloc(len)?;
-			self.write_memory(tid, addr, bp)?;
-			let mut bp = SwBp::new_recurr(addr, bp.to_vec());
-			bp.add_client(cid);
-			self.swbps.insert(addr, bp);
-			Ok(addr)
-		} else if maxattemts > 0 {
-			self.alloc_scratch(tid, 4, prot)?;
-			self._alloc_and_write_bp(cid, tid, maxattemts - 1)
-		} else {
-			Err(Error::TooManyAttempts)
-		}
+	pub fn mark_addr_as_breakpoint(&mut self, addr: TargetPtr, btype: BpType) -> Result<()> {
+		let bp = match btype {
+			BpType::SingleUse => SwBp::new_singleuse(addr, Vec::new()),
+			BpType::Recurring => SwBp::new_recurr(addr, Vec::new()),
+		};
+		self.swbps.insert(addr, bp);
+		Ok(())
 	}
-	pub fn alloc_and_write_bp(&mut self, cid: usize, tid: Tid) -> Result<TargetPtr> {
-		self._alloc_and_write_bp(cid, tid, 1)
-	}
+	//fn _alloc_and_write_bp(
+	//	&mut self,
+	//	cid: usize,
+	//	tid: Tid,
+	//	maxattemts: usize,
+	//) -> Result<TargetPtr> {
+	//	let prot = Perms::new().read().exec();
+	//	let bp = arch::bp_code();
+	//	let len = bp.len();
+	//	if let Some(alloc) = self.scratch.get_mut(&prot) {
+	//		let addr = alloc.alloc(len)?;
+	//		self.write_memory(tid, addr, bp)?;
+	//		let bp = SwBp::new_recurr(addr, bp.to_vec());
+	//		self.swbps.insert(addr, bp);
+	//		Ok(addr)
+	//	} else if maxattemts > 0 {
+	//		self.alloc_scratch(tid, 4, prot)?;
+	//		self._alloc_and_write_bp(cid, tid, maxattemts - 1)
+	//	} else {
+	//		Err(Error::TooManyAttempts)
+	//	}
+	//}
+	//pub fn alloc_and_write_bp(&mut self, cid: usize, tid: Tid) -> Result<TargetPtr> {
+	//	self._alloc_and_write_bp(cid, tid, 1)
+	//}
 	pub fn write_memory(&mut self, tid: Tid, addr: TargetPtr, data: &[u8]) -> Result<usize> {
 		log::debug!("writing {data:?} to {addr:x}");
 		let tracee = self.get_tracee_mut(tid)?;
@@ -601,20 +629,18 @@ impl Tracer {
 
 	fn insert_single_sw_bp(
 		&mut self,
-		cid: usize,
+		//cid: usize,
 		tid: Tid,
 		tracee: &mut TraceStop,
 		addr: TargetPtr,
 	) -> Result<()> {
 		let code = arch::bp_code();
 
-		if let Some(bp) = self.swbps.get_mut(&addr) {
-			bp.add_client(cid);
+		if let Some(_bp) = self.swbps.get_mut(&addr) {
 		} else {
 			log::debug!("writing SWBP {code:?} @ {addr:x}");
 			let oldcode = tracee.tracee.read_memory(addr.into(), code.len())?;
-			let mut bp = SwBp::new_limit(addr, oldcode, 1);
-			bp.add_client(cid);
+			let bp = SwBp::new_limit(addr, oldcode, 1);
 			let addr: u64 = addr.into();
 			if tracee.regs.get_pc() == addr {
 				log::debug!("setting BP as pending");
@@ -683,26 +709,20 @@ impl Tracer {
 	// 	self.tracee.insert(tid, tracee);
 	// 	Ok(ret)
 	// }
-	fn fix_non_fatal(&mut self, error: &TraceError) {
+	fn fix_non_fatal(&mut self, error: TraceError) -> Error {
 		if let Some(tracee) = error.tracee {
-			let tid = tracee.pid.as_raw() as Tid;
-			let tracee = TraceStop::new(tracee).expect("unable to create new TraceStop");
-			self.tracee.insert(tid, tracee);
+			self.tracee.insert(tracee.tid(), tracee);
 		} else {
 			log::error!("tracee on tid was fatal, tid probably exited or crashed");
 		}
+		error.error
 	}
 	pub fn run_until_trap(&mut self, tid: Tid) -> Result<()> {
 		log::debug!("running until trap on {tid}");
 		let tracee = self.remove_tracee(tid)?;
 		let tracee = self
-			.run_until(tracee.tracee, Self::cb_stop_is_bkpt)
-			.map_err(|x| {
-				self.fix_non_fatal(&x);
-				x.error
-			})?;
-		let tid = tracee.pid.as_raw() as Tid;
-		let tracee = TraceStop::new(tracee)?;
+			.run_until(tracee, Self::cb_stop_is_bkpt)
+			.map_err(|x| self.fix_non_fatal(x))?;
 		self.tracee.insert(tid, tracee);
 		Ok(())
 	}
@@ -714,6 +734,16 @@ impl Tracer {
 	}
 	fn get_tracee(&self, tid: Tid) -> Result<&TraceStop> {
 		self.tracee.get(&tid).ok_or(Error::tid_not_found(tid))
+	}
+	pub fn api_alloc_scratch(&mut self, tid: Tid, size: usize, prot: Perms) -> Result<Location> {
+		if let Some(alloc) = self.scratch.get_mut(&prot) {
+			let ret = alloc.alloc(size)?;
+			let ret = Location::new(ret, ret + size.into());
+			Ok(ret)
+		} else {
+			self.alloc_scratch(tid, 4, prot.clone())?;
+			self.api_alloc_scratch(tid, size, prot)
+		}
 	}
 	fn alloc_scratch(&mut self, tid: Tid, pages: usize, prot: Perms) -> Result<Location> {
 		let page_sz = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
@@ -762,10 +792,10 @@ impl Tracer {
 		alloc.free(addr)?;
 		Ok(())
 	}
-	pub fn exec_sys_getpid(&mut self, tid: Tid) -> Result<libc::pid_t> {
-		let r = self.exec_syscall(tid, libc::SYS_getpid as usize, &[])?;
-		Ok(r.into())
-	}
+	//pub fn exec_sys_getpid(&mut self, tid: Tid) -> Result<libc::pid_t> {
+	//	let r = self.exec_syscall(tid, libc::SYS_getpid as usize, &[])?;
+	//	Ok(r.into())
+	//}
 	pub fn exec_sys_anon_mmap(&mut self, tid: Tid, size: usize, prot: Perms) -> Result<TargetPtr> {
 		#[cfg(any(target_arch = "x86", target_arch = "arm"))]
 		let (sysno, size) = (libc::SYS_mmap2 as usize, size / 4096);
@@ -783,129 +813,183 @@ impl Tracer {
 			Err(Error::Unknown)
 		}
 	}
-	fn __exec_ret(
+	//fn __exec_ret(
+	//	&mut self,
+	//	mut tracee: TraceStop,
+	//	mut regs: Registers,
+	//	pc: TargetPtr,
+	//) -> TraceResult<TraceStop> {
+	//	regs.set_pc(pc.into());
+	//	tracee.tracee
+	//		.set_registers(regs.into())
+	//		.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
+	//	Ok(tracee)
+	//}
+	//fn _exec_ret(
+	//	&mut self,
+	//	tracee: TraceStop,
+	//	regs: Registers,
+	//	maxattempts: usize,
+	//) -> TraceResult<TraceStop> {
+	//	if let Some(pc) = self.tramps.get(&TrampType::Ret) {
+	//		self.__exec_ret(tracee, regs, *pc)
+	//	} else if maxattempts > 0 {
+	//		let tracee = self.init_tramps(tracee)?;
+	//		self._exec_ret(tracee, regs, maxattempts - 1)
+	//	} else {
+	//		todo!();
+	//	}
+	//}
+	fn _exec_tramp(
 		&mut self,
-		mut tracee: Tracee,
-		mut regs: Registers,
-		pc: TargetPtr,
-	) -> TraceResult<Tracee> {
-		regs.set_pc(pc.into());
-		tracee
-			.set_registers(regs.into())
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		Ok(tracee)
-	}
-	fn _exec_ret(
-		&mut self,
-		tracee: Tracee,
-		regs: Registers,
-		maxattempts: usize,
-	) -> TraceResult<Tracee> {
-		if let Some(pc) = self.tramps.get(&TrampType::Ret) {
-			self.__exec_ret(tracee, regs, *pc)
-		} else if maxattempts > 0 {
+		mut tracee: TraceStop,
+		tramp: &TrampType,
+		max: usize,
+	) -> TraceResult<TraceStop> {
+		if let Some(pc) = self.tramps.get(tramp) {
+			let mut regs = tracee.regs.clone();
+			let pc = *pc;
+			regs.set_pc(pc.into());
+			tracee
+				.tracee
+				.set_registers(regs.into())
+				.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
+			Ok(tracee)
+		} else if max > 0 {
 			let tracee = self.init_tramps(tracee)?;
-			self._exec_ret(tracee, regs, maxattempts - 1)
+			self._exec_tramp(tracee, tramp, max - 1)
 		} else {
-			todo!();
+			Err(TraceError::new(tracee.tracee, Error::TooManyAttempts))
 		}
 	}
-	pub fn exec_ret(&mut self, tid: Tid) -> Result<()> {
+	pub fn set_regs_to_exec_tramp(&mut self, tid: Tid, tramp: &TrampType) -> Result<()> {
 		let tracee = self.remove_tracee(tid)?;
-		let regs = tracee.regs.clone();
-		let tracee = self._exec_ret(tracee.tracee, regs, 1).map_err(|x| {
-			self.fix_non_fatal(&x);
-			x.error
-		})?;
+		let tracee = self
+			._exec_tramp(tracee, tramp, 1)
+			.map_err(|x| self.fix_non_fatal(x))?;
+		self.insert_tracee(tracee.tracee)?;
+		Ok(())
+	}
+	fn insert_tracee(&mut self, tracee: Tracee) -> Result<()> {
 		let pid: i32 = tracee.pid.into();
 		let tid = pid as Tid;
 		let tracee = TraceStop::new(tracee)?;
 		self.tracee.insert(tid, tracee);
 		Ok(())
 	}
-	fn __exec_syscall(
-		&mut self,
-		mut tracee: Tracee,
-		tramp: TargetPtr,
-		sysno: usize,
-		args: &[TargetPtr],
-	) -> TraceResult<(Tracee, TargetPtr)> {
-		// Get original register we need to restore later
-		let restoreregs = tracee
-			.registers()
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		let mut regs: Registers = restoreregs.into();
+	//pub fn exec_ret(&mut self, tid: Tid) -> Result<()> {
+	//	let tracee = self.remove_tracee(tid)?;
+	//	let regs = tracee.regs.clone();
+	//	let tracee = self._exec_ret(tracee, regs, 1).map_err(|x| {
+	//		self.fix_non_fatal(x)
+	//	})?;
+	//	self.insert_tracee(tracee.tracee)?;
+	//	Ok(())
+	//}
+	//fn __exec_syscall(
+	//	&mut self,
+	//	mut tracee: TraceStop,
+	//	tramp: TargetPtr,
+	//	sysno: usize,
+	//	args: &[TargetPtr],
+	//) -> TraceResult<(TraceStop, TargetPtr)> {
+	//	// Get original register we need to restore later
+	//	let restoreregs = tracee.tracee
+	//		.registers()
+	//		.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
+	//	let mut regs: Registers = restoreregs.into();
 
-		// Modify registers to to syscall
-		regs.set_pc(tramp.into());
-		prep_native_syscall(&mut regs, sysno, args).map_err(|x| TraceError::new(tracee, x))?;
+	//	// Modify registers to to syscall
+	//	regs.set_pc(tramp.into());
+	//	prep_native_syscall(&mut regs, sysno, args)
+	//		.map_err(|x| TraceError::new(tracee.tracee, x))?;
 
-		// Write registers to tracee
-		tracee
-			.set_registers(regs.into())
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+	//	// Write registers to tracee
+	//	tracee.tracee
+	//		.set_registers(regs.into())
+	//		.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 
-		// Run until we hit our inserted breakboint
-		let mut tracee = self.run_until(tracee, Self::cb_stop_is_bkpt)?;
+	//	// Run until we hit our inserted breakboint
+	//	let mut tracee = self.run_until(tracee, Self::cb_stop_is_bkpt)?;
 
-		// Read register and get return value
-		let regs = tracee
-			.registers()
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		let regs: Registers = regs.into();
-		log::trace!("regs after {regs:?}");
-		let ret = self.syscallcc.get_retval(&regs).unwrap();
-		// let ret = regs.ret_syscall();
+	//	// Read register and get return value
+	//	let regs = tracee.tracee
+	//		.registers()
+	//		.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
+	//	let regs: Registers = regs.into();
+	//	log::trace!("regs after {regs:?}");
+	//	let ret = self.syscallcc.get_retval(&regs).unwrap();
+	//	// let ret = regs.ret_syscall();
 
-		// Restore original registers
-		tracee
-			.set_registers(restoreregs)
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
-		Ok((tracee, ret.into()))
-	}
-	fn _exec_syscall(
-		&mut self,
-		tracee: Tracee,
-		sysno: usize,
-		args: &[TargetPtr],
-		maxattempts: usize,
-	) -> TraceResult<(Tracee, TargetPtr)> {
-		log::debug!("exec syscall {sysno}");
-		if let Some(pc) = self.tramps.get(&TrampType::Syscall) {
-			log::debug!("found syscall tramp @ {pc:x}");
-			self.__exec_syscall(tracee, *pc + 4.into(), sysno, args)
-		} else if maxattempts > 0 {
-			log::debug!("init tramps {maxattempts}");
-			let tracee = self.init_tramps(tracee)?;
-			self._exec_syscall(tracee, sysno, args, maxattempts - 1)
-		} else {
-			log::error!("unable to perform syscall, returning error");
-			Err(TraceError::new(tracee, Error::TooManyAttempts))
+	//	// Restore original registers
+	//	tracee.tracee
+	//		.set_registers(restoreregs)
+	//		.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
+	//	Ok((tracee, ret.into()))
+	//}
+	//fn _exec_syscall(
+	//	&mut self,
+	//	tracee: TraceStop,
+	//	sysno: usize,
+	//	args: &[TargetPtr],
+	//	maxattempts: usize,
+	//) -> TraceResult<(TraceStop, TargetPtr)> {
+	//	log::debug!("exec syscall {sysno}");
+	//	if let Some(pc) = self.tramps.get(&TrampType::Syscall) {
+	//		log::debug!("found syscall tramp @ {pc:x}");
+	//		self.__exec_syscall(tracee, *pc + 4.into(), sysno, args)
+	//	} else if maxattempts > 0 {
+	//		log::debug!("init tramps {maxattempts}");
+	//		let tracee = self.init_tramps(tracee)?;
+	//		self._exec_syscall(tracee, sysno, args, maxattempts - 1)
+	//	} else {
+	//		log::error!("unable to perform syscall, returning error");
+	//		Err(TraceError::new(tracee.tracee, Error::TooManyAttempts))
+	//	}
+	//}
+	//pub fn exec_syscall(
+	//	&mut self,
+	//	tid: Tid,
+	//	sysno: usize,
+	//	args: &[TargetPtr],
+	//) -> Result<TargetPtr> {
+	//	log::debug!("syscall[{tid}]: {sysno} {args:?}");
+	//	let tracee = self.remove_tracee(tid)?;
+	//	let (tracee, ret) = self
+	//		._exec_syscall(tracee, sysno, args, 1)
+	//		.map_err(|x| {
+	//			self.fix_non_fatal(x)
+	//		})?;
+	//	self.tracee.insert(tid, tracee);
+	//	if usize::from(ret) == usize::MAX {
+	//		Err(Error::msg("syscall returned error"))
+	//	} else {
+	//		Ok(ret)
+	//	}
+	//}
+	fn exec_syscall(&mut self, tid: Tid, sysno: usize, args: &[TargetPtr]) -> Result<TargetPtr> {
+		let _addr = self.get_trampoline_addr(tid, TrampType::Syscall)?;
+		let mut tracee = self.remove_tracee(tid)?;
+		let oregs = tracee.regs.clone();
+		tracee.regs.set_sysno(sysno);
+		for (i, arg) in args.iter().enumerate() {
+			self.syscallcc
+				.set_arg_regonly(i, (*arg).into(), &mut tracee.regs)?;
 		}
-	}
-	pub fn exec_syscall(
-		&mut self,
-		tid: Tid,
-		sysno: usize,
-		args: &[TargetPtr],
-	) -> Result<TargetPtr> {
-		log::debug!("syscall[{tid}]: {sysno} {args:?}");
-		let tracee = self.remove_tracee(tid)?;
-		let (tracee, ret) = self
-			._exec_syscall(tracee.tracee, sysno, args, 1)
-			.map_err(|x| {
-				self.fix_non_fatal(&x);
-				x.error
-			})?;
-		let pid: i32 = tracee.pid.into();
-		let tid = pid as Tid;
-		let tracee = TraceStop::new(tracee)?;
-		self.tracee.insert(tid, tracee);
-		if usize::from(ret) == usize::MAX {
-			Err(Error::msg("syscall returned error"))
-		} else {
-			Ok(ret)
-		}
+
+		let tracee = self
+			._exec_tramp(tracee, &TrampType::Syscall, 1)
+			.map_err(|x| self.fix_non_fatal(x))?;
+
+		let mut tracee = self
+			.run_until(tracee, Self::cb_stop_is_bkpt)
+			.map_err(|x| self.fix_non_fatal(x))?;
+
+		let retval = self.syscallcc.get_retval(&tracee.regs)?;
+		tracee.tracee.set_registers(oregs.into())?;
+
+		self.insert_tracee(tracee.tracee)?;
+		Ok(retval.into())
 	}
 	fn remove_swbp(&self, tracee: &mut Tracee, bp: &SwBp) -> Result<()> {
 		tracee.write_memory(bp.addr.into(), &bp.oldcode)?;
@@ -913,24 +997,21 @@ impl Tracer {
 	}
 	fn run_until(
 		&mut self,
-		tracee: Tracee,
+		tracee: TraceStop,
 		dostop: fn(&pete::Stop) -> Result<bool>,
-	) -> TraceResult<Tracee> {
+	) -> TraceResult<TraceStop> {
 		log::debug!("entered run_until");
-		// let regs = tracee
-		// 	.registers()
-		// 	.map_err(|x| TraceError::new(tracee, x.into()))?;
-		// log::debug!("regs {:?}", as_our_regs(regs));
 		self.tracer
-			.restart(tracee, Restart::Continue)
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.restart(tracee.tracee, Restart::Continue)
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 		while let Some(tracee) = self
 			.tracer
 			.wait()
-			.map_err(|x| TraceError::new(tracee, x.into()))?
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?
 		{
 			log::trace!("run_until: got stop {:?} {:?}", tracee.pid, tracee.stop);
 			if dostop(&tracee.stop).map_err(|x| TraceError::new(tracee, x))? {
+				let tracee = TraceStop::new(tracee).expect("Fatal error when handling tracee");
 				return Ok(tracee);
 			} else {
 				match &tracee.stop {
@@ -1026,32 +1107,35 @@ impl Tracer {
 	}
 
 	// Initialize some executable memory where we can place our trampolines
-	fn init_tramps(&mut self, mut tracee: Tracee) -> TraceResult<Tracee> {
+	fn init_tramps(&mut self, mut tracee: TraceStop) -> TraceResult<TraceStop> {
 		log::info!("initializing tramps");
 		// First step is to find some executable space we can write to and write
 		// our syscall tramp to that region
 		let exespace = self
 			.find_executable_space()
-			.map_err(|x| TraceError::new(tracee, x))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x))?;
 		let shellcode = self
 			.trampcode
 			.get(&TrampType::Syscall)
 			.expect("TrampType::Syscall was not set");
 		let len = shellcode.len();
 		let orig = tracee
+			.tracee
 			.read_memory(exespace.into(), len)
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 		tracee
+			.tracee
 			.write_memory(exespace.into(), shellcode)
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 		log::debug!("wrote executable memory {exespace:x} | {shellcode:?}");
 
 		// Get the registers, both so we can modify them to run our syscall
 		// trampoline and so that we can restore this when everything is done
 		// for.
 		let oregs = tracee
+			.tracee
 			.registers()
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 
 		// Get registers we can modify and prepare mmap() syscall
 		let mut svc_regs: Registers = oregs.into();
@@ -1080,12 +1164,13 @@ impl Tracer {
 		];
 		log::debug!("mmap args {mmap_args:?}");
 		prep_native_syscall(&mut svc_regs, sysno as usize, &mmap_args)
-			.map_err(|x| TraceError::new(tracee, x))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x))?;
 
 		log::debug!("regs2 {svc_regs:?}");
 		tracee
+			.tracee
 			.set_registers(svc_regs.into())
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 
 		// Run until we hit our trap at the end of the trampoline code
 		log::debug!("running to complete mmap");
@@ -1094,14 +1179,15 @@ impl Tracer {
 		// Get registers again so that we can verify return code and check what
 		// the address we actually mmapp'ed
 		let nregs = tracee
+			.tracee
 			.registers()
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 		let svc_regs: Registers = nregs.into();
 		let addr = self.syscallcc.get_retval(&svc_regs).unwrap();
 		// let addr = svc_regs.ret_syscall();
 		log::debug!("addr {addr:x}");
 		let naddr: usize = addr as usize;
-		let _ntracee = if naddr < usize::MAX - 100 {
+		let ntracee = if naddr < usize::MAX - 100 {
 			log::debug!("mmapped {addr:x}");
 
 			// Store the mmapped-region so that we can free it when we detach
@@ -1128,8 +1214,9 @@ impl Tracer {
 			// Write the tramps to memory
 			log::debug!("writing real tramps to {addr:x} | {inscode:?}");
 			tracee
+				.tracee
 				.write_memory(addr.into(), &inscode)
-				.map_err(|x| TraceError::new(tracee, x.into()))?;
+				.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 
 			// Everything succeeded and we can insert our tramps
 			self.tramps.insert(TrampType::Syscall, syscalltramp.into());
@@ -1140,16 +1227,19 @@ impl Tracer {
 			log::error!("mmap returned MAP_FAILED {naddr}");
 			tracee
 		};
+		let mut tracee = ntracee;
 
 		// Regardless of whether we succeed or not, we should write back
 		// original code and set the registers back to original.
 		log::info!("init_tramps over, restoring state");
 		tracee
+			.tracee
 			.write_memory(exespace.into(), &orig)
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 		tracee
+			.tracee
 			.set_registers(oregs)
-			.map_err(|x| TraceError::new(tracee, x.into()))?;
+			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 		Ok(tracee)
 	}
 }
@@ -1349,7 +1439,9 @@ mod test {
 		let d = tracer.read_memory(tid, runentry, 4).unwrap();
 		log::trace!("bytes {d:?}");
 
-		tracer.insert_single_bp(0, tid, runentry).unwrap();
+		tracer
+			.insert_bp(0, tid, runentry, BpType::SingleUse)
+			.unwrap();
 		let d = tracer.read_memory(tid, runentry, 4).unwrap();
 		log::trace!("bytes {d:?}");
 
@@ -1401,7 +1493,9 @@ mod test {
 		assert!(tracer.detach(t).is_err());
 		assert!(tracer.get_libc_regs(t).is_err());
 
-		assert!(tracer.insert_single_bp(0, t, 42.into()).is_err());
+		assert!(tracer
+			.insert_bp(0, t, 42.into(), BpType::SingleUse)
+			.is_err());
 		// assert!(tracer.remove_bp(t, 42).is_err());
 		assert!(tracer.write_memory(t, 42.into(), &[]).is_err());
 		assert!(tracer.read_memory(t, 42.into(), 42).is_err());

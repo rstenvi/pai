@@ -1,5 +1,6 @@
 use crate::api::{Client, Command, Response};
 use crate::arch::NamedRegs;
+use crate::buildinfo::BuildArch;
 use crate::{
 	ctx,
 	utils::{self, process::Tid},
@@ -965,7 +966,6 @@ impl SyscallItem {
 		}
 	}
 	pub fn fill_in_output(&mut self, retval: TargetPtr) {
-		// let retval = regs.ret_syscall();
 		let ins = SysValue::new(retval, None);
 		self.output = Some(ins);
 	}
@@ -992,18 +992,54 @@ impl SyscallItem {
 #[derive(Debug)]
 pub struct Syscall {
 	pub name: String,
-	pub sysno: TargetPtr,
+	pub sysno: usize,
 	pub args: Vec<Argument>,
 	pub output: ArgType,
+	arches: Vec<parser::Arch>,
 }
 
 impl Syscall {
-	pub fn new(name: String, sysno: TargetPtr, args: Vec<Argument>, output: ArgType) -> Self {
+	pub fn new(
+		name: String,
+		sysno: usize,
+		args: Vec<Argument>,
+		output: ArgType,
+		arches: Vec<parser::Arch>,
+	) -> Self {
 		Self {
 			name,
 			sysno,
 			args,
 			output,
+			arches,
+		}
+	}
+}
+
+impl From<parser::Arch> for BuildArch {
+	fn from(value: parser::Arch) -> Self {
+		match value {
+			parser::Arch::X86 => Self::X86,
+			parser::Arch::X86_64 => Self::X86_64,
+			parser::Arch::Aarch64 => Self::Aarch64,
+			parser::Arch::Aarch32 => Self::Aarch32,
+			parser::Arch::Mips64le => todo!(),
+			parser::Arch::Ppc64le => todo!(),
+			parser::Arch::Riscv64 => todo!(),
+			parser::Arch::S390x => todo!(),
+			parser::Arch::Native => todo!(),
+		}
+	}
+}
+impl From<BuildArch> for parser::Arch {
+	fn from(value: BuildArch) -> Self {
+		match value {
+			BuildArch::Aarch64 => Self::Aarch64,
+			BuildArch::Aarch32 => Self::Aarch32,
+			BuildArch::X86_64 => Self::X86_64,
+			BuildArch::X86 => Self::X86,
+			BuildArch::Mips => todo!(),
+			BuildArch::RiscV64 => Self::Riscv64,
 		}
 	}
 }
@@ -1019,6 +1055,16 @@ impl Syscalls {
 	}
 	pub fn resolve_sysno(&self, sysno: usize) -> Option<&String> {
 		self.syscalls.get(&sysno).map(|x| &x.name)
+	}
+	pub fn name_to_sysno(&self, arch: BuildArch, name: &str) -> Option<usize> {
+		let arch: parser::Arch = arch.into();
+		let v = self
+			.syscalls
+			.iter()
+			.filter(|(_sysno, sys)| sys.name == name && sys.arches.contains(&arch))
+			.map(|(sysno, _)| *sysno)
+			.collect::<Vec<_>>();
+		v.first().cloned()
 	}
 }
 
@@ -1051,13 +1097,21 @@ impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
 		}
 
 		// We only care about the basic ones, not sub-specification of syscalls
+		// TODO: We currently only parse for host target, need to fix this when
+		// supporting other non-host targets.
 		let syscalls = value
 			.functions
 			.into_iter()
 			// .filter(|x| {x.name.subname.is_empty() /*&& value.consts.find_sysno(&x.name.name, &syzarch).is_some() */ })
 			.map(|func| {
 				if let Some(sysno) = value.consts.find_sysno(&func.name.name, &crate::syzarch()) {
-					let ins = Syscall::new(func.name.name, sysno.into(), func.args, func.output);
+					let ins = Syscall::new(
+						func.name.name,
+						sysno.into(),
+						func.args,
+						func.output,
+						vec![crate::syzarch().into()],
+					);
 					Some((sysno, ins))
 				} else {
 					None

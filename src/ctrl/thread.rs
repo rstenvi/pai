@@ -149,7 +149,7 @@ impl ClientThread {
 	}
 	/// Get next [Command] from client
 	///
-	/// **NB!** This should only report error on fatal failure. 
+	/// **NB!** This should only report error on fatal failure.
 	fn next_client_command(&mut self) -> Result<Option<MasterComm>> {
 		log::debug!("recv next from client");
 		let r = self.rx.recv()?;
@@ -255,7 +255,7 @@ impl ClientThread {
 			Response::Syscall(_) => {
 				log::error!("we should never receive a pre-processed syscall");
 				Ok(Some(resp))
-			},
+			}
 			Response::Error(e) => Ok(Some(resp)),
 		}
 	}
@@ -296,12 +296,12 @@ impl ClientThread {
 							log::debug!("sending wait back {msg:?}");
 							self.client.write(msg)?;
 						}
-					},
+					}
 					Err(e) => {
 						log::error!("process_response returned error: {e:?}");
 						let rsp = Response::Error(format!("{e:?}"));
 						self.tx.send(rsp)?;
-					},
+					}
 				}
 			}
 		}

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::arch::NamedRegs;
-use crate::buildinfo::BuildEndian;
+use crate::buildinfo::{BuildArch, BuildEndian};
 use crate::{Error, Result};
 
 struct TargetSizes {
@@ -187,6 +187,40 @@ impl UnknownCcBuilder {
 	}
 }
 
+pub struct Target {}
+
+impl Target {
+	pub fn arch() -> BuildArch {
+		crate::TARGET_INFO
+			.read()
+			.expect("unable to read TARGET_INFO")
+			.target
+			.arch
+			.clone()
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct TargetCode {}
+impl TargetCode {
+	pub fn breakpoint() -> &'static [u8] {
+		let arch = &crate::TARGET_INFO
+			.read()
+			.expect("unable to read TARGET_INFO")
+			.target
+			.arch;
+
+		match arch {
+			BuildArch::Aarch64 => &crate::arch::aarch64::SW_BP,
+			BuildArch::Aarch32 => &crate::arch::aarch32::SW_BP,
+			BuildArch::X86_64 => &crate::arch::x86_64::SW_BP,
+			BuildArch::X86 => &crate::arch::x86::SW_BP,
+			BuildArch::Mips => todo!(),
+			BuildArch::RiscV64 => todo!(),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericCc {
 	args: Vec<CcArgAccess>,
@@ -196,10 +230,15 @@ pub struct GenericCc {
 }
 impl GenericCc {
 	pub(crate) fn subset_of(&self, of: &Self) -> bool {
-		if self.retval == of.retval && self.calltramp == of.calltramp && self.returnaddr == of.returnaddr {
+		if self.retval == of.retval
+			&& self.calltramp == of.calltramp
+			&& self.returnaddr == of.returnaddr
+		{
 			if self.args.len() <= of.args.len() {
 				for (i, arg) in self.args.iter().enumerate() {
-					if *arg != of.args[i] { return false; }
+					if *arg != of.args[i] {
+						return false;
+					}
 				}
 				return true;
 			}

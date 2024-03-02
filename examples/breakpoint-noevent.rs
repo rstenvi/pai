@@ -14,7 +14,7 @@ fn main() -> anyhow::Result<()> {
 
 	// Now we can resolve functions in libraries loaded
 	let tid = sec.get_first_stopped()?;
-	if let Some(getpid) = sec.lookup_symbol("getpid")? {
+	if let Some(getpid) = sec.lookup_symbol_in_any("getpid")? {
 		log::info!("getpid {getpid:?}");
 		let v = sec.call_func(tid, getpid.value, &[])?;
 		assert!(v == tid.into());

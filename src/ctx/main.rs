@@ -13,10 +13,11 @@ use std::thread::JoinHandle;
 /// Subsequent clients will get a [ctx::Secondary] object.
 ///
 /// The generic `T` is an arbitrary value the caller can store and get a mutable
-/// reference to whenever a callback is called.
+/// reference to whenever a callback is called. This value is stored in
+/// [ctx::Secondary].
 ///
 /// The generic `Err` is the error value returned by the callbacks implemented.
-/// This could [crate::Error], [anyhow::Error] or some other specific error
+/// This could be [crate::Error], [anyhow::Error] or some other specific error
 /// which can be converted into [crate::Error].
 pub struct Main<T, Err>
 where
@@ -33,7 +34,13 @@ where
 		Self { ctx, handle }
 	}
 
-	/// Create new, either by attaching to existing or by spawning program in `args`
+	/// Create new, either by attaching to existing or by spawning program in
+	/// `args`
+	///
+	/// This is the main entry point to use if you create a tool where the user
+	/// should specify which attachment method. If you know you always want to
+	/// attach or spawn, you could use [Self::new_attach] or [Self::new_spawn],
+	/// respectively.
 	pub fn new_main(attach: bool, prog: String, args: Vec<String>, state: T) -> Result<Self> {
 		let ctx = if attach {
 			if !args.is_empty() {
@@ -52,7 +59,16 @@ where
 	}
 
 	#[cfg(not(target_arch = "arm"))]
-	/// Spawn from a process in memory
+	/// Spawn from a process in memory.
+	///
+	/// This is mainly implemented because we want to use it in testing, but
+	/// including it in release because it may have some other uses.
+	///
+	/// Args:
+	///
+	/// - `name` - arbitrary name that will be given to the process
+	/// - `elf` - ELF executable file
+	/// - `data` - Arbitrary data which may be included
 	///
 	/// **NB!** This is disabled on arm, because we do not receive the the Exec
 	/// notification. Unsure why this bug happens, but disabled until it's
@@ -149,6 +165,9 @@ where
 
 	/// Loop until some type of exit and return final [Response] and state data
 	/// when finished.
+	///
+	/// If any of the threads exited with [crate::Error], this function will
+	/// return a new error which combines those errors.
 	pub fn loop_until_exit(mut self) -> Result<(Response, T)> {
 		log::info!("looping until exit");
 		let rsp = self.ctx.loop_until_exit()?;
@@ -161,6 +180,7 @@ where
 		}
 	}
 
+	/// Detach completely from the target.
 	pub fn detach(mut self) -> Result<(T, Vec<String>)> {
 		self.ctx.client_mut().detach()?;
 		let t = self.join()?;
@@ -170,17 +190,19 @@ where
 	/// When all [ctx::Secondary] contexts are detached, call this to join all
 	/// threads and return final state data.
 	///
-	/// If you use [Self::loop_until_exit], this is called at the end.
+	/// If you use [Self::loop_until_exit], this is called at the end. That is
+	/// the recommended method to use.
+	///
+	/// The returned value from this is the `state` supplied and fatal errors
+	/// which happened.
 	pub fn join(self) -> Result<(T, Vec<String>)> {
 		log::info!("joining all threads");
 		let mut errs = Vec::new();
 		#[cfg(feature = "plugins")]
 		for (key, plugin) in self.ctx.plugins.into_iter() {
 			log::debug!("witing for plugin {key:?}");
-			let done = plugin
-				.handle
-				.join();
-				// .unwrap_or_else(|_| panic!("plugin thread {key} failed"))?;
+			let done = plugin.handle.join();
+			// .unwrap_or_else(|_| panic!("plugin thread {key} failed"))?;
 			if let Err(e) = done {
 				let err = format!("plugin thread {key} failed: {e:?}");
 				errs.push(err);
@@ -193,7 +215,8 @@ where
 		Ok((self.ctx.data, errs))
 	}
 
-	fn new_attach(proc: Process, data: T) -> Result<Self> {
+	/// Attach to the process described by `proc`
+	pub fn new_attach(proc: Process, data: T) -> Result<Self> {
 		let (req, acc) = ReqNewClient::new();
 
 		let handle = std::thread::spawn(move || -> Result<()> {

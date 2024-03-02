@@ -32,6 +32,9 @@ libc = { git = "https://github.com/rstenvi/libc", branch = "libc-0.2", version =
 # nix = {version = "0.27.1", features = ["process", "ptrace"]}
 nix = "0.26.2"
 
+# Might want to specify unstable-ness
+# #[stability::unstable(reason = "some reason")]
+#stability = "0.1.1"
 
 # Collection of OS info from dependency sys-info in bugreport is not compiling
 # for Android. For now, only enable the markdown feature and don't collect any

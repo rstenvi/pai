@@ -17,10 +17,10 @@ fn main() -> anyhow::Result<()> {
 
 	// Register callback to be executed on entry point.
 	sec.register_breakpoint_handler(tid, entry, |cl, tid, _addr| {
-		*(cl.data_mut()) += 1;	// So we can check afterwards
+		*(cl.data_mut()) += 1; // So we can check afterwards
 
 		// With libraries loaded, we can resolve `getpid` and call it
-		if let Some(getpid) = cl.lookup_symbol("getpid")? {
+		if let Some(getpid) = cl.lookup_symbol_in_any("getpid")? {
 			log::info!("getpid {getpid:?}");
 			let v = cl.call_func(tid, getpid.value, &[]).unwrap();
 			log::info!("getpid -> {v}");

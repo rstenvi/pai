@@ -257,7 +257,7 @@ mod tests {
 		assert_eq!(stopped.expect("didn't hit breakpoint"), entry);
 
 		let v = sec
-			.lookup_symbol("sleep")
+			.lookup_symbol_in_any("sleep")
 			.unwrap()
 			.expect("unable to find sleep");
 		let tid = sec.get_first_stopped().unwrap();
@@ -446,7 +446,7 @@ mod tests {
 			assert!(cl.client_mut().write_bytes(tid, addr, data).unwrap() == 4);
 
 			let libc = cl.try_find_libc_so().unwrap();
-			if let Some(getpid) = cl.resolve_symbol(&libc, "getpid")? {
+			if let Some(getpid) = cl.resolve_symbol_in_mod(&libc, "getpid")? {
 				log::debug!("resolved getpid {getpid:?}");
 				let pid = cl.call_func(tid, getpid.value, &[])?;
 				assert_eq!(pid, tid.into());
@@ -576,11 +576,11 @@ mod tests {
 		let last = mods.pop().unwrap();
 
 		assert!(sec
-			.get_module(&PathBuf::from_str("dsdsadasd").unwrap())
+			.get_memory_map_exact(&PathBuf::from_str("dsdsadasd").unwrap())
 			.is_err());
-		let m = sec.get_module(last.path().unwrap()).unwrap();
+		let m = sec.get_memory_map_exact(last.path().unwrap()).unwrap();
 		let _funcs = sec
-			.symbols_of_type(m.path().unwrap(), SymbolType::Func)
+			.enumerate_symbols_of_type(m.path().unwrap(), SymbolType::Func)
 			.unwrap();
 
 		let r = sec.call_func(tid, 0x00.into(), &[]);

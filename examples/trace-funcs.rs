@@ -14,7 +14,7 @@ fn main() -> anyhow::Result<()> {
 
 	let libc = sec.try_find_libc_so()?;
 	let sleep = sec
-		.resolve_symbol(&libc, "sleep")?
+		.resolve_symbol_in_mod(&libc, "sleep")?
 		.expect("unable to find strlen");
 	log::info!("sleep {sleep:?}");
 	sec.register_function_hook(
@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
 	)?;
 
 	let geteuid = sec
-		.resolve_symbol(&libc, "geteuid")?
+		.resolve_symbol_in_mod(&libc, "geteuid")?
 		.expect("unable to find geteuid");
 	sec.register_function_hook_entry(tid, geteuid.value, |_cl, _frame| {
 		// We are root, kinda...

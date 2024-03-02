@@ -3,8 +3,9 @@
 use std::path::PathBuf;
 
 use crate::{
+	target::Target,
 	utils::{process::Tid, Perms},
-	TargetPtr,
+	Error, Result, TargetPtr,
 };
 use serde::{Deserialize, Serialize};
 
@@ -208,14 +209,29 @@ pub enum Stop {
 	SyscallExit,
 
 	// SyscallDone { sysno: usize, ret: TargetPtr },
-	Exit { code: i32 },
-	Signal { signal: i32, group: bool },
-	Clone { pid: Tid },
+	Exit {
+		code: i32,
+	},
+	Signal {
+		signal: i32,
+		group: bool,
+	},
+	Clone {
+		pid: Tid,
+	},
 	Attach,
-	Breakpoint { pc: TargetPtr, clients: Vec<usize> },
-	Fork { newpid: Tid },
-	Step { pc: TargetPtr },
-	Exec { old: Tid },
+	Breakpoint {
+		pc: TargetPtr,
+	},
+	Fork {
+		newpid: Tid,
+	},
+	Step {
+		pc: TargetPtr,
+	},
+	Exec {
+		old: Tid,
+	},
 }
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -236,7 +252,7 @@ impl std::fmt::Debug for Stopped {
 impl TryFrom<Response> for Stopped {
 	type Error = crate::Error;
 
-	fn try_from(value: Response) -> Result<Self, Self::Error> {
+	fn try_from(value: Response) -> std::result::Result<Self, Self::Error> {
 		if let Response::Stopped(s) = value {
 			Ok(s)
 		} else {
@@ -432,6 +448,30 @@ pub enum ExecSyscall {
 	Getpid,
 	MmapAnon { size: usize, prot: Perms },
 }
+impl ExecSyscall {
+	#[cfg(feature = "syscalls")]
+	pub fn as_sysno(&self) -> Result<usize> {
+		let arch = Target::arch();
+		let name = match self {
+			ExecSyscall::Getpid => "getpid",
+			ExecSyscall::MmapAnon { size, prot } => "mmap",
+		};
+
+		let num = crate::SYSCALLS
+			.read()
+			.unwrap()
+			.name_to_sysno(arch, name)
+			.ok_or(Error::NotFound)?;
+
+		Ok(num)
+	}
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub enum BpType {
+	SingleUse,
+	Recurring,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum ThreadCmd {
@@ -477,6 +517,7 @@ pub enum ThreadCmd {
 	/// all running and future threads.
 	InsertBp {
 		addr: TargetPtr,
+		bptype: BpType,
 	},
 
 	/// Allocate some executable region and write a breakpoint to it, returning
@@ -500,6 +541,7 @@ pub enum ThreadCmd {
 	},
 	ExecRet,
 
+	#[cfg(feature = "syscalls")]
 	ExecSyscall {
 		syscall: ExecSyscall,
 	},
@@ -544,8 +586,11 @@ impl ThreadCmd {
 	pub fn write_bytes(addr: TargetPtr, bytes: Vec<u8>) -> Self {
 		Self::WriteBytes { addr, bytes }
 	}
-	pub fn insert_bp(addr: TargetPtr) -> Self {
-		Self::InsertBp { addr }
+	pub fn insert_single_use_bp(addr: TargetPtr) -> Self {
+		Self::InsertBp {
+			addr,
+			bptype: BpType::SingleUse,
+		}
 	}
 }
 
@@ -585,7 +630,7 @@ impl RemoteCmd {
 		Self::Process { cmd }
 	}
 	pub fn insert_bp(tid: Tid, addr: TargetPtr) -> Self {
-		let cmd = ThreadCmd::insert_bp(addr);
+		let cmd = ThreadCmd::insert_single_use_bp(addr);
 		Self::Thread { tid, cmd }
 	}
 	pub fn alloc_and_write_bp(tid: Tid) -> Self {
@@ -824,7 +869,7 @@ pub enum Response {
 impl TryFrom<Response> for serde_json::Value {
 	type Error = crate::Error;
 
-	fn try_from(value: Response) -> Result<Self, Self::Error> {
+	fn try_from(value: Response) -> std::result::Result<Self, Self::Error> {
 		match value {
 			Response::Value(v) => Ok(v),
 			_ => Err(Self::Error::Unknown),

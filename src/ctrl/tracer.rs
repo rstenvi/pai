@@ -2,16 +2,18 @@ use crate::{
 	api::{
 		args::ClientArgs,
 		messages::{
-			Cont, Event, ExecSyscall, LogFormat, LogOutput, MasterComm, NewClientReq, RegEvent,
-			Stopped,
+			BpType, Cont, Event, ExecSyscall, LogFormat, LogOutput, MasterComm, NewClientReq,
+			RegEvent, Stopped, TrampType,
 		},
 		Client, Command, ManagerCmd, ProcessCmd, RemoteCmd, Response, ThreadCmd,
 	},
+	arch::NamedRegs,
 	ctrl::ClientState,
 	evtlog::{Logger, Loggers, RealLogger},
+	target::{GenericCc, TargetCode},
 	trace::ptrace::Tracer,
-	utils::process::Tid,
-	Error, Result,
+	utils::{process::Tid, MmapBuild, Perms},
+	Error, Result, TargetPtr,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::{collections::HashMap, thread::JoinHandle};
@@ -42,16 +44,30 @@ pub struct CtrlTracer {
 	config: CtrlTracerConfig,
 
 	loggers: Loggers,
+
+	syscallcc: GenericCc,
 }
 
 impl CtrlTracer {
 	pub fn new(tracer: Tracer, acc: AcceptNewClient) -> Result<Self> {
+		// Update target info arch with what tracer reports to us
+		// This must happen before we init syscallcc
+		let arch = tracer.target_arch();
+		crate::TARGET_INFO
+			.write()
+			.expect("Unable to get write access to TARGET_INFO")
+			.target
+			.arch = arch;
+
 		let lastclientid = 0; // This will give 1 to the first one
 		let clients = HashMap::new();
 		let (mtx, rx) = unbounded();
 		let config = CtrlTracerConfig::default();
 		let threads_stopped = Vec::new();
 		let loggers = Loggers::default();
+
+		// Target MUST be updated before this
+		let syscallcc = GenericCc::new_syscall_target()?;
 		let r = Self {
 			lastclientid,
 			clients,
@@ -63,6 +79,7 @@ impl CtrlTracer {
 			threads_stopped,
 			check_new_client: 0,
 			loggers,
+			syscallcc,
 		};
 		Ok(r)
 	}
@@ -279,6 +296,15 @@ impl CtrlTracer {
 
 		Ok(())
 	}
+	fn get_tids(&mut self) -> Result<Vec<Tid>> {
+		let tids = self
+			.tracer
+			.get_threads_status()?
+			.into_iter()
+			.map(|x| x.id)
+			.collect::<Vec<Tid>>();
+		Ok(tids)
+	}
 	fn handle_cmd_remote_process(
 		&mut self,
 		_client: &mut ClientMaster,
@@ -286,7 +312,8 @@ impl CtrlTracer {
 	) -> Result<Option<Response>> {
 		let r = match cmd {
 			ProcessCmd::GetTids => {
-				let ins = self.tracer.get_tids();
+				let ins = self.get_tids();
+				//let ins = self.tracer.get_tids();
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
@@ -307,6 +334,51 @@ impl CtrlTracer {
 			}
 		};
 		Ok(Some(r))
+	}
+	fn exec_raw_syscall(
+		&mut self,
+		tid: Tid,
+		sysno: usize,
+		args: &[TargetPtr],
+	) -> Result<TargetPtr> {
+		let mut regs = self.tracer.get_libc_regs(tid)?;
+		let oregs = regs.clone();
+		regs.set_sysno(sysno);
+		for (i, arg) in args.iter().enumerate() {
+			self.syscallcc
+				.set_arg_regonly(i, (*arg).into(), &mut regs)?;
+		}
+		self.tracer.set_libc_regs(tid, regs)?;
+		self.tracer
+			.set_regs_to_exec_tramp(tid, &TrampType::Syscall)?;
+
+		self.tracer.run_until_trap(tid)?;
+
+		let ansregs = self.tracer.get_libc_regs(tid)?;
+		let answer = self.syscallcc.get_retval(&ansregs)?;
+
+		self.tracer.set_libc_regs(tid, oregs)?;
+
+		Ok(answer.into())
+	}
+	#[cfg(feature = "syscalls")]
+	fn exec_syscall(&mut self, tid: Tid, sys: ExecSyscall) -> Result<TargetPtr> {
+		let sysno = sys.as_sysno()?;
+		let args = match sys {
+			ExecSyscall::Getpid => vec![],
+			ExecSyscall::MmapAnon { size, prot } => MmapBuild::sane_anonymous(size, prot),
+		};
+		self.exec_raw_syscall(tid, sysno, &args)
+	}
+	fn alloc_and_write_bp(&mut self, tid: Tid) -> Result<TargetPtr> {
+		let bp = TargetCode::breakpoint();
+		let prot = Perms::new().read().exec();
+		let mem = self.tracer.api_alloc_scratch(tid, bp.len(), prot)?;
+		self.tracer.write_memory(tid, mem.addr(), bp)?;
+		self.tracer
+			.mark_addr_as_breakpoint(mem.addr(), BpType::Recurring)?;
+
+		Ok(mem.addr())
 	}
 	fn handle_cmd_remote_thread(
 		&mut self,
@@ -335,8 +407,8 @@ impl CtrlTracer {
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
-			ThreadCmd::InsertBp { addr } => {
-				let ins = self.tracer.insert_single_bp(client.id, tid, addr);
+			ThreadCmd::InsertBp { addr, bptype } => {
+				let ins = self.tracer.insert_bp(client.id, tid, addr, bptype);
 				if ins.is_ok() {
 					client.args.insert_bp(addr);
 				}
@@ -344,7 +416,7 @@ impl CtrlTracer {
 				Response::Value(val)
 			}
 			ThreadCmd::AllocAndWriteBp => {
-				let ins = self.tracer.alloc_and_write_bp(client.id, tid);
+				let ins = self.alloc_and_write_bp(tid);
 				if let Ok(addr) = &ins {
 					client.args.insert_bp(*addr);
 				}
@@ -357,7 +429,7 @@ impl CtrlTracer {
 				Response::Value(val)
 			}
 			ThreadCmd::ExecRawSyscall { sysno, args } => {
-				let ins = self.tracer.exec_syscall(tid, sysno, &args);
+				let ins = self.exec_raw_syscall(tid, sysno, &args);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
@@ -382,22 +454,26 @@ impl CtrlTracer {
 				Response::Ack
 			}
 			ThreadCmd::ExecRet => {
-				let ins = self.tracer.exec_ret(tid);
+				let ins = self.tracer.set_regs_to_exec_tramp(tid, &TrampType::Ret);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
+			#[cfg(feature = "syscalls")]
 			ThreadCmd::ExecSyscall { syscall } => {
-				let val = match syscall {
-					ExecSyscall::Getpid => {
-						let ins = self.tracer.exec_sys_getpid(tid);
-						serde_json::to_value(ins)?
-					}
-					ExecSyscall::MmapAnon { size, prot } => {
-						let ins = self.tracer.exec_sys_anon_mmap(tid, size, prot);
-						serde_json::to_value(ins)?
-					}
-				};
+				let ins = self.exec_syscall(tid, syscall);
+				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
+				//let val = match syscall {
+				//	ExecSyscall::Getpid => {
+				//		let ins = self.tracer.exec_sys_getpid(tid);
+				//		serde_json::to_value(ins)?
+				//	}
+				//	ExecSyscall::MmapAnon { size, prot } => {
+				//		let ins = self.tracer.exec_sys_anon_mmap(tid, size, prot);
+				//		serde_json::to_value(ins)?
+				//	}
+				//};
+				//Response::Value(val)
 			}
 			ThreadCmd::GetTrampolineAddr { tramp } => {
 				let ins = self.tracer.get_trampoline_addr(tid, tramp);
@@ -635,7 +711,7 @@ impl ClientMaster {
 				log::warn!("returning err err: {err:?}");
 				// TODO: Might want to make this configurable
 				self.state = ClientState::Blocking;
-			},
+			}
 		}
 	}
 
