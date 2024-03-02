@@ -573,7 +573,6 @@ impl ClientMaster {
 		tx: Sender<Response>,
 		handle: JoinHandle<Result<()>>,
 	) -> Self {
-		// let registered = Vec::new();
 		let args = ClientArgs::default();
 		let state = ctype.initial_state();
 		let pending = Vec::new();
@@ -632,6 +631,11 @@ impl ClientMaster {
 			Response::Stopped(_) => self.set_state_stopped(),
 			Response::TargetExit => self.set_state_target_exit(),
 			Response::Removed => self.set_state_removed(),
+			Response::Error(err) => {
+				log::warn!("returning err err: {err:?}");
+				// TODO: Might want to make this configurable
+				self.state = ClientState::Blocking;
+			},
 		}
 	}
 

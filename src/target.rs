@@ -29,13 +29,13 @@ impl TargetSizes {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ArgAccess {
 	Register { regname: String, offset: usize },
 	Stack { offset: usize },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CcArgAccess {
 	size: usize,
 	arg: ArgAccess,
@@ -152,6 +152,41 @@ impl ToBytes for u32 {
 	}
 }
 
+pub enum CcSignature {
+	Unspecified,
+	Fastcall,
+	Thiscall,
+}
+impl std::str::FromStr for CcSignature {
+	type Err = crate::Error;
+
+	fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
+		todo!()
+	}
+}
+
+#[derive(Default)]
+pub struct UnknownCcBuilder {
+	args: Vec<CcArgAccess>,
+	retval: Option<CcArgAccess>,
+	calltramp: Option<CcArgAccess>,
+	returnaddr: Option<CcArgAccess>,
+}
+impl UnknownCcBuilder {
+	pub fn add_arg(mut self, arg: CcArgAccess) -> Self {
+		self.args.push(arg);
+		self
+	}
+	pub fn set_retval(mut self, arg: CcArgAccess) -> Self {
+		self.retval = Some(arg);
+		self
+	}
+	pub fn build(self) -> Result<Self> {
+		let retval = self.retval.ok_or(Error::msg("return value must be set"))?;
+		todo!();
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericCc {
 	args: Vec<CcArgAccess>,
@@ -160,11 +195,26 @@ pub struct GenericCc {
 	returnaddr: Option<CcArgAccess>,
 }
 impl GenericCc {
-	pub fn new_syscall_host() -> Result<Self> {
-		let arch = crate::BUILD_INFO.read().unwrap().target.arch.clone();
+	pub(crate) fn subset_of(&self, of: &Self) -> bool {
+		if self.retval == of.retval && self.calltramp == of.calltramp && self.returnaddr == of.returnaddr {
+			if self.args.len() <= of.args.len() {
+				for (i, arg) in self.args.iter().enumerate() {
+					if *arg != of.args[i] { return false; }
+				}
+				return true;
+			}
+		}
+		false
+	}
+	pub fn new_syscall_target() -> Result<Self> {
+		let arch = crate::TARGET_INFO.read().unwrap().target.arch.clone();
 		Self::new_syscall(arch)
 	}
-	pub fn new_syscall(arch: crate::buildinfo::BuildArch) -> Result<Self> {
+	pub fn new_target_systemv() -> Result<Self> {
+		let arch = crate::TARGET_INFO.read().unwrap().target.arch.clone();
+		Self::new_systemv(arch)
+	}
+	fn new_syscall(arch: crate::buildinfo::BuildArch) -> Result<Self> {
 		match arch {
 			crate::buildinfo::BuildArch::Aarch64 => Self::new_syscall_aarch64(),
 			crate::buildinfo::BuildArch::Aarch32 => Self::new_syscall_aarch32(),
@@ -174,7 +224,7 @@ impl GenericCc {
 			crate::buildinfo::BuildArch::RiscV64 => todo!(),
 		}
 	}
-	pub fn new_systemv(arch: crate::buildinfo::BuildArch) -> Result<Self> {
+	fn new_systemv(arch: crate::buildinfo::BuildArch) -> Result<Self> {
 		match arch {
 			crate::buildinfo::BuildArch::Aarch64 => Self::new_systemv_aarch64(),
 			crate::buildinfo::BuildArch::Aarch32 => Self::new_systemv_aarch32(),
@@ -272,10 +322,6 @@ impl GenericCc {
 			returnaddr,
 		};
 		Ok(ret)
-	}
-	pub fn new_host_systemv() -> Result<Self> {
-		let arch = crate::BUILD_INFO.read().unwrap().target.arch.clone();
-		Self::new_systemv(arch)
 	}
 	fn new_syscall_aarch64() -> Result<Self> {
 		// let regs = crate::arch::x86::user_regs_struct::default();

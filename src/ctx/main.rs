@@ -152,11 +152,16 @@ where
 	pub fn loop_until_exit(mut self) -> Result<(Response, T)> {
 		log::info!("looping until exit");
 		let rsp = self.ctx.loop_until_exit()?;
-		let t = self.join()?;
-		Ok((rsp, t))
+		let (t, err) = self.join()?;
+		if !err.is_empty() {
+			let err = err.join(" | ");
+			Err(crate::Error::msg(format!("errors: {err}")))
+		} else {
+			Ok((rsp, t))
+		}
 	}
 
-	pub fn detach(mut self) -> Result<T> {
+	pub fn detach(mut self) -> Result<(T, Vec<String>)> {
 		self.ctx.client_mut().detach()?;
 		let t = self.join()?;
 		Ok(t)
@@ -166,18 +171,26 @@ where
 	/// threads and return final state data.
 	///
 	/// If you use [Self::loop_until_exit], this is called at the end.
-	pub fn join(self) -> Result<T> {
+	pub fn join(self) -> Result<(T, Vec<String>)> {
 		log::info!("joining all threads");
+		let mut errs = Vec::new();
 		#[cfg(feature = "plugins")]
 		for (key, plugin) in self.ctx.plugins.into_iter() {
 			log::debug!("witing for plugin {key:?}");
-			plugin
+			let done = plugin
 				.handle
-				.join()
-				.unwrap_or_else(|_| panic!("plugin thread {key} failed"))?;
+				.join();
+				// .unwrap_or_else(|_| panic!("plugin thread {key} failed"))?;
+			if let Err(e) = done {
+				let err = format!("plugin thread {key} failed: {e:?}");
+				errs.push(err);
+			}
 		}
-		self.handle.join().expect("thread for handle failed")?;
-		Ok(self.ctx.data)
+		if let Err(e) = self.handle.join() {
+			let err = format!("thread handle failed: {e:?}");
+			errs.push(err);
+		}
+		Ok((self.ctx.data, errs))
 	}
 
 	fn new_attach(proc: Process, data: T) -> Result<Self> {

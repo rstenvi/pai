@@ -150,7 +150,7 @@ where
 		let funcentrycbs = HashMap::new();
 		let callframes = HashMap::new();
 		// let cc = Box::new(SystemV);
-		let cc = GenericCc::new_host_systemv().unwrap();
+		let cc = GenericCc::new_target_systemv().unwrap();
 		let args = ArgsBuilder::default();
 		let gothooks = HashMap::new();
 

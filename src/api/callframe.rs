@@ -64,7 +64,7 @@ pub struct CallFrame {
 
 impl CallFrame {
 	pub fn new(tid: Tid, func: u64, regs: crate::Registers) -> Self {
-		let cc = GenericCc::new_host_systemv().unwrap();
+		let cc = GenericCc::new_target_systemv().unwrap();
 		Self {
 			tid,
 			regs,

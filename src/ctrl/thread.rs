@@ -60,7 +60,7 @@ impl ClientThread {
 		let client = Client::new_master_comm(mtx, mrx, wrap);
 		let args = ClientArgs::default();
 		let loggers = Loggers::default();
-		let syscallcc = GenericCc::new_syscall_host().unwrap();
+		let syscallcc = GenericCc::new_syscall_target().unwrap();
 		Self {
 			id,
 			client,
@@ -147,10 +147,13 @@ impl ClientThread {
 			}
 		}
 	}
+	/// Get next [Command] from client
+	///
+	/// **NB!** This should only report error on fatal failure. 
 	fn next_client_command(&mut self) -> Result<Option<MasterComm>> {
 		log::debug!("recv next from client");
 		let r = self.rx.recv()?;
-		self.loggers.log_command(&r)?;
+		self.log_command(&r);
 		log::debug!("got {r:?}");
 		match r {
 			Command::ClientProxy { cmd } => self.handle_client_proxy(cmd),
@@ -247,11 +250,28 @@ impl ClientThread {
 			Response::Value(_v) => Ok(Some(resp)),
 			Response::Event(e) => self.process_event(e),
 			Response::Stopped(s) => self.process_stopped(s),
+
 			#[cfg(feature = "syscalls")]
-			Response::Syscall(_) => todo!(),
+			Response::Syscall(_) => {
+				log::error!("we should never receive a pre-processed syscall");
+				Ok(Some(resp))
+			},
+			Response::Error(e) => Ok(Some(resp)),
 		}
 	}
 
+	fn log_command(&mut self, r: &Command) {
+		if let Err(err) = self.loggers.log_command(r) {
+			log::error!("log command returned: {err:?}");
+		}
+	}
+	fn log_response(&mut self, r: &Response) {
+		if let Err(err) = self.loggers.log_response(r) {
+			log::error!("log response returned: {err:?}");
+		}
+	}
+
+	/// **NB!** This will only return error on fatal failures.
 	pub fn enter_loop(mut self) -> Result<()> {
 		log::info!("entering loop");
 		while !self.done {
@@ -264,15 +284,24 @@ impl ClientThread {
 			self.client.write(r)?;
 			loop {
 				let r = self.client.read()?;
-				if let Some(r) = self.process_response(r)? {
-					log::debug!("sending to clients {r:?}");
-					self.loggers.log_response(&r)?;
-					self.tx.send(r)?;
-					break;
-				} else {
-					let msg = MasterComm::new(self.id, Command::wait());
-					log::debug!("sending wait back {msg:?}");
-					self.client.write(msg)?;
+				match self.process_response(r) {
+					Ok(r) => {
+						if let Some(r) = r {
+							log::debug!("sending to clients {r:?}");
+							self.log_response(&r);
+							self.tx.send(r)?;
+							break;
+						} else {
+							let msg = MasterComm::new(self.id, Command::wait());
+							log::debug!("sending wait back {msg:?}");
+							self.client.write(msg)?;
+						}
+					},
+					Err(e) => {
+						log::error!("process_response returned error: {e:?}");
+						let rsp = Response::Error(format!("{e:?}"));
+						self.tx.send(rsp)?;
+					},
 				}
 			}
 		}

@@ -813,6 +813,7 @@ pub enum Response {
 	Ack,
 	Value(serde_json::Value),
 	Event(Event),
+	Error(String),
 	#[cfg(feature = "syscalls")]
 	Syscall(SyscallItem),
 	Stopped(Stopped),

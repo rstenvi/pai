@@ -8,6 +8,7 @@ fn main() -> anyhow::Result<()> {
 	// Run until we've hit entry
 	let entry = sec.resolve_entry()?;
 	let stopped = sec.run_until_entry()?;
+
 	// Verify that entry was hit, this is just to check against bugs in pai
 	assert_eq!(stopped.expect("didn't hit breakpoint"), entry);
 

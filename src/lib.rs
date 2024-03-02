@@ -9,10 +9,19 @@
 //! This is the interface a script has to control the tracee. It has three
 //! layers:
 //!
-//! 1. **main** - the first context created, there will only be one of these
-//!    created during the session.
-//! 2. **secondary** - each connected script get their own `secondary` context.
-//! 3. **client** - access to send messages to threads controlling the tracee.
+//! 1. [ctx::Main]
+//!   -  The first context created, there will only be one of these created
+//!      during the session.
+//!   - This is where you spawn or connect to you target and the entrypoint for
+//!     everything.
+//! 2. [ctx::Secondary]
+//!   - Each connected script get their own `secondary` context.
+//!   - You generally get a pointer to this by calling [ctx::Main::secondary] or
+//!     [ctx::Main::secondary_mut]
+//! 3. [Client]
+//!   - Access to send messages to threads controlling the tracee.
+//!   - You generally get a pointer to this by calling [ctx::Secondary::client]
+//!     or [ctx::Secondary::client_mut]
 //!
 //! ## Design of scripts
 //!
@@ -23,19 +32,58 @@
 //! event has happened and continue with the script as usual from there on. See
 //! the example scripts for more details.
 //!
+//! ## Error handling
+//!
+//! - **User script errors**
+//!   - Any time you call a function to interact with the tracee, that can
+//!     generally cause an error. Say for instance, you tried to read from an
+//!     invalid memory address.
+//!   - These errors should be packaged up and sent to the calling thread. It is
+//!     then up to the user script to handle the error appropriately.
+//!   - Most errors returned from [crate::ctx::Main], [crate::ctx::Secondary]
+//!     and [crate::Client] falls into this category.
+//!
+//! - **Unexpected non-fatal errors**
+//!   - We detected some error when calling some code, but we can recover from
+//!     it.
+//!   - This generally happens because of bug in this crate, but we try and be a
+//!     bit resillient in handling it.
+//!   - It will be reported by sending a [crate::api::Response::Error] as
+//!     response to the client in the request which generated the error.
+//!   - The caller may use this error to work around the issue, but it should be
+//!     reported as a bug.
+//!
+//! - **Unexpected results**
+//!   - There are some cases, where we expect certain errors to happen and it's
+//!     not necessarily a bug in this crate.
+//!   - One example of this is if we think a syscall argument is a pointer, so
+//!     we try and read from it, but it's actually an int. This will cause an
+//!     error.
+//!   - This will be logged, but no other action is taken.
+//!   - If you receive unexpected results, the log may hold information as to
+//!     why.
+//!
+//! - **Fatal error**
+//!   - Error is generated and propagated to the main thread.
+//!   - This is usually one of two cases:
+//!     - 1. The target dies
+//!     - 2. There's a bug in this code.
+//!
 //! ## Features
 //!
-//! - Syscall tracing
-//!   - Get details about each syscall argument, include `syscalls` feature
+//! - Syscall tracing -- to get details about each syscall argument, include
+//!   `syscalls` feature
 //! - Manage breakpoints
 //! - Single stepping
-//! - Call function / system call
+//! - Call function / system call in target context
 //! - Resolve symbols in ELF-files
 //! - Read/write memory to process
 //! - Allocate memory in process
 //! - Multiple clients can trace a process, unaware of eachother
 //!
 //! ## Examples
+//! All the examples listed here and more can be found in the
+//! [examples/](https://github.com/rstenvi/pai/tree/main/examples) folder.
 //!
 //! **minimal.rs**
 //!
@@ -55,6 +103,8 @@
 //! Enable feature `syscalls` to run it, like: `cargo run --features=syscalls --example strace`
 //!
 //! This is the example [strace.rs](https://github.com/rstenvi/pai/tree/main/examples/strace.rs)
+//! 
+//! A more feature-complete strace program can be found in [pai-strace](https://github.com/rstenvi/pai-strace).
 //!
 //! ```rust
 #![doc = include_str!("../examples/strace.rs")]
@@ -91,6 +141,7 @@
 //! ```rust
 #![doc = include_str!("../examples/breakpoint-noevent.rs")]
 //! ```
+//!
 //! ## Internal stuff
 //! ### Benchmarking and speed
 //!

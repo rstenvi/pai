@@ -118,7 +118,7 @@ impl Tracer {
 		let scratch = HashMap::new();
 		let lastaction = HashMap::new();
 		let pendingswbps = HashMap::new();
-		let syscallcc = GenericCc::new_syscall_host()?;
+		let syscallcc = GenericCc::new_syscall_target()?;
 		let trampcode = Self::default_trampcode();
 		let s = Self {
 			proc,

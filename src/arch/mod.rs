@@ -207,7 +207,7 @@ pub(crate) fn prep_native_syscall(
 	args: &[TargetPtr],
 ) -> Result<()> {
 	log::trace!("sysno {sysno} | args {args:?}");
-	let cc = GenericCc::new_syscall_host()?;
+	let cc = GenericCc::new_syscall_target()?;
 	regs.set_sysno(sysno);
 	for (i, arg) in args.iter().enumerate() {
 		cc.set_arg_regonly(i, (*arg).into(), regs)?;
