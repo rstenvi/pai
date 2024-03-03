@@ -38,7 +38,7 @@ pub struct Virtuals {
 }
 
 impl Virtuals {
-	pub fn from_virtuals(&mut self, virtuals: Vec<Syscall>, consts: &parser::Consts) {
+	pub fn from_virtuals(&mut self, virtuals: Vec<Syscall>, _consts: &parser::Consts) {
 		for virt in virtuals.into_iter() {
 			if virt.ident.name == "ioctl" {
 				let name = virt.ident.subname.join("_");
@@ -108,7 +108,7 @@ impl Syscalls {
 	fn resolve_const(arg: &parser::Argument, consts: &parser::Consts) {
 		match &arg.argtype {
 			parser::ArgType::Ident(id) => {
-				let m = consts.consts.iter()
+				let _m = consts.consts.iter()
 					.filter(|x| { x.name == id.name } )
 					.collect::<Vec<_>>();
 			

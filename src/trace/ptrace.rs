@@ -512,7 +512,7 @@ impl Tracer {
 			_ => Ok(stop.into()),
 		}
 	}
-	pub fn insert_bp(&mut self, cid: usize, tid: Tid, pc: TargetPtr, bptype: BpType) -> Result<()> {
+	pub fn insert_bp(&mut self, _cid: usize, tid: Tid, pc: TargetPtr, bptype: BpType) -> Result<()> {
 		if !matches!(bptype, BpType::SingleUse) {
 			log::error!("BP type {bptype:?} not supported on ptrace backend");
 			return Err(Error::Unsupported);
@@ -1216,7 +1216,7 @@ impl Tracer {
 			log::debug!("writing real tramps to {addr:x} | {inscode:?}");
 			tracee
 				.tracee
-				.write_memory(addr.into(), &inscode)
+				.write_memory(addr, &inscode)
 				.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 
 			// Everything succeeded and we can insert our tramps

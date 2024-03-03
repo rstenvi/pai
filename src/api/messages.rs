@@ -454,7 +454,7 @@ impl ExecSyscall {
 		let arch = Target::arch();
 		let name = match self {
 			ExecSyscall::Getpid => "getpid",
-			ExecSyscall::MmapAnon { size, prot } => "mmap",
+			ExecSyscall::MmapAnon { size: _, prot: _ } => "mmap",
 		};
 
 		let num = crate::SYSCALLS
@@ -480,7 +480,7 @@ pub enum ThreadCmd {
 
 	/// Set all registers
 	SetLibcRegs {
-		regs: crate::Registers,
+		regs: Box<crate::Registers>,
 	},
 
 	GetTrampolineAddr {
@@ -687,7 +687,7 @@ impl RemoteCmd {
 	pub fn set_libc_regs(tid: Tid, regs: crate::Registers) -> Self {
 		Self::Thread {
 			tid,
-			cmd: ThreadCmd::SetLibcRegs { regs },
+			cmd: ThreadCmd::SetLibcRegs { regs: Box::new(regs) },
 		}
 	}
 }

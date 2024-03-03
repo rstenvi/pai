@@ -398,6 +398,7 @@ impl ClientArgs {
 mod test {
 	use super::*;
 
+	#[cfg(feature = "syscalls")]
 	#[test]
 	fn test_args1() {
 		let args = ArgsBuilder::new()

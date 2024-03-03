@@ -38,7 +38,7 @@ impl CallFrameArg {
 		log::debug!("reading {:x} as c_str", self.raw);
 		let tids = client.get_stopped_tids()?;
 		let tid = tids.first().ok_or(Error::msg("No stopped thread"))?;
-		let s = client.read_c_string(*tid, self.raw.into())?;
+		let s = client.read_c_string(*tid, self.raw)?;
 		Ok(s)
 	}
 	arg_as_signed! { i8 }
@@ -83,7 +83,7 @@ impl CallFrame {
 		self.output.as_ref().cloned().ok_or(crate::Error::NotFound)
 	}
 	pub fn set_output(&mut self, output: TargetPtr) {
-		self.output = Some(CallFrameArg::new(output.into()));
+		self.output = Some(CallFrameArg::new(output));
 	}
 }
 

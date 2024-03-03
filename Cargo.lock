@@ -556,7 +556,7 @@ checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
 name = "pai"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "bit-vec",
@@ -856,8 +856,9 @@ dependencies = [
 
 [[package]]
 name = "syzlang-data"
-version = "0.1.4"
-source = "git+https://github.com/rstenvi/syzlang-data#372cc170dde74d5ef7e32aed1f7efd6e867af421"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "199d6b8e26d3685740e1cafa853943ea1711081996c079751be65f4f73e786c4"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -869,8 +870,9 @@ dependencies = [
 
 [[package]]
 name = "syzlang-parser"
-version = "0.1.2"
-source = "git+https://github.com/rstenvi/syzlang-parser#a6e5d2dea0740ad6c74091506848815a6be327b8"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07cf9208c18603e31c5c715486d5c7d3a361cbc26a2006270df70c091daac532"
 dependencies = [
  "bytebuffer",
  "glob",

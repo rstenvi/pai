@@ -75,7 +75,7 @@ trait LogSerializer {
 impl From<LogFormat> for Box<dyn LogSerializer> {
 	fn from(value: LogFormat) -> Self {
 		match value {
-			LogFormat::Display => Box::new(Display::default()),
+			LogFormat::Display => Box::<Display>::default(),
 			LogFormat::Json => Box::new(Json::new_valid()),
 		}
 	}
@@ -178,13 +178,13 @@ impl Loggers {
 	}
 	pub fn log_response(&mut self, rsp: &Response) -> Result<()> {
 		for log in self.loggers.iter_mut() {
-			log.log_response(&rsp)?;
+			log.log_response(rsp)?;
 		}
 		Ok(())
 	}
 	pub fn log_command(&mut self, cmd: &Command) -> Result<()> {
 		for log in self.loggers.iter_mut() {
-			log.log_cmd(&cmd)?;
+			log.log_cmd(cmd)?;
 		}
 		Ok(())
 	}

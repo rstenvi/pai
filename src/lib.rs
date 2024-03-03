@@ -237,9 +237,9 @@ impl From<u32> for IoctlCmd {
 		value >>= 8;
 		let itype = value & ((1<<8)-1);
 		value >>= 8;
-		let size = value & (1<<14)-1;
+		let size = value & ((1<<14)-1);
 		value >>= 14;
-		let dir = value & (1<<2)-1;
+		let dir = value & ((1<<2)-1);
 		let dir = match dir {
 			0 => None,
 			// Userland to kernel

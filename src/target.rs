@@ -160,7 +160,7 @@ pub enum CcSignature {
 impl std::str::FromStr for CcSignature {
 	type Err = crate::Error;
 
-	fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
+	fn from_str(_s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
 		todo!()
 	}
 }
@@ -182,7 +182,7 @@ impl UnknownCcBuilder {
 		self
 	}
 	pub fn build(self) -> Result<Self> {
-		let retval = self.retval.ok_or(Error::msg("return value must be set"))?;
+		let _retval = self.retval.ok_or(Error::msg("return value must be set"))?;
 		todo!();
 	}
 }
@@ -258,15 +258,14 @@ impl GenericCc {
 		if self.retval == of.retval
 			&& self.calltramp == of.calltramp
 			&& self.returnaddr == of.returnaddr
+			&& self.args.len() <= of.args.len()
 		{
-			if self.args.len() <= of.args.len() {
-				for (i, arg) in self.args.iter().enumerate() {
-					if *arg != of.args[i] {
-						return false;
-					}
+			for (i, arg) in self.args.iter().enumerate() {
+				if *arg != of.args[i] {
+					return false;
 				}
-				return true;
 			}
+			return true;
 		}
 		false
 	}

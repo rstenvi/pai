@@ -265,7 +265,7 @@ impl ClientThread {
 				log::error!("we should never receive a pre-processed syscall");
 				Ok(Some(resp))
 			}
-			Response::Error(e) => Ok(Some(resp)),
+			Response::Error(_e) => Ok(Some(resp)),
 		}
 	}
 

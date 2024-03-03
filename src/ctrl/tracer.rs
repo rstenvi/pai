@@ -393,7 +393,7 @@ impl CtrlTracer {
 				Response::Value(val)
 			}
 			ThreadCmd::SetLibcRegs { regs } => {
-				let ins = self.tracer.set_libc_regs(tid, regs);
+				let ins = self.tracer.set_libc_regs(tid, *regs);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}

@@ -539,7 +539,6 @@ impl TmpParseValue {
 			TmpParseValue::Ptr(v, _) => Ok(serde_json::to_value(v.as_u64())?),
 			TmpParseValue::Value(v) => Ok(serde_json::to_value(&v)?),
 			TmpParseValue::Serde(v) => Ok(v),
-			_ => todo!(),
 		}
 	}
 }
@@ -845,7 +844,7 @@ impl SyscallItem {
 		}
 		
 
-		for (_argnum, inarg) in self.args.iter_mut().enumerate() {
+		for inarg in self.args.iter_mut() {
 			let shouldparse =
 				// Argument is in and parsing is on input
 				(inarg.dir.is_in() && parsedir.is_in())
@@ -868,7 +867,7 @@ impl SyscallItem {
 						match v {
 							Ok(v) => match v {
 								Some(v) => {
-									let v = Value::new_parsed_ptr(Value::new_shallow_ptr(value.clone(), arg.clone(), opts.clone(), *optional), v);
+									let v = Value::new_parsed_ptr(Value::new_shallow_ptr(*value, arg.clone(), opts.clone(), *optional), v);
 									inarg.set_parsed(v)
 								},
 								None => log::warn!(
