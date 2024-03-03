@@ -55,14 +55,14 @@ pub struct Syscalls {
 	pub virts: Virtuals,
 	virtuals: HashMap<String, Vec<Syscall>>,
 
-	#[serde(skip)]
-	pub structs: HashMap<parser::Identifier, parser::Struct>,
+	// #[serde(skip)]
+	pub structs: HashMap<String, parser::Struct>,
 
 	#[serde(skip)]
 	pub ioctlcache: HashMap<u64, String>,
 
-	#[serde(skip)]
-	pub resources: HashMap<parser::Identifier, parser::ArgType>,
+	// #[serde(skip)]
+	pub resources: HashMap<String, parser::ArgType>,
 }
 
 impl Syscalls {
@@ -91,6 +91,16 @@ impl Syscalls {
 		};
 		for func in funcs.into_iter() {
 			this.add_function(func);
+		}
+
+		this.resources = HashMap::with_capacity(this.parsed.resources.len());
+		for res in std::mem::take(&mut this.parsed.resources).into_iter() {
+			this.resources.insert(res.name.name, res.atype);
+		}
+
+		this.structs = HashMap::with_capacity(this.parsed.structs.len());
+		for s in std::mem::take(&mut this.parsed.structs).into_iter() {
+			this.structs.insert(s.identifier().name.clone(), s);
 		}
 		
 		this

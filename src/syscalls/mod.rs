@@ -715,6 +715,7 @@ impl SyscallItem {
 					log::warn!("unable to parse {n:?} as ptr");
 				}
 			}
+			log::debug!("obj {obj:?}");
 			Ok(Some(obj))
 		} else {
 			log::debug!("pointer was NULL");
@@ -1304,20 +1305,22 @@ impl Syscall {
 
 impl Syscalls {
 	pub fn postprocess(&mut self) {
-		for res in std::mem::take(&mut self.parsed.resources).into_iter() {
-			self.resources.insert(res.name, res.atype);
-		}
+		// self.resources = HashMap::with_capacity(self.parsed.resources.len());
+		// for res in std::mem::take(&mut self.parsed.resources).into_iter() {
+		// 	self.resources.insert(res.name, res.atype);
+		// }
 
-		for s in std::mem::take(&mut self.parsed.structs).into_iter() {
-			self.structs.insert(s.identifier().clone(), s);
-		}
+		// self.structs = HashMap::with_capacity(self.parsed.structs.len());
+		// for s in std::mem::take(&mut self.parsed.structs).into_iter() {
+		// 	self.structs.insert(s.identifier().clone(), s);
+		// }
 	}
 
 	pub fn resolve_resource(&self, ident: &Identifier) -> Option<&parser::ArgType> {
-		self.resources.get(ident)
+		self.resources.get(&ident.name)
 	}
 	pub fn resolve_struct(&self, ident: &Identifier) -> Option<&parser::Struct> {
-		self.structs.get(ident)
+		self.structs.get(&ident.name)
 	}
 	pub fn resolve(&self, sysno: usize) -> Option<&Syscall> {
 		let arch = Target::arch();
@@ -1341,7 +1344,7 @@ impl Syscalls {
 				0 => Err(Error::NotFound),
 				1 => {
 					let c = found.remove(0);
-					//self.ioctlcache.insert(cmd, c.name.clone());
+					self.ioctlcache.insert(cmd, c.name.clone());
 					Ok(self.virts.ioctls.get(&c.name))
 				},
 				_ => Err(Error::TooManyMatches),
