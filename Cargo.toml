@@ -22,7 +22,7 @@ thiserror = "1.0"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"]}
 
-pai-macros = { git = "https://github.com/rstenvi/pai-macros" }
+pai-macros = { version = "0.1", git = "https://github.com/rstenvi/pai-macros" }
 
 # We have added some constants to libc which have yet to be merged
 libc = { git = "https://github.com/rstenvi/libc", branch = "libc-0.2", version = "0.2" }
