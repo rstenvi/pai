@@ -221,11 +221,6 @@ impl ClientThread {
 			log::debug!("parsing syscall exit");
 			let retval = self.syscallcc.get_retval(&regs)?;
 			syscall.fill_in_output(retval.into());
-			for arg in syscall.args.iter_mut() {
-				// if arg.is_output() {
-				// 	arg.clear_parsed();
-				// }
-			}
 			log::debug!("sys exit before enrich {syscall:?}");
 			self.enrich(syscall.sysno, &mut syscall, Direction::Out)?;
 			let ret = Some(Response::Syscall(syscall));

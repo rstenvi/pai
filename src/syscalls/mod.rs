@@ -539,54 +539,18 @@ impl TmpParseValue {
 			TmpParseValue::Ptr(v, _) => Ok(serde_json::to_value(v.as_u64())?),
 			TmpParseValue::Value(v) => Ok(serde_json::to_value(&v)?),
 			TmpParseValue::Serde(v) => Ok(v),
+			_ => todo!(),
 		}
 	}
 }
 
 #[derive(Default)]
 pub struct BuildValue {
-	tmp: Vec<(Vec<String>, TmpParseValue)>,
+	pointers: Vec<(Vec<String>, Vec<ArgOpt>)>,
 	data: Vec<u8>,
 	obj: serde_json::Value,
 }
 impl BuildValue {
-	fn take_pointer(&mut self) -> Option<(usize, Vec<String>, TargetPtr, Vec<ArgOpt>)> {
-		let idx = self.tmp.iter().position(|(_, x)| matches!(x, TmpParseValue::Ptr(_, _)));
-		if let Some(idx) = idx {
-			let (strs, rem) = self.tmp.remove(idx);
-			let TmpParseValue::Ptr(p, opts) = rem else { todo!(); };
-			Some((idx, strs, p, opts))
-		} else {
-			None
-		}
-	}
-	fn insert_unparsed_ptr(&mut self, idx: usize, strs: Vec<String>, value: TargetPtr) -> Result<()> {
-		self.tmp.insert(idx, (strs, TmpParseValue::Serde(serde_json::to_value(value)?)));
-		Ok(())
-	}
-	fn insert_value(&mut self, idx: usize, strs: Vec<String>, value: Value) {
-		self.tmp.insert(idx, (strs, TmpParseValue::Value(value)));
-		// todo!();
-	}
-	fn construct_value(&mut self) -> Result<serde_json::Value> {
-		let mut value = serde_json::Value::default();
-		for (strs, v) in std::mem::take(&mut self.tmp).into_iter() {
-			let len = strs.len();
-			let mut ins = &mut value;
-			for (i, s) in strs.into_iter().enumerate() {
-				if i + 1 < len {
-					if ins.get(&s).is_none() {
-						ins[&s] = serde_json::Value::default();
-					}
-					ins = &mut ins[&s];
-				} else {
-					ins[&s] = v.as_value()?;
-					break;
-				}
-			}
-		}
-		Ok(value)
-	}
 	fn evaluate_size_struct(&mut self, names: &mut Vec<String>, s: &parser::Struct) -> Result<usize> {
 		let mut ret = 0;
 		names.push(s.identifier().name.clone());
@@ -626,17 +590,16 @@ impl BuildValue {
 			if let Ok(take) = self.take(sz) {
 				let v = TargetPtr::from_bytes_unsigned(&take)?;
 				let v: serde_json::Number = v.into();
-				let v = TmpParseValue::Number(v);
-				self.tmp.push((names.clone(), v));
+				self.set_value(names, serde_json::to_value(v)?);
 			}
 			Ok(sz)
 		} else if arg.is_ptr() {
 			let sz = Target::ptr_size();
 			log::debug!("PTR TO {opts:?}");
 			if let Ok(take) = self.take(sz) {
+				self.pointers.push((names.clone(), opts.to_vec()));
 				let v = TargetPtr::from_bytes_unsigned(&take)?;
-				let v = TmpParseValue::Ptr(v, opts.to_vec());
-				self.tmp.push((names.clone(), v));
+				self.set_value(names, serde_json::to_value(v)?);
 			}
 			Ok(sz)
 		} else if let ArgType::Ident(ident) = arg {
@@ -708,7 +671,7 @@ impl SyscallItem {
 		}
 		None
 	}
-	fn parse_ptr_ident<T: Send + 'static>(raw: TargetPtr, id: &parser::Identifier, tid: isize, client: &mut Client<T, Response>) -> Result<Option<serde_json::Value>>
+	fn parse_ptr_ident<T: Send + 'static>(raw: TargetPtr, id: &parser::Identifier, tid: isize, client: &mut Client<T, Response>, maxdepth: isize) -> Result<Option<serde_json::Value>>
 		where crate::Error: From<crossbeam_channel::SendError<T>> {
 			// return Ok(None);
 			// std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -723,42 +686,40 @@ impl SyscallItem {
 		//		Some(Value::Stat { stat })
 		//	}
 
-		log::warn!("attempting to parse {raw:x} ident {id:?}");
-
-		let mut build = BuildValue::default();
-		let size = build.evaluate_size_field(&mut Vec::new(), &parser::ArgType::Ident(id.clone()), &[])?;
-		log::debug!("size @{id:?}:{raw:x} = {size}");
-		let data = client.read_bytes(tid, raw, size)?;
-
-		log::debug!("data for {id:?} = {data:?}");
-		build.data = data;
-		let _size = build.evaluate_size_field(&mut Vec::new(), &parser::ArgType::Ident(id.clone()), &[])?;
-		log::debug!("data {:?}", build.tmp);
-
-		// Should also parse pointer, but we need to avoid possible endless loop
-		// by reading same pointer.
-
-		while let Some((idx, strs, ptr, opts)) = build.take_pointer() {
-			log::debug!("NPTR: {ptr:x} {opts:?}");
-			if ptr == raw {
-				build.insert_unparsed_ptr(idx, strs, ptr)?;
-				continue;
-			} else if let Some(narg) = Self::next_fullarg(&opts) {
-				if let Some(value) = Self::parse_ptr(ptr, tid, client, &narg.argtype, &narg.opts, None)? {
-					build.insert_value(idx, strs, value);
-				} else {
-					build.insert_unparsed_ptr(idx, strs, ptr)?;
+		log::debug!("attempting to parse {raw:x} ident {id:?}");
+		if raw != 0.into() {
+			let mut build = BuildValue::default();
+			let size = build.evaluate_size_field(&mut Vec::new(), &parser::ArgType::Ident(id.clone()), &[])?;
+			log::debug!("size @{id:?}:{raw:x} = {size}");
+			let data = client.read_bytes(tid, raw, size)?;
+		
+			build.data = data;
+			let _size = build.evaluate_size_field(&mut Vec::new(), &parser::ArgType::Ident(id.clone()), &[])?;
+			let mut obj = build.obj;
+			let pointers = std::mem::take(&mut build.pointers);
+			for (ptr, opts) in pointers.into_iter() {
+				let mut n = &mut obj;
+				for p in ptr.iter() {
+					n = &mut n[p];
 				}
-			} else {
-				log::error!("opts {opts:?}");
-				todo!();
-			}
-			// break;
-		}
 
-		let v = build.construct_value()?;
-		log::debug!("data {:?}", v);
-		Ok(Some(v))
+				if let Ok(nptr) = serde_json::from_value::<TargetPtr>(n.clone()){
+					if nptr != raw && nptr != 0.into() {
+						if let Some(narg) = Self::next_fullarg(&opts) {
+							if let Some(value) = Self::parse_ptr(nptr, tid, client, &narg.argtype, &narg.opts, None, maxdepth - 1)? {
+								*n = serde_json::to_value(value)?;
+							}
+						}
+					}
+				} else {
+					log::warn!("unable to parse {n:?} as ptr");
+				}
+			}
+			Ok(Some(obj))
+		} else {
+			log::debug!("pointer was NULL");
+			Ok(None)
+		}
 	}
 	fn parse_ptr<T: Send + 'static>(
 		raw: TargetPtr,
@@ -767,11 +728,14 @@ impl SyscallItem {
 		arg: &ArgType,
 		opts: &[ArgOpt],
 		len: Option<&ValueLen>,
+		maxdepth: isize,
 	) -> Result<Option<Value>>
 	where
 		crate::Error: From<crossbeam_channel::SendError<T>>,
 	{
-		if arg.refers_c_string() {
+		if maxdepth <= 0 {
+			Err(Error::TooManyAttempts)
+		} else if arg.refers_c_string() {
 			let string = client.read_c_string(tid, raw)?;
 			let value = if arg.is_filename() {
 				Value::new_filename(string)
@@ -780,7 +744,7 @@ impl SyscallItem {
 			};
 			Ok(Some(value))
 		} else if let ArgType::Ident(id) = arg {
-			match Self::parse_ptr_ident(raw, id, tid, client) {
+			match Self::parse_ptr_ident(raw, id, tid, client, maxdepth - 1) {
 				Ok(n) => {
 					match n {
 						Some(n) => {
@@ -899,7 +863,7 @@ impl SyscallItem {
 					} = n
 					{
 						let len = lens.get(&inarg.name);
-						let v = Self::parse_ptr(inarg.raw_value(), tid, client, arg, opts, len);
+						let v = Self::parse_ptr(inarg.raw_value(), tid, client, arg, opts, len, 8);
 						match v {
 							Ok(v) => match v {
 								Some(v) => {
