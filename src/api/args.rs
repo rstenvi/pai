@@ -169,7 +169,12 @@ impl ArgsBuilder {
 	#[cfg(feature = "syscalls")]
 	builder_set_bool! { transform_syscalls }
 
+	#[cfg(feature = "syscalls")]
 	builder_set_bool! { only_notify_syscall_exit }
+
+	#[cfg(feature = "syscalls")]
+	builder_set_bool! { patch_ioctl_virtual }
+	
 	builder_set_bool! { handle_steps }
 	builder_set_bool! { handle_exec }
 
@@ -204,6 +209,8 @@ pub struct Args {
 	/// Only notify when syscall has completed, when used with
 	/// [Self::transform_syscalls], the caller still get all the argument.
 	only_notify_syscall_exit: bool,
+
+	patch_ioctl_virtual: bool,
 
 	registered: Vec<RegEvent>,
 	// attach_threads: bool,
@@ -339,6 +346,9 @@ impl ClientArgs {
 
 	#[cfg(feature = "syscalls")]
 	bool_access! { transform_syscalls }
+
+	#[cfg(feature = "syscalls")]
+	bool_access! { patch_ioctl_virtual }
 
 	bool_access! { only_notify_syscall_exit }
 	#[cfg(feature = "syscalls")]

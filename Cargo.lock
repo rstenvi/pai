@@ -529,17 +529,6 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.27.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
-dependencies = [
- "bitflags 2.4.2",
- "cfg-if",
- "libc 0.2.153",
-]
-
-[[package]]
-name = "nix"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
@@ -868,12 +857,11 @@ dependencies = [
 [[package]]
 name = "syzlang-data"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "747778645c97040a94e349e6b2d513389b8512db95598d35ef788e3650dab0c3"
+source = "git+https://github.com/rstenvi/syzlang-data#372cc170dde74d5ef7e32aed1f7efd6e867af421"
 dependencies = [
  "anyhow",
  "lazy_static",
- "nix 0.27.1",
+ "nix 0.28.0",
  "scratch",
  "serde_json",
  "syzlang-parser",
@@ -882,8 +870,7 @@ dependencies = [
 [[package]]
 name = "syzlang-parser"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8fa9650150f603cf871507eb7263d3ac57712a36a848a464ff10121dc409fa3"
+source = "git+https://github.com/rstenvi/syzlang-parser#a6e5d2dea0740ad6c74091506848815a6be327b8"
 dependencies = [
  "bytebuffer",
  "glob",

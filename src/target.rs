@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::arch::NamedRegs;
-use crate::buildinfo::{BuildArch, BuildEndian};
+use crate::buildinfo::{BuildArch, BuildEndian, BuildInfo, BuildTarget};
 use crate::{Error, Result};
 
 struct TargetSizes {
@@ -189,6 +189,15 @@ impl UnknownCcBuilder {
 
 pub struct Target {}
 
+macro_rules! target_info {
+	() => {
+		&crate::TARGET_INFO
+			.read()
+			.expect("unable to read TARGET_INFO")
+			.target
+	};
+}
+
 impl Target {
 	pub fn arch() -> BuildArch {
 		crate::TARGET_INFO
@@ -197,6 +206,22 @@ impl Target {
 			.target
 			.arch
 			.clone()
+	}
+	#[cfg(feature = "syscalls")]
+	pub fn syzarch() -> syzlang_parser::parser::Arch {
+		Self::arch().into()
+	}
+	pub fn endian() -> BuildEndian {
+		target_info!().endian.clone()
+	}
+	pub fn ptr_size() -> usize {
+		let arch = Self::arch();
+		match arch {
+			BuildArch::Aarch64|BuildArch::X86_64 => 8,
+			BuildArch::Aarch32|BuildArch::X86 => 4,
+			BuildArch::Mips => todo!(),
+			BuildArch::RiscV64 => todo!(),
+		}
 	}
 }
 

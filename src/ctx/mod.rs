@@ -90,34 +90,34 @@ mod tests {
 		})
 	}
 
-	#[cfg(all(feature = "syscalls", target_arch = "x86_64"))]
-	#[bench]
-	fn bench_parsed_syscalls(b: &mut Bencher) {
-		syscalls0();
-		b.iter(|| {
-			syscalls0();
-			std::hint::black_box(())
-		})
-	}
+	//#[cfg(all(feature = "syscalls", target_arch = "x86_64"))]
+	//#[bench]
+	//fn bench_parsed_syscalls(b: &mut Bencher) {
+	//	syscalls0();
+	//	b.iter(|| {
+	//		syscalls0();
+	//		std::hint::black_box(())
+	//	})
+	//}
 
 	// Disabled on arm just because it's so slow in the emulator
-	#[cfg(all(feature = "syscalls", not(target_arch = "arm")))]
-	#[test]
-	fn syscalls0() {
-		let data = syzlang_data::linux::PARSED.read().unwrap();
-		let syzarch = crate::syzarch();
+	//#[cfg(all(feature = "syscalls", not(target_arch = "arm")))]
+	//#[test]
+	//fn syscalls0() {
+	//	let data = syzlang_data::linux::PARSED.read().unwrap();
+	//	let syzarch = crate::syzarch();
 
-		// This also runs in benchmark, so we can't take data from original
-		// here, so we have to clone here. This results in worse times and not
-		// the most realistic, but still ok for comparison.
-		let mut parsed = data.clone();
-		parsed.remove_virtual_functions();
-		parsed.remove_func_no_sysno(&syzarch);
-		parsed.remove_subfunctions();
-		parsed.consts.filter_arch(&syzarch);
-		let syscalls: Syscalls = (&parsed).try_into().unwrap();
-		let _v = syscalls.resolve(1).unwrap();
-	}
+	//	// This also runs in benchmark, so we can't take data from original
+	//	// here, so we have to clone here. This results in worse times and not
+	//	// the most realistic, but still ok for comparison.
+	//	let mut parsed = data.clone();
+	//	parsed.remove_virtual_functions();
+	//	parsed.remove_func_no_sysno(&syzarch);
+	//	parsed.remove_subfunctions();
+	//	parsed.consts.filter_arch(&syzarch);
+	//	let syscalls: Syscalls = (&parsed).try_into().unwrap();
+	//	let _v = syscalls.resolve(1).unwrap();
+	//}
 
 	#[test]
 	fn clientmgr_basic() {

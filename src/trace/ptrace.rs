@@ -324,7 +324,7 @@ impl Tracer {
 		let mut tracer = pete::Ptracer::new();
 		*tracer.poll_delay_mut() = std::time::Duration::ZERO;
 
-		tracer.attach((&proc).into())?;
+		tracer.attach((&proc).into()).expect("unable to attach to target");
 		Self::new(proc, tracer)
 	}
 	pub fn attach_children(&mut self) -> Result<Vec<Tid>> {
@@ -347,7 +347,8 @@ impl Tracer {
 		let mut tracer = pete::Ptracer::new();
 		*tracer.poll_delay_mut() = std::time::Duration::ZERO;
 
-		let child = tracer.spawn(cmd)?;
+		// Do a hard fail here to avoid ambiguous errors propagating 
+		let child = tracer.spawn(cmd).expect("failed to spawn target");
 		let pid = child.id();
 		let proc = Process::from_pid(pid)?;
 		Self::new(proc, tracer)

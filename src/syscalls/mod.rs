@@ -1,6 +1,8 @@
 use crate::api::{Client, Command, Response};
 use crate::arch::NamedRegs;
 use crate::buildinfo::BuildArch;
+use crate::target::Target;
+use crate::Error;
 use crate::{
 	ctx,
 	utils::{self, process::Tid},
@@ -8,7 +10,36 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Read;
 use syzlang_parser::parser::{self, ArgOpt, ArgType, Argument, Identifier};
+
+pub mod parsed;
+pub use parsed::{Syscall, Syscalls};
+
+macro_rules! get_parsed {
+	() => {
+		crate::SYSCALLS
+			.read()
+			.expect("unable to read lock SYSCALLS")
+			.parsed
+	};
+}
+pub(crate) use get_parsed;
+macro_rules! get_syscalls {
+	() => {
+		crate::SYSCALLS
+			.read()
+			.expect("unable to read lock SYSCALLS")
+	};
+}
+
+macro_rules! write_syscalls {
+	() => {
+		crate::SYSCALLS
+			.write()
+			.expect("unable to write lock SYSCALLS")
+	};
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum LenType {
@@ -145,6 +176,16 @@ pub enum Value {
 	FileOffset {
 		offset: usize,
 	},
+
+	Struct {
+		name: String,
+		value: serde_json::Value,
+	},
+
+	ParsedPtr {
+		old: Box<Self>,
+		value: Box<Self>,
+	}
 }
 
 impl std::fmt::Display for Value {
@@ -183,7 +224,13 @@ impl std::fmt::Display for Value {
 			}
 			Self::Const { matches, symbol } => {
 				f.write_fmt(format_args!("const({symbol}, {matches})"))
-			}
+			},
+			Self::Struct { name, value } => {
+				f.write_fmt(format_args!("struct({name} = {{ {value:?} }} )"))
+			},	
+			Self::ParsedPtr { old: _, value } => {
+				f.write_fmt(format_args!("ptr({value})"))
+			},
 		}
 	}
 }
@@ -202,6 +249,13 @@ impl Value {
 		Self::String {
 			string: string.into(),
 		}
+	}
+	fn new_parsed_ptr(old: Value, value: Value) -> Self {
+		Self::ParsedPtr { old: Box::new(old), value: Box::new(value) }
+	}
+	fn new_struct<S: Into<String>>(name: S, value: serde_json::Value) -> Self {
+		log::trace!("creating new struct with {value:?}");
+		Self::Struct { name: name.into(), value }
 	}
 	fn new_bool(value: bool) -> Self {
 		Self::Bool { value }
@@ -226,6 +280,7 @@ impl Value {
 		Self::FdConst { value, name }
 	}
 	fn new_error_or_default(err: i32, def: Self) -> Self {
+		log::trace!("err {err:?} | {err:x}");
 		match -err {
 			libc::ENOENT => Value::new_error(err, "ENOENT"),
 			libc::ESRCH => Value::new_error(err, "ESRCH"),
@@ -381,11 +436,25 @@ impl SysArg {
 	pub fn as_i32(&self) -> i32 {
 		self.raw_value().as_i32()
 	}
+	pub fn as_u32(&self) -> u32 {
+		self.raw_value().as_u32()
+	}
 	pub fn parsed(&self) -> &Option<Value> {
 		&self.value.parsed
 	}
 	fn set_parsed(&mut self, parsed: Value) {
 		self.value.parsed = Some(parsed);
+	}
+	pub fn is_output(&self) -> bool {
+		matches!(self.dir, Direction::Out|Direction::InOut)
+	}
+	pub fn clear_parsed(&mut self) {
+		log::debug!("clearing {:?}", self.value.parsed);
+		if let Some(parsed) = std::mem::take(&mut self.value.parsed) {
+			if let Value::ParsedPtr { old, value: _ } = parsed {
+				self.value.parsed = Some(*old);
+			}
+		}
 	}
 }
 
@@ -454,6 +523,150 @@ impl std::fmt::Display for SyscallItem {
 		f.write_fmt(format_args!("{n}"))
 	}
 }
+
+#[derive(Debug)]
+enum TmpParseValue {
+	Number(serde_json::Number),
+	Ptr(TargetPtr, Vec<ArgOpt>),
+	Value(Value),
+	Serde(serde_json::Value),
+}
+
+impl TmpParseValue {
+	fn as_value(self) -> Result<serde_json::Value> {
+		match self {
+			TmpParseValue::Number(v) => Ok(serde_json::to_value(v)?),
+			TmpParseValue::Ptr(v, _) => Ok(serde_json::to_value(v.as_u64())?),
+			TmpParseValue::Value(v) => Ok(serde_json::to_value(&v)?),
+			TmpParseValue::Serde(v) => Ok(v),
+		}
+	}
+}
+
+#[derive(Default)]
+pub struct BuildValue {
+	tmp: Vec<(Vec<String>, TmpParseValue)>,
+	data: Vec<u8>,
+	obj: serde_json::Value,
+}
+impl BuildValue {
+	fn take_pointer(&mut self) -> Option<(usize, Vec<String>, TargetPtr, Vec<ArgOpt>)> {
+		let idx = self.tmp.iter().position(|(_, x)| matches!(x, TmpParseValue::Ptr(_, _)));
+		if let Some(idx) = idx {
+			let (strs, rem) = self.tmp.remove(idx);
+			let TmpParseValue::Ptr(p, opts) = rem else { todo!(); };
+			Some((idx, strs, p, opts))
+		} else {
+			None
+		}
+	}
+	fn insert_unparsed_ptr(&mut self, idx: usize, strs: Vec<String>, value: TargetPtr) -> Result<()> {
+		self.tmp.insert(idx, (strs, TmpParseValue::Serde(serde_json::to_value(value)?)));
+		Ok(())
+	}
+	fn insert_value(&mut self, idx: usize, strs: Vec<String>, value: Value) {
+		self.tmp.insert(idx, (strs, TmpParseValue::Value(value)));
+		// todo!();
+	}
+	fn construct_value(&mut self) -> Result<serde_json::Value> {
+		let mut value = serde_json::Value::default();
+		for (strs, v) in std::mem::take(&mut self.tmp).into_iter() {
+			let len = strs.len();
+			let mut ins = &mut value;
+			for (i, s) in strs.into_iter().enumerate() {
+				if i + 1 < len {
+					if ins.get(&s).is_none() {
+						ins[&s] = serde_json::Value::default();
+					}
+					ins = &mut ins[&s];
+				} else {
+					ins[&s] = v.as_value()?;
+					break;
+				}
+			}
+		}
+		Ok(value)
+	}
+	fn evaluate_size_struct(&mut self, names: &mut Vec<String>, s: &parser::Struct) -> Result<usize> {
+		let mut ret = 0;
+		names.push(s.identifier().name.clone());
+		for field in s.args() {
+			names.push(field.identifier().name.clone());
+			ret += self.evaluate_size_field(names, field.arg_type(), &field.opts)?;
+			names.pop();
+		}
+		names.pop();
+		Ok(ret)
+	}
+	fn take(&mut self, len: usize) -> Result<Vec<u8>> {
+		if self.data.len() >= len {
+			let mut take = Vec::with_capacity(len);
+			for _i in 0..len {
+				take.push(self.data.remove(0));
+			}
+			Ok(take)
+		} else {
+			Err(Error::Unknown)
+		}
+	}
+	fn set_value(&mut self, names: &[String], value: serde_json::Value) {
+		let mut obj = &mut self.obj;
+		for (i, name) in names.iter().enumerate() {
+			if i + 1 < names.len() {
+				obj = &mut obj[name];
+			} else {
+				obj[name] = value;
+				break;
+			}
+		}
+	}
+	fn evaluate_size_field(&mut self, names: &mut Vec<String>, arg: &ArgType, opts: &[ArgOpt]) -> Result<usize> {
+		if arg.is_int() {
+			let sz = arg.evaluate_size(&Target::syzarch())?;
+			if let Ok(take) = self.take(sz) {
+				let v = TargetPtr::from_bytes_unsigned(&take)?;
+				let v: serde_json::Number = v.into();
+				let v = TmpParseValue::Number(v);
+				self.tmp.push((names.clone(), v));
+			}
+			Ok(sz)
+		} else if arg.is_ptr() {
+			let sz = Target::ptr_size();
+			log::debug!("PTR TO {opts:?}");
+			if let Ok(take) = self.take(sz) {
+				let v = TargetPtr::from_bytes_unsigned(&take)?;
+				let v = TmpParseValue::Ptr(v, opts.to_vec());
+				self.tmp.push((names.clone(), v));
+			}
+			Ok(sz)
+		} else if let ArgType::Ident(ident) = arg {
+			if let Some(at) = get_syscalls!().resolve_resource(ident) {
+				// Avoid holding read-lock
+				let at = at.clone();
+				self.evaluate_size_field(names, &at, &[])
+			} else if let Some(st) = get_syscalls!().resolve_struct(ident) {
+				let st = st.clone();
+				self.evaluate_size_struct(names, &st)
+			} else {
+				log::warn!("unknown ident {ident:?}");
+				todo!();
+			}
+		} else if matches!(arg, ArgType::Const|ArgType::Flags|ArgType::Bytesize|ArgType::Bitsize|ArgType::Len) {
+			for opt in opts.iter() {
+				if let ArgOpt::FullArg(arg) = opt {
+					return self.evaluate_size_field(names, arg.arg_type(), &arg.opts);
+				}
+			}
+			log::warn!("found no subtype specifying size");
+			Err(Error::Unsupported)
+
+		} else {
+			log::warn!("how to handle {arg:?}");
+			Err(Error::Unsupported)
+		}
+	}
+}
+
 impl SyscallItem {
 	/// Return true if syscall has failed or if we don't know if it has failed
 	/// or not
@@ -486,9 +699,67 @@ impl SyscallItem {
 			panic!("Tried to get output on syscall which is entry");
 		}
 	}
-}
 
-impl SyscallItem {
+	fn next_fullarg(opts: &[ArgOpt]) -> Option<Argument> {
+		for opt in opts.iter() {
+			if let ArgOpt::FullArg(arg) = opt {
+				return Some(*arg.clone());
+			}
+		}
+		None
+	}
+	fn parse_ptr_ident<T: Send + 'static>(raw: TargetPtr, id: &parser::Identifier, tid: isize, client: &mut Client<T, Response>) -> Result<Option<serde_json::Value>>
+		where crate::Error: From<crossbeam_channel::SendError<T>> {
+			// return Ok(None);
+			// std::thread::sleep(std::time::Duration::from_millis(1000));
+		// Example if we have the struct as Rust code
+		// "stat" => {
+		//		let bytes = std::mem::size_of::<libc_stat>();
+		//		let bytes = client.read_bytes(tid, raw, bytes)?;
+
+		//		let (head, body, _tail) = unsafe { bytes.align_to::<libc_stat>() };
+		//		assert!(head.is_empty(), "Data was not aligned");
+		//		let stat = body[0].clone();
+		//		Some(Value::Stat { stat })
+		//	}
+
+		log::warn!("attempting to parse {raw:x} ident {id:?}");
+
+		let mut build = BuildValue::default();
+		let size = build.evaluate_size_field(&mut Vec::new(), &parser::ArgType::Ident(id.clone()), &[])?;
+		log::debug!("size @{id:?}:{raw:x} = {size}");
+		let data = client.read_bytes(tid, raw, size)?;
+
+		log::debug!("data for {id:?} = {data:?}");
+		build.data = data;
+		let _size = build.evaluate_size_field(&mut Vec::new(), &parser::ArgType::Ident(id.clone()), &[])?;
+		log::debug!("data {:?}", build.tmp);
+
+		// Should also parse pointer, but we need to avoid possible endless loop
+		// by reading same pointer.
+
+		while let Some((idx, strs, ptr, opts)) = build.take_pointer() {
+			log::debug!("NPTR: {ptr:x} {opts:?}");
+			if ptr == raw {
+				build.insert_unparsed_ptr(idx, strs, ptr)?;
+				continue;
+			} else if let Some(narg) = Self::next_fullarg(&opts) {
+				if let Some(value) = Self::parse_ptr(ptr, tid, client, &narg.argtype, &narg.opts, None)? {
+					build.insert_value(idx, strs, value);
+				} else {
+					build.insert_unparsed_ptr(idx, strs, ptr)?;
+				}
+			} else {
+				log::error!("opts {opts:?}");
+				todo!();
+			}
+			// break;
+		}
+
+		let v = build.construct_value()?;
+		log::debug!("data {:?}", v);
+		Ok(Some(v))
+	}
 	fn parse_ptr<T: Send + 'static>(
 		raw: TargetPtr,
 		tid: Tid,
@@ -508,24 +779,30 @@ impl SyscallItem {
 				Value::new_string(string)
 			};
 			Ok(Some(value))
-		} else if let ArgType::Ident(n) = arg {
-			Ok(match n.name.as_str() {
-				"stat" => {
-					let bytes = std::mem::size_of::<libc_stat>();
-					let bytes = client.read_bytes(tid, raw, bytes)?;
-
-					let (head, body, _tail) = unsafe { bytes.align_to::<libc_stat>() };
-					assert!(head.is_empty(), "Data was not aligned");
-					let stat = body[0].clone();
-					Some(Value::Stat { stat })
-				}
-				_ => None,
-			})
+		} else if let ArgType::Ident(id) = arg {
+			match Self::parse_ptr_ident(raw, id, tid, client) {
+				Ok(n) => {
+					match n {
+						Some(n) => {
+							Ok(Some(Value::new_struct(id.unique_name(), n)))
+						},
+						None => {
+							log::warn!("got None when parsing struct {id:?}");
+							Ok(None)
+						},
+					}
+				},
+				Err(e) => {
+					log::warn!("got error when trying to parse struct {id:?} {e:?}");
+					Ok(None)
+				},
+			}
 		} else if arg.is_int() {
 			if raw != 0.into() {
 				let sz = arg.arg_size(std::mem::size_of::<TargetPtr>())?;
 				let bytes = client.read_bytes(tid, raw, sz)?;
-				let value = arg.bytes_as_int(&bytes)?;
+				let value = TargetPtr::from_bytes_unsigned(&bytes)?;
+				let value: serde_json::Number = value.into();
 				let value = Value::new_number(value, sz * 8);
 				Ok(Some(value))
 			} else {
@@ -573,7 +850,6 @@ impl SyscallItem {
 		crate::Error: From<crossbeam_channel::SendError<T>>,
 	{
 		log::debug!("parsing deep values");
-		self.enrich_values()?;
 		let errored = self.syscall_errored().unwrap_or(true);
 
 		let mut lens = HashMap::new();
@@ -583,7 +859,28 @@ impl SyscallItem {
 			}
 		}
 
-		for inarg in self.args.iter_mut() {
+		// Special handling of ioctl since the second argument usually specifies
+		// the size of the third argument. 
+		if self.args.len() >= 2 && self.name.starts_with("ioctl") {
+			let cmd = self.args[1].raw_value().as_ioctl_cmd()?;
+			if cmd.size < 0x1000 {
+				let of = "arg".to_string();
+				let len = ValueLen::new(LenType::Bytesize, cmd.size.into());
+				lens.insert(of, len);
+				if let Some(dir) = &cmd.dir {
+					if parsedir == Direction::Out && dir.is_out() && !self.args[2].dir.is_out() {
+						log::debug!("setting dir {dir:?}");
+						self.args[2].dir = dir.clone();
+						self.args[2].clear_parsed();
+					}
+				}
+			} else {
+				log::warn!("got long size from parsing ioctl cmd, ignoring");
+			}
+		}
+		
+
+		for (_argnum, inarg) in self.args.iter_mut().enumerate() {
 			let shouldparse =
 				// Argument is in and parsing is on input
 				(inarg.dir.is_in() && parsedir.is_in())
@@ -595,17 +892,20 @@ impl SyscallItem {
 			if shouldparse {
 				if let Some(n) = inarg.parsed() {
 					if let Value::ShallowPtr {
-						value: _,
+						value,
 						arg,
 						opts,
-						optional: _,
+						optional,
 					} = n
 					{
 						let len = lens.get(&inarg.name);
 						let v = Self::parse_ptr(inarg.raw_value(), tid, client, arg, opts, len);
 						match v {
 							Ok(v) => match v {
-								Some(v) => inarg.set_parsed(v),
+								Some(v) => {
+									let v = Value::new_parsed_ptr(Value::new_shallow_ptr(value.clone(), arg.clone(), opts.clone(), *optional), v);
+									inarg.set_parsed(v)
+								},
 								None => log::warn!(
 									"reading of ptr {:x} with len {len:?} returned None",
 									inarg.raw_value()
@@ -616,9 +916,10 @@ impl SyscallItem {
 								inarg.raw_value()
 							),
 						}
+						log::debug!("arg {inarg}");
 					}
 				} else {
-					log::warn!("parsed arg was None, previous step of parsing has seemingly not been done: {inarg:?}");
+					log::debug!("parsed arg was None, previous step of parsing has seemingly not been done: {inarg:?}");
 				}
 			}
 		}
@@ -656,25 +957,29 @@ impl SyscallItem {
 				let bytes = atype
 					.arg_size(std::mem::size_of::<usize>())
 					.unwrap_or_else(|_| panic!("unable to get size of int {atype:?})"));
+
+				// We parse everything as unsigned here because Syzkaller does
+				// not separate between signed and unsigned so we don't know
+				// what it is.
 				let value: serde_json::value::Number = match atype {
 					ArgType::Intptr => raw.into(),
-					ArgType::Int64 => raw.as_i64().into(),
-					ArgType::Int32 => raw.as_i32().into(),
-					ArgType::Int16 => raw.as_i16().into(),
-					ArgType::Int8 => raw.as_i8().into(),
+					ArgType::Int64 => raw.as_u64().into(),
+					ArgType::Int32 => raw.as_u32().into(),
+					ArgType::Int16 => raw.as_u16().into(),
+					ArgType::Int8 => raw.as_u8().into(),
 					ArgType::Int64be => {
-						let v: i64 = raw.into();
-						let v = i64::from_be(v);
+						let v: u64 = raw.into();
+						let v = u64::from_be(v);
 						v.into()
 					}
 					ArgType::Int32be => {
-						let v: i32 = raw.into();
-						let v = i32::from_be(v);
+						let v: u32 = raw.into();
+						let v = u32::from_be(v);
 						v.into()
 					}
 					ArgType::Int16be => {
-						let v: i16 = raw.into();
-						let v = i16::from_be(v);
+						let v: u16 = raw.into();
+						let v = u16::from_be(v);
 						v.into()
 					}
 					_ => panic!(""),
@@ -790,13 +1095,39 @@ impl SyscallItem {
 		Self::parse_arg_type(raw, arg.arg_type(), &arg.opts)
 	}
 
+	pub fn patch_ioctl_call(&mut self, dir: &Direction) -> crate::Result<()> {
+		// Avoid re-parsing this on entry and exit
+		if *dir == Direction::In || self.args[2].parsed().is_none() {
+			log::debug!("sysno {} is ioctl", self.sysno);
+			let cmd = self.args[1].as_u32();
+			log::debug!("ioctl cmd {cmd:?}");
+			if let Ok(Some(ioctl)) = write_syscalls!().find_matching_ioctl(cmd as u64) {
+				log::trace!("found ioctl {ioctl:?}");
+				self.name = format!("ioctl${}", ioctl.ident.subname.join("_"));
+				if self.args.len() >= 2 && ioctl.args.len() >= 2 {
+					log::debug!("parsing custom ioctl");
+					let raw = self.args[2].raw_value();
+					log::debug!("raw {raw:x}");
+					let ins = Self::parse_arg(raw, &ioctl.args[2]);
+					self.args[2].value.parsed = ins;
+
+					// Syzkaller does not necessarily mark input/output
+					// correctly, if Syzkaller doesn't care about the output
+					// date, they will likely mark it as just Input. To get
+					// around this, we should have a way to patch entries and
+					// override behaviour. Below is one test, to verify it
+					// worked, but it will be global for all ioctl arguments.
+
+					// self.args[2].dir = Direction::InOut;
+				}
+			}
+		}
+		Ok(())
+	}
 	pub fn enrich_values(&mut self) -> crate::Result<()> {
 		log::debug!("enriching values sysno: {}", self.sysno);
-		if let Some(sys) = crate::SYSCALLS
-			.read()
-			.expect("unable to lock syscalls")
-			.resolve(self.sysno)
-		{
+		
+		if let Some(sys) = get_syscalls!().resolve(self.sysno) {
 			for (i, arg) in sys.args.iter().enumerate() {
 				if self.args[i].value.parsed.is_none() {
 					let raw = self.args[i].raw_value();
@@ -804,7 +1135,6 @@ impl SyscallItem {
 					self.args[i].value.parsed = ins;
 				}
 			}
-
 			if let Some(out) = &mut self.output {
 				if out.parsed.is_none() {
 					let opts = vec![ArgOpt::Dir(syzlang_parser::parser::Direction::Out)];
@@ -832,10 +1162,7 @@ impl SyscallItem {
 		}
 	}
 	fn resolve_resource_ident(raw: TargetPtr, ident: &Identifier, dir: Direction) -> Option<Value> {
-		let basics = crate::PARSED
-			.read()
-			.expect("unable to lock parsed")
-			.resource_to_basics(ident);
+		let basics = get_parsed!().resource_to_basics(ident);
 		log::trace!("basics {ident:?} ->  {basics:?}");
 		if Self::argtypes_are_fd(ident, &basics) {
 			let fd = raw.as_i32();
@@ -886,9 +1213,7 @@ impl SyscallItem {
 	}
 	fn resolve_flag_ident(raw: TargetPtr, ident: &Identifier) -> Vec<String> {
 		let mut ret = Vec::new();
-		let flag = crate::PARSED
-			.read()
-			.expect("unable to lock parsed")
+		let flag = get_parsed!()
 			.get_flag(ident)
 			.cloned();
 		if let Some(flag) = flag {
@@ -919,11 +1244,9 @@ impl SyscallItem {
 		}
 	}
 	fn resolve_const_ident(name: &str) -> TargetPtr {
-		if let Some(r) = crate::PARSED
-			.read()
-			.expect("unable to lock parsed")
+		if let Some(r) = get_parsed!()
 			.consts()
-			.find_name_arch(name, &crate::syzarch())
+			.find_name_arch(name, &Target::syzarch())
 		{
 			match r.value() {
 				parser::Value::Int(n) => (*n).into(),
@@ -938,22 +1261,17 @@ impl SyscallItem {
 	}
 
 	pub fn from_regs(tid: Tid, sysno: usize, args: &[u64]) -> Self {
-		// let sysno = regs.get_sysno();
-		let (name, args) = if let Some(sys) = crate::SYSCALLS
-			.read()
-			.expect("unable to lock syscalls")
-			.resolve(sysno)
+		let (name, args) = if let Some(sys) = get_syscalls!().resolve(sysno)
 		{
 			let mut shallows = Vec::new();
 			for (i, arg) in sys.args.iter().enumerate() {
 				let dir = arg.direction().into();
 				let (_atype, _resource) = Self::get_shallow_value(arg.arg_type());
-				// let value = regs.arg_syscall(i);
 				let value = args[i].into();
 				let ins = SysArg::new_basic(arg.identifier().safe_name(), value, dir);
 				shallows.push(ins);
 			}
-			(sys.name.clone(), shallows)
+			(sys.ident.name.clone(), shallows)
 		} else {
 			(format!("unknown_{sysno}"), Vec::new())
 		};
@@ -971,11 +1289,7 @@ impl SyscallItem {
 	}
 	fn get_shallow_value(arg: &ArgType) -> (ArgType, Option<Identifier>) {
 		let (atype, resource) = if let ArgType::Ident(ident) = arg {
-			if let Some(r) = crate::PARSED
-				.read()
-				.expect("unable to lock parsed")
-				.resource_to_basic_type(ident)
-			{
+			if let Some(r) = get_parsed!().resource_to_basic_type(ident) {
 				log::debug!("refers to {r:?}");
 				(r, Some(ident.clone()))
 			} else {
@@ -986,33 +1300,6 @@ impl SyscallItem {
 			(arg.clone(), None)
 		};
 		(atype, resource)
-	}
-}
-
-#[derive(Debug)]
-pub struct Syscall {
-	pub name: String,
-	pub sysno: usize,
-	pub args: Vec<Argument>,
-	pub output: ArgType,
-	arches: Vec<parser::Arch>,
-}
-
-impl Syscall {
-	pub fn new(
-		name: String,
-		sysno: usize,
-		args: Vec<Argument>,
-		output: ArgType,
-		arches: Vec<parser::Arch>,
-	) -> Self {
-		Self {
-			name,
-			sysno,
-			args,
-			output,
-			arches,
-		}
 	}
 }
 
@@ -1044,101 +1331,74 @@ impl From<BuildArch> for parser::Arch {
 	}
 }
 
-#[derive(Debug, Default)]
-pub struct Syscalls {
-	pub syscalls: HashMap<usize, Syscall>,
+impl Syscall {
+	fn for_arch(&self, arch: &BuildArch) -> bool {
+		let arch: parser::Arch = (*arch).clone().into();
+		self.arches.contains(&arch)
+	}
 }
 
 impl Syscalls {
-	pub fn resolve(&self, sysno: usize) -> Option<&Syscall> {
-		self.syscalls.get(&sysno)
+	pub fn postprocess(&mut self) {
+		for res in std::mem::take(&mut self.parsed.resources).into_iter() {
+			self.resources.insert(res.name, res.atype);
+		}
+
+		for s in std::mem::take(&mut self.parsed.structs).into_iter() {
+			self.structs.insert(s.identifier().clone(), s);
+		}
 	}
-	pub fn resolve_sysno(&self, sysno: usize) -> Option<&String> {
-		self.syscalls.get(&sysno).map(|x| &x.name)
+
+	pub fn resolve_resource(&self, ident: &Identifier) -> Option<&parser::ArgType> {
+		self.resources.get(ident)
+	}
+	pub fn resolve_struct(&self, ident: &Identifier) -> Option<&parser::Struct> {
+		self.structs.get(ident)
+	}
+	pub fn resolve(&self, sysno: usize) -> Option<&Syscall> {
+		let arch = Target::arch();
+		if let Some(calls) = self.syscalls.get(&sysno) {
+			let rem = calls.iter()
+				.filter(|x| x.for_arch(&arch))
+				.collect::<Vec<_>>();
+			rem.first().copied()
+		} else {
+			None
+		}
+	}
+	pub fn find_matching_ioctl(&mut self, cmd: u64) -> Result<Option<&Syscall>> {
+		if let Some(v) = self.ioctlcache.get(&cmd) {
+			Ok(self.virts.ioctls.get(v))
+		} else {
+			let arch = Target::syzarch();
+			let mut found = self.parsed.consts.all_consts_matching(cmd, &arch);
+			log::trace!("found {found:?}");
+			match found.len() {
+				0 => Err(Error::NotFound),
+				1 => {
+					let c = found.remove(0);
+					//self.ioctlcache.insert(cmd, c.name.clone());
+					Ok(self.virts.ioctls.get(&c.name))
+				},
+				_ => Err(Error::TooManyMatches),
+			}
+		}
 	}
 	pub fn name_to_sysno(&self, arch: BuildArch, name: &str) -> Option<usize> {
 		let arch: parser::Arch = arch.into();
 		let v = self
 			.syscalls
 			.iter()
-			.filter(|(_sysno, sys)| sys.name == name && sys.arches.contains(&arch))
+			.filter(|(_sysno, sys)| {
+				for item in sys.iter() {
+					if item.ident.name == name && item.arches.contains(&arch) {
+						return true;
+					}
+				}
+				false
+			})
 			.map(|(sysno, _)| *sysno)
 			.collect::<Vec<_>>();
 		v.first().cloned()
-	}
-}
-
-impl TryFrom<&syzlang_parser::parser::Parsed> for Syscalls {
-	type Error = crate::Error;
-
-	fn try_from(value: &syzlang_parser::parser::Parsed) -> std::result::Result<Self, Self::Error> {
-		Self::try_from(value.clone())
-	}
-}
-
-impl TryFrom<syzlang_parser::parser::Parsed> for Syscalls {
-	type Error = crate::Error;
-
-	fn try_from(
-		mut value: syzlang_parser::parser::Parsed,
-	) -> std::result::Result<Self, Self::Error> {
-		#[cfg(debug_assertions)]
-		{
-			assert!(value
-				.functions
-				.extract_if(|x| { x.is_virtual() })
-				.collect::<Vec<_>>()
-				.is_empty());
-			assert!(value
-				.functions
-				.extract_if(|x| { !x.name.subname.is_empty() })
-				.collect::<Vec<_>>()
-				.is_empty());
-		}
-
-		// We only care about the basic ones, not sub-specification of syscalls
-		// TODO: We currently only parse for host target, need to fix this when
-		// supporting other non-host targets.
-		let syscalls = value
-			.functions
-			.into_iter()
-			// .filter(|x| {x.name.subname.is_empty() /*&& value.consts.find_sysno(&x.name.name, &syzarch).is_some() */ })
-			.map(|func| {
-				if let Some(sysno) = value.consts.find_sysno(&func.name.name, &crate::syzarch()) {
-					let ins = Syscall::new(
-						func.name.name,
-						sysno.into(),
-						func.args,
-						func.output,
-						vec![crate::syzarch().into()],
-					);
-					Some((sysno, ins))
-				} else {
-					None
-				}
-			})
-			.filter(|x| x.is_some())
-			.map(|x| {
-				let r = x.expect("impossible");
-				(r.0, r.1)
-			})
-			.collect::<HashMap<_, _>>();
-		Ok(Self { syscalls })
-	}
-}
-
-#[cfg(test)]
-mod test {
-
-	#[test]
-	fn test_syscalls() {
-		let _ret = crate::PARSED
-			.read()
-			.expect("unable to lock parsed")
-			.consts
-			.find_sysno("prctl", &crate::syzarch());
-
-		let r = crate::SYSCALLS.read().expect("unable to lock syscalls");
-		let _r = r.resolve(157);
 	}
 }

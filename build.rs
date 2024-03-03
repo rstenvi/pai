@@ -1,3 +1,6 @@
+#![feature(extract_if)]
+#![feature(hash_extract_if)]
+
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{fs::File, io::Write};
@@ -9,6 +12,9 @@ use syzlang_parser::parser::{
 };
 
 include!("src/buildinfo.rs");
+
+#[cfg(feature = "syscalls")]
+include!("src/syscalls/parsed.rs");
 
 impl BuildVersion {
 	fn new(s: &str) -> Self {
@@ -314,15 +320,15 @@ fn add_functions(parsed: &mut Parsed) {
 }
 
 #[cfg(feature = "syscalls")]
-fn get_syscall_data(build: &BuildInfo) -> anyhow::Result<String> {
-	let syzarch = match &build.target.arch {
-		BuildArch::Aarch64 => syzlang_parser::parser::Arch::Aarch64,
-		BuildArch::Aarch32 => syzlang_parser::parser::Arch::Aarch32,
-		BuildArch::X86_64 => syzlang_parser::parser::Arch::X86_64,
-		BuildArch::X86 => syzlang_parser::parser::Arch::X86,
-		BuildArch::Mips => todo!(),
-		BuildArch::RiscV64 => syzlang_parser::parser::Arch::Riscv64,
-	};
+fn get_syscall_data(_build: &BuildInfo) -> anyhow::Result<String> {
+	//let syzarch = match &build.target.arch {
+	//	BuildArch::Aarch64 => syzlang_parser::parser::Arch::Aarch64,
+	//	BuildArch::Aarch32 => syzlang_parser::parser::Arch::Aarch32,
+	//	BuildArch::X86_64 => syzlang_parser::parser::Arch::X86_64,
+	//	BuildArch::X86 => syzlang_parser::parser::Arch::X86,
+	//	BuildArch::Mips => todo!(),
+	//	BuildArch::RiscV64 => syzlang_parser::parser::Arch::Riscv64,
+	//};
 
 	let data = syzlang_data::linux::PARSED
 		.read()
@@ -334,15 +340,19 @@ fn get_syscall_data(build: &BuildInfo) -> anyhow::Result<String> {
 	data.insert_builtin().expect("unable to insert builtins");
 	data.postprocess().expect("unable to postprocess");
 
-	// data.consts.filter_arch(&syzarch);
-	data.remove_virtual_functions();
-	data.remove_func_no_sysno(&syzarch);
-	data.remove_subfunctions();
-	data.remove_aliases();
-	data.remove_templates();
-	data.remove_defines();
-	data.remove_unions();
-	data.remove_structs();
+	
+
+	let mut data = Syscalls::from_syzlang(data);
+	data.remove_virtual();
+	//data.consts.filter_arch(&syzarch);
+	//data.remove_virtual_functions();
+	//data.remove_func_no_sysno(&syzarch);
+	//data.remove_subfunctions();
+	data.parsed.remove_aliases();
+	data.parsed.remove_templates();
+	data.parsed.remove_defines();
+	data.parsed.remove_unions();
+	// data.parsed.remove_structs();
 
 	let out = serde_json::to_string(&data)?;
 	Ok(out)
@@ -375,7 +385,7 @@ fn main() -> anyhow::Result<()> {
 
 	let build = get_build_info()?;
 	let testdata = compile_testdata(&scratch, &build)?;
-	println!("wroute testdata to {testdata:?}");
+	println!("wrote testdata to {testdata:?}");
 
 	#[cfg(feature = "syscalls")]
 	let out = get_syscall_data(&build)?;

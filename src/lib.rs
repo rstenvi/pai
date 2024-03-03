@@ -223,6 +223,36 @@ cast_signed! { u32, i32 }
 cast_signed! { u64, i64 }
 cast_signed! { usize, isize }
 
+#[cfg(feature = "syscalls")]
+pub(crate) struct IoctlCmd {
+	dir: Option<syscalls::Direction>,
+	itype: u32,
+	nr: u32,
+	size: u32,
+}
+#[cfg(feature = "syscalls")]
+impl From<u32> for IoctlCmd {
+	fn from(mut value: u32) -> Self {
+		let nr = value & ((1<<8)-1);
+		value >>= 8;
+		let itype = value & ((1<<8)-1);
+		value >>= 8;
+		let size = value & (1<<14)-1;
+		value >>= 14;
+		let dir = value & (1<<2)-1;
+		let dir = match dir {
+			0 => None,
+			// Userland to kernel
+			1 => Some(syscalls::Direction::In),
+			// kernel to userlang
+			2 => Some(syscalls::Direction::Out),
+			3 => Some(syscalls::Direction::InOut),
+			_ => bug!("IoctlCmd"),
+		};
+		Self { dir, itype, nr, size }
+	}
+}
+
 #[derive(
 	Copy,
 	Clone,
@@ -271,6 +301,47 @@ impl TargetPtr {
 	}
 	pub fn as_usize(&self) -> usize {
 		self.raw as usize
+	}
+	#[cfg(feature = "syscalls")]
+	pub(crate) fn as_ioctl_cmd(&self) -> Result<IoctlCmd> {
+		Ok(self.as_u32().into())
+	}
+	pub fn from_bytes_unsigned(data: &[u8]) -> Result<Self> {
+		let len = data.len();
+		let endian = Target::endian();
+		let raw = match len {
+			1 => data[0] as u64,
+			2 => {
+				let v = data.try_into().expect("impossible");
+				let res = match endian {
+					BuildEndian::Little => u16::from_le_bytes(v),
+					BuildEndian::Big => u16::from_be_bytes(v),
+					BuildEndian::Native => u16::from_ne_bytes(v),
+				};
+				res as u64
+			},
+			4 => {
+				let v = data.try_into().expect("impossible");
+				let res = match endian {
+					BuildEndian::Little => u32::from_le_bytes(v),
+					BuildEndian::Big => u32::from_be_bytes(v),
+					BuildEndian::Native => u32::from_ne_bytes(v),
+				};
+				res as u64
+			},
+			8 => {
+				let v = data.try_into().expect("impossible");
+				let res = match endian {
+					BuildEndian::Little => u64::from_le_bytes(v),
+					BuildEndian::Big => u64::from_be_bytes(v),
+					BuildEndian::Native => u64::from_ne_bytes(v),
+				};
+				res as u64
+			},
+			_ => return Err(Error::msg(format!("unsupported size for int {len}"))),
+		};
+		let ret = Self::new(raw);
+		Ok(ret)
 	}
 }
 
@@ -468,6 +539,7 @@ macro_rules! gbugreport {
 	};
 }
 
+use buildinfo::BuildEndian;
 pub(crate) use gbugreport;
 
 macro_rules! bug {
@@ -496,32 +568,7 @@ macro_rules! bug_assert {
 	}};
 }
 pub(crate) use bug_assert;
-
-#[cfg(feature = "syscalls")]
-pub(crate) fn syzarch() -> syzlang_parser::parser::Arch {
-	#[cfg(target_arch = "x86_64")]
-	{
-		syzlang_parser::parser::Arch::X86_64
-	}
-	#[cfg(target_arch = "x86")]
-	{
-		syzlang_parser::parser::Arch::X86
-	}
-
-	#[cfg(target_arch = "aarch64")]
-	{
-		syzlang_parser::parser::Arch::Aarch64
-	}
-
-	#[cfg(target_arch = "arm")]
-	{
-		syzlang_parser::parser::Arch::Aarch32
-	}
-	#[cfg(target_arch = "riscv64")]
-	{
-		syzlang_parser::parser::Arch::Riscv64
-	}
-}
+use target::Target;
 
 lazy_static::lazy_static! {
 	#[derive(Default)]
@@ -546,29 +593,16 @@ lazy_static::lazy_static! {
 
 #[cfg(feature = "syscalls")]
 lazy_static::lazy_static! {
-	#[derive(Default)]
-	static ref PARSED: std::sync::RwLock<syzlang_parser::parser::Parsed> = {
-		// This is slower than unencoded, but saves ~6MB in final ELF file
+	pub(crate) static ref SYSCALLS: std::sync::RwLock<syscalls::Syscalls> = {
+		// This is slower than unencoded, but saves on space in final ELF file
 		let raw = include_bytes!(concat!(env!("OUT_DIR"), "/syscalls.json.gz"));
 		let mut gz = flate2::bufread::GzDecoder::new(&raw[..]);
 		let mut s = String::new();
 		gz.read_to_string(&mut s).expect("unable to decompress gz from build.rs");
-		let parsed: syzlang_parser::parser::Parsed = serde_json::from_str(&s)
+		let mut parsed: syscalls::Syscalls = serde_json::from_str(&s)
 			.expect("unable to parse compressed json from build.rs as variable");
+		parsed.postprocess();
 		std::sync::RwLock::new(parsed)
-	};
-}
-
-#[cfg(feature = "syscalls")]
-lazy_static::lazy_static! {
-	pub(crate) static ref SYSCALLS: std::sync::RwLock<syscalls::Syscalls> = {
-		if let Ok(parsed) = PARSED.read() {
-			let syscalls: syscalls::Syscalls = parsed.clone().try_into()
-				.expect("unable to convert from parsed syscalls to our Syscalls");
-			std::sync::RwLock::new(syscalls)
-		} else {
-			crate::bug!("unable to get lock for PARSED???");
-		}
 	};
 }
 

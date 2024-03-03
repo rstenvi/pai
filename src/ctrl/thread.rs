@@ -6,6 +6,7 @@ use crate::{
 	utils::process::Tid,
 	Result,
 };
+use crate::target::Target;
 use crossbeam_channel::{Receiver, Sender};
 
 #[cfg(feature = "syscalls")]
@@ -104,11 +105,9 @@ impl ClientThread {
 	}
 	#[cfg(feature = "syscalls")]
 	fn resolve_sysno(&self, name: &str) -> Result<Response> {
-		let ret = crate::PARSED
-			.read()
-			.expect("unable to lock parsed")
+		let ret = crate::syscalls::get_parsed!()
 			.consts
-			.find_sysno(name, &crate::syzarch());
+			.find_sysno(name, &Target::syzarch());
 		let r = serde_json::to_value(ret)?;
 		Ok(Response::Value(r))
 	}
@@ -176,7 +175,14 @@ impl ClientThread {
 		match enrich {
 			Enrich::None => {}
 			Enrich::Basic => sys.enrich_values()?,
-			Enrich::Full => sys.parse_deep(sys.tid, &mut self.client, dir)?,
+			Enrich::Full => {
+				sys.enrich_values()?;
+				if self.args.patch_ioctl_virtual(sys.tid) && sys.name == "ioctl" {
+					sys.patch_ioctl_call(&dir)?;
+				}
+				
+				sys.parse_deep(sys.tid, &mut self.client, dir)?
+			},
 		}
 		Ok(())
 	}
@@ -196,6 +202,7 @@ impl ClientThread {
 		if entry {
 			let sysno = regs.get_sysno();
 			if self.args.handles_syscall_sysno(tid, sysno) {
+				log::debug!("parsing syscall entry");
 				let mut args = Vec::with_capacity(6);
 				Self::fill_syscall_regs(&mut args, &self.syscallcc, &regs)?;
 				let mut ins = SyscallItem::from_regs(tid, sysno, &args);
@@ -211,8 +218,15 @@ impl ClientThread {
 				Ok(None)
 			}
 		} else if let Some(mut syscall) = self.pending_syscalls.remove(&tid) {
+			log::debug!("parsing syscall exit");
 			let retval = self.syscallcc.get_retval(&regs)?;
 			syscall.fill_in_output(retval.into());
+			for arg in syscall.args.iter_mut() {
+				// if arg.is_output() {
+				// 	arg.clear_parsed();
+				// }
+			}
+			log::debug!("sys exit before enrich {syscall:?}");
 			self.enrich(syscall.sysno, &mut syscall, Direction::Out)?;
 			let ret = Some(Response::Syscall(syscall));
 			Ok(ret)
