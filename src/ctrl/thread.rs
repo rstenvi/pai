@@ -1,3 +1,4 @@
+use crate::target::Target;
 use crate::{
 	api::{client::IdWrapper, messages::Stopped},
 	arch::NamedRegs,
@@ -6,7 +7,6 @@ use crate::{
 	utils::process::Tid,
 	Result,
 };
-use crate::target::Target;
 use crossbeam_channel::{Receiver, Sender};
 
 #[cfg(feature = "syscalls")]
@@ -180,9 +180,9 @@ impl ClientThread {
 				if self.args.patch_ioctl_virtual(sys.tid) && sys.name == "ioctl" {
 					sys.patch_ioctl_call(&dir)?;
 				}
-				
+
 				sys.parse_deep(sys.tid, &mut self.client, dir)?
-			},
+			}
 		}
 		Ok(())
 	}

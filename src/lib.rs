@@ -233,13 +233,13 @@ pub(crate) struct IoctlCmd {
 #[cfg(feature = "syscalls")]
 impl From<u32> for IoctlCmd {
 	fn from(mut value: u32) -> Self {
-		let nr = value & ((1<<8)-1);
+		let nr = value & ((1 << 8) - 1);
 		value >>= 8;
-		let itype = value & ((1<<8)-1);
+		let itype = value & ((1 << 8) - 1);
 		value >>= 8;
-		let size = value & ((1<<14)-1);
+		let size = value & ((1 << 14) - 1);
 		value >>= 14;
-		let dir = value & ((1<<2)-1);
+		let dir = value & ((1 << 2) - 1);
 		let dir = match dir {
 			0 => None,
 			// Userland to kernel
@@ -249,7 +249,12 @@ impl From<u32> for IoctlCmd {
 			3 => Some(syscalls::Direction::InOut),
 			_ => bug!("IoctlCmd"),
 		};
-		Self { dir, itype, nr, size }
+		Self {
+			dir,
+			itype,
+			nr,
+			size,
+		}
 	}
 }
 
@@ -319,7 +324,7 @@ impl TargetPtr {
 					BuildEndian::Native => u16::from_ne_bytes(v),
 				};
 				res as u64
-			},
+			}
 			4 => {
 				let v = data.try_into().expect("impossible");
 				let res = match endian {
@@ -328,7 +333,7 @@ impl TargetPtr {
 					BuildEndian::Native => u32::from_ne_bytes(v),
 				};
 				res as u64
-			},
+			}
 			8 => {
 				let v = data.try_into().expect("impossible");
 				let res = match endian {
@@ -337,7 +342,7 @@ impl TargetPtr {
 					BuildEndian::Native => u64::from_ne_bytes(v),
 				};
 				res as u64
-			},
+			}
 			_ => return Err(Error::msg(format!("unsupported size for int {len}"))),
 		};
 		let ret = Self::new(raw);

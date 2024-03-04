@@ -174,7 +174,7 @@ impl ArgsBuilder {
 
 	#[cfg(feature = "syscalls")]
 	builder_set_bool! { patch_ioctl_virtual }
-	
+
 	builder_set_bool! { handle_steps }
 	builder_set_bool! { handle_exec }
 

@@ -340,8 +340,6 @@ fn get_syscall_data(_build: &BuildInfo) -> anyhow::Result<String> {
 	data.insert_builtin().expect("unable to insert builtins");
 	data.postprocess().expect("unable to postprocess");
 
-	
-
 	let mut data = Syscalls::from_syzlang(data);
 	data.remove_virtual();
 	//data.consts.filter_arch(&syzarch);

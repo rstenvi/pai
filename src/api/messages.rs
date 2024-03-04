@@ -209,29 +209,14 @@ pub enum Stop {
 	SyscallExit,
 
 	// SyscallDone { sysno: usize, ret: TargetPtr },
-	Exit {
-		code: i32,
-	},
-	Signal {
-		signal: i32,
-		group: bool,
-	},
-	Clone {
-		pid: Tid,
-	},
+	Exit { code: i32 },
+	Signal { signal: i32, group: bool },
+	Clone { pid: Tid },
 	Attach,
-	Breakpoint {
-		pc: TargetPtr,
-	},
-	Fork {
-		newpid: Tid,
-	},
-	Step {
-		pc: TargetPtr,
-	},
-	Exec {
-		old: Tid,
-	},
+	Breakpoint { pc: TargetPtr },
+	Fork { newpid: Tid },
+	Step { pc: TargetPtr },
+	Exec { old: Tid },
 }
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -687,7 +672,9 @@ impl RemoteCmd {
 	pub fn set_libc_regs(tid: Tid, regs: crate::Registers) -> Self {
 		Self::Thread {
 			tid,
-			cmd: ThreadCmd::SetLibcRegs { regs: Box::new(regs) },
+			cmd: ThreadCmd::SetLibcRegs {
+				regs: Box::new(regs),
+			},
 		}
 	}
 }

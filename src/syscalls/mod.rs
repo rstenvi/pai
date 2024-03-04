@@ -185,7 +185,7 @@ pub enum Value {
 	ParsedPtr {
 		old: Box<Self>,
 		value: Box<Self>,
-	}
+	},
 }
 
 impl std::fmt::Display for Value {
@@ -224,13 +224,11 @@ impl std::fmt::Display for Value {
 			}
 			Self::Const { matches, symbol } => {
 				f.write_fmt(format_args!("const({symbol}, {matches})"))
-			},
+			}
 			Self::Struct { name, value } => {
 				f.write_fmt(format_args!("struct({name} = {{ {value:?} }} )"))
-			},	
-			Self::ParsedPtr { old: _, value } => {
-				f.write_fmt(format_args!("ptr({value})"))
-			},
+			}
+			Self::ParsedPtr { old: _, value } => f.write_fmt(format_args!("ptr({value})")),
 		}
 	}
 }
@@ -251,11 +249,17 @@ impl Value {
 		}
 	}
 	fn new_parsed_ptr(old: Value, value: Value) -> Self {
-		Self::ParsedPtr { old: Box::new(old), value: Box::new(value) }
+		Self::ParsedPtr {
+			old: Box::new(old),
+			value: Box::new(value),
+		}
 	}
 	fn new_struct<S: Into<String>>(name: S, value: serde_json::Value) -> Self {
 		log::trace!("creating new struct with {value:?}");
-		Self::Struct { name: name.into(), value }
+		Self::Struct {
+			name: name.into(),
+			value,
+		}
 	}
 	fn new_bool(value: bool) -> Self {
 		Self::Bool { value }
@@ -446,7 +450,7 @@ impl SysArg {
 		self.value.parsed = Some(parsed);
 	}
 	pub fn is_output(&self) -> bool {
-		matches!(self.dir, Direction::Out|Direction::InOut)
+		matches!(self.dir, Direction::Out | Direction::InOut)
 	}
 	pub fn clear_parsed(&mut self) {
 		log::debug!("clearing {:?}", self.value.parsed);
@@ -550,7 +554,11 @@ pub struct BuildValue {
 	obj: serde_json::Value,
 }
 impl BuildValue {
-	fn evaluate_size_struct(&mut self, names: &mut Vec<String>, s: &parser::Struct) -> Result<usize> {
+	fn evaluate_size_struct(
+		&mut self,
+		names: &mut Vec<String>,
+		s: &parser::Struct,
+	) -> Result<usize> {
 		let mut ret = 0;
 		names.push(s.identifier().name.clone());
 		for field in s.args() {
@@ -583,7 +591,12 @@ impl BuildValue {
 			}
 		}
 	}
-	fn evaluate_size_field(&mut self, names: &mut Vec<String>, arg: &ArgType, opts: &[ArgOpt]) -> Result<usize> {
+	fn evaluate_size_field(
+		&mut self,
+		names: &mut Vec<String>,
+		arg: &ArgType,
+		opts: &[ArgOpt],
+	) -> Result<usize> {
 		if arg.is_int() {
 			let sz = arg.evaluate_size(&Target::syzarch())?;
 			if let Ok(take) = self.take(sz) {
@@ -613,7 +626,10 @@ impl BuildValue {
 				log::warn!("unknown ident {ident:?}");
 				todo!();
 			}
-		} else if matches!(arg, ArgType::Const|ArgType::Flags|ArgType::Bytesize|ArgType::Bitsize|ArgType::Len) {
+		} else if matches!(
+			arg,
+			ArgType::Const | ArgType::Flags | ArgType::Bytesize | ArgType::Bitsize | ArgType::Len
+		) {
 			for opt in opts.iter() {
 				if let ArgOpt::FullArg(arg) = opt {
 					return self.evaluate_size_field(names, arg.arg_type(), &arg.opts);
@@ -621,7 +637,6 @@ impl BuildValue {
 			}
 			log::warn!("found no subtype specifying size");
 			Err(Error::Unsupported)
-
 		} else {
 			log::warn!("how to handle {arg:?}");
 			Err(Error::Unsupported)
@@ -670,10 +685,18 @@ impl SyscallItem {
 		}
 		None
 	}
-	fn parse_ptr_ident<T: Send + 'static>(raw: TargetPtr, id: &parser::Identifier, tid: isize, client: &mut Client<T, Response>, maxdepth: isize) -> Result<Option<serde_json::Value>>
-		where crate::Error: From<crossbeam_channel::SendError<T>> {
-			// return Ok(None);
-			// std::thread::sleep(std::time::Duration::from_millis(1000));
+	fn parse_ptr_ident<T: Send + 'static>(
+		raw: TargetPtr,
+		id: &parser::Identifier,
+		tid: isize,
+		client: &mut Client<T, Response>,
+		maxdepth: isize,
+	) -> Result<Option<serde_json::Value>>
+	where
+		crate::Error: From<crossbeam_channel::SendError<T>>,
+	{
+		// return Ok(None);
+		// std::thread::sleep(std::time::Duration::from_millis(1000));
 		// Example if we have the struct as Rust code
 		// "stat" => {
 		//		let bytes = std::mem::size_of::<libc_stat>();
@@ -688,12 +711,20 @@ impl SyscallItem {
 		log::debug!("attempting to parse {raw:x} ident {id:?}");
 		if raw != 0.into() {
 			let mut build = BuildValue::default();
-			let size = build.evaluate_size_field(&mut Vec::new(), &parser::ArgType::Ident(id.clone()), &[])?;
+			let size = build.evaluate_size_field(
+				&mut Vec::new(),
+				&parser::ArgType::Ident(id.clone()),
+				&[],
+			)?;
 			log::debug!("size @{id:?}:{raw:x} = {size}");
 			let data = client.read_bytes(tid, raw, size)?;
-		
+
 			build.data = data;
-			let _size = build.evaluate_size_field(&mut Vec::new(), &parser::ArgType::Ident(id.clone()), &[])?;
+			let _size = build.evaluate_size_field(
+				&mut Vec::new(),
+				&parser::ArgType::Ident(id.clone()),
+				&[],
+			)?;
 			let mut obj = build.obj;
 			let pointers = std::mem::take(&mut build.pointers);
 			for (ptr, opts) in pointers.into_iter() {
@@ -702,10 +733,18 @@ impl SyscallItem {
 					n = &mut n[p];
 				}
 
-				if let Ok(nptr) = serde_json::from_value::<TargetPtr>(n.clone()){
+				if let Ok(nptr) = serde_json::from_value::<TargetPtr>(n.clone()) {
 					if nptr != raw && nptr != 0.into() {
 						if let Some(narg) = Self::next_fullarg(&opts) {
-							if let Some(value) = Self::parse_ptr(nptr, tid, client, &narg.argtype, &narg.opts, None, maxdepth - 1)? {
+							if let Some(value) = Self::parse_ptr(
+								nptr,
+								tid,
+								client,
+								&narg.argtype,
+								&narg.opts,
+								None,
+								maxdepth - 1,
+							)? {
 								*n = serde_json::to_value(value)?;
 							}
 						}
@@ -745,21 +784,17 @@ impl SyscallItem {
 			Ok(Some(value))
 		} else if let ArgType::Ident(id) = arg {
 			match Self::parse_ptr_ident(raw, id, tid, client, maxdepth - 1) {
-				Ok(n) => {
-					match n {
-						Some(n) => {
-							Ok(Some(Value::new_struct(id.unique_name(), n)))
-						},
-						None => {
-							log::warn!("got None when parsing struct {id:?}");
-							Ok(None)
-						},
+				Ok(n) => match n {
+					Some(n) => Ok(Some(Value::new_struct(id.unique_name(), n))),
+					None => {
+						log::warn!("got None when parsing struct {id:?}");
+						Ok(None)
 					}
 				},
 				Err(e) => {
 					log::warn!("got error when trying to parse struct {id:?} {e:?}");
 					Ok(None)
-				},
+				}
 			}
 		} else if arg.is_int() {
 			if raw != 0.into() {
@@ -824,7 +859,7 @@ impl SyscallItem {
 		}
 
 		// Special handling of ioctl since the second argument usually specifies
-		// the size of the third argument. 
+		// the size of the third argument.
 		if self.args.len() >= 2 && self.name.starts_with("ioctl") {
 			let cmd = self.args[1].raw_value().as_ioctl_cmd()?;
 			if cmd.size < 0x1000 {
@@ -842,7 +877,6 @@ impl SyscallItem {
 				log::warn!("got long size from parsing ioctl cmd, ignoring");
 			}
 		}
-		
 
 		for inarg in self.args.iter_mut() {
 			let shouldparse =
@@ -867,9 +901,17 @@ impl SyscallItem {
 						match v {
 							Ok(v) => match v {
 								Some(v) => {
-									let v = Value::new_parsed_ptr(Value::new_shallow_ptr(*value, arg.clone(), opts.clone(), *optional), v);
+									let v = Value::new_parsed_ptr(
+										Value::new_shallow_ptr(
+											*value,
+											arg.clone(),
+											opts.clone(),
+											*optional,
+										),
+										v,
+									);
 									inarg.set_parsed(v)
-								},
+								}
 								None => log::warn!(
 									"reading of ptr {:x} with len {len:?} returned None",
 									inarg.raw_value()
@@ -1090,7 +1132,7 @@ impl SyscallItem {
 	}
 	pub fn enrich_values(&mut self) -> crate::Result<()> {
 		log::debug!("enriching values sysno: {}", self.sysno);
-		
+
 		if let Some(sys) = get_syscalls!().resolve(self.sysno) {
 			for (i, arg) in sys.args.iter().enumerate() {
 				if self.args[i].value.parsed.is_none() {
@@ -1177,9 +1219,7 @@ impl SyscallItem {
 	}
 	fn resolve_flag_ident(raw: TargetPtr, ident: &Identifier) -> Vec<String> {
 		let mut ret = Vec::new();
-		let flag = get_parsed!()
-			.get_flag(ident)
-			.cloned();
+		let flag = get_parsed!().get_flag(ident).cloned();
 		if let Some(flag) = flag {
 			for val in flag.args() {
 				match val {
@@ -1225,8 +1265,7 @@ impl SyscallItem {
 	}
 
 	pub fn from_regs(tid: Tid, sysno: usize, args: &[u64]) -> Self {
-		let (name, args) = if let Some(sys) = get_syscalls!().resolve(sysno)
-		{
+		let (name, args) = if let Some(sys) = get_syscalls!().resolve(sysno) {
 			let mut shallows = Vec::new();
 			for (i, arg) in sys.args.iter().enumerate() {
 				let dir = arg.direction().into();
@@ -1324,7 +1363,8 @@ impl Syscalls {
 	pub fn resolve(&self, sysno: usize) -> Option<&Syscall> {
 		let arch = Target::arch();
 		if let Some(calls) = self.syscalls.get(&sysno) {
-			let rem = calls.iter()
+			let rem = calls
+				.iter()
 				.filter(|x| x.for_arch(&arch))
 				.collect::<Vec<_>>();
 			rem.first().copied()
@@ -1345,7 +1385,7 @@ impl Syscalls {
 					let c = found.remove(0);
 					self.ioctlcache.insert(cmd, c.name.clone());
 					Ok(self.virts.ioctls.get(&c.name))
-				},
+				}
 				_ => Err(Error::TooManyMatches),
 			}
 		}

@@ -416,7 +416,13 @@ where
 		Ok(())
 	}
 
-	fn write_got(&mut self, tid: Tid, pbuf: &PathBuf, name: &str, value: TargetPtr) -> Result<()> {
+	pub fn overwrite_got_symbol(
+		&mut self,
+		tid: Tid,
+		pbuf: &PathBuf,
+		name: &str,
+		value: TargetPtr,
+	) -> Result<()> {
 		let addr = self.resolve_symbol_got(pbuf, name)?;
 		self.client.write_int(tid, addr, usize::from(value))?;
 		#[cfg(debug_assertions)]

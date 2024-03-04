@@ -5,7 +5,6 @@ use std::collections::HashMap;
 
 use syzlang_parser::parser;
 
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Syscall {
 	pub ident: parser::Identifier,
@@ -16,8 +15,20 @@ pub struct Syscall {
 }
 
 impl Syscall {
-	pub fn new(ident: parser::Identifier, sysno: usize, args: Vec<parser::Argument>, output: parser::ArgType, arches: Vec<parser::Arch>) -> Self {
-		Self { ident, sysno, args, output, arches }
+	pub fn new(
+		ident: parser::Identifier,
+		sysno: usize,
+		args: Vec<parser::Argument>,
+		output: parser::ArgType,
+		arches: Vec<parser::Arch>,
+	) -> Self {
+		Self {
+			ident,
+			sysno,
+			args,
+			output,
+			arches,
+		}
 	}
 	pub fn from_syzlang(func: parser::Function, consts: &parser::Consts) -> Vec<Self> {
 		let parts = consts.find_sysno_for_any(&func.name.name);
@@ -25,7 +36,13 @@ impl Syscall {
 		for c in parts.into_iter() {
 			let sysno = c.as_uint().unwrap() as usize;
 			let arches = c.arch;
-			let ins = Self::new(func.name.clone(), sysno, func.args.clone(), func.output.clone(), arches);
+			let ins = Self::new(
+				func.name.clone(),
+				sysno,
+				func.args.clone(),
+				func.output.clone(),
+				arches,
+			);
 			ret.push(ins);
 		}
 		ret
@@ -102,32 +119,33 @@ impl Syscalls {
 		for s in std::mem::take(&mut this.parsed.structs).into_iter() {
 			this.structs.insert(s.identifier().name.clone(), s);
 		}
-		
+
 		this
 	}
 	fn resolve_const(arg: &parser::Argument, consts: &parser::Consts) {
 		match &arg.argtype {
 			parser::ArgType::Ident(id) => {
-				let _m = consts.consts.iter()
-					.filter(|x| { x.name == id.name } )
+				let _m = consts
+					.consts
+					.iter()
+					.filter(|x| x.name == id.name)
 					.collect::<Vec<_>>();
-			
-			},
-			_ => {
-			},
+			}
+			_ => {}
 		}
 	}
 	pub fn remove_virtual(&mut self) {
 		for (_sysno, item) in self.syscalls.iter_mut() {
-			let virts = item.extract_if(|x| {
-				!x.ident.subname.is_empty()
-			})
-			.collect::<Vec<_>>();
+			let virts = item
+				.extract_if(|x| !x.ident.subname.is_empty())
+				.collect::<Vec<_>>();
 
 			self.virts.from_virtuals(virts, &self.parsed.consts);
 		}
 
-		let _ = self.syscalls.extract_if(|_, x| x.is_empty())
+		let _ = self
+			.syscalls
+			.extract_if(|_, x| x.is_empty())
 			.collect::<Vec<_>>();
 	}
 }

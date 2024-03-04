@@ -217,8 +217,8 @@ impl Target {
 	pub fn ptr_size() -> usize {
 		let arch = Self::arch();
 		match arch {
-			BuildArch::Aarch64|BuildArch::X86_64 => 8,
-			BuildArch::Aarch32|BuildArch::X86 => 4,
+			BuildArch::Aarch64 | BuildArch::X86_64 => 8,
+			BuildArch::Aarch32 | BuildArch::X86 => 4,
 			BuildArch::Mips => todo!(),
 			BuildArch::RiscV64 => todo!(),
 		}
