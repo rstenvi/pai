@@ -202,10 +202,41 @@ struct HostArgs {
 	adb: Option<String>,
 }
 impl HostArgs {
-	fn run(&self, _arch: String, bin: PathBuf, args: Vec<String>) -> Result<()> {
-		// Not implemented yet
-		assert!(self.adb.is_none());
-		log::debug!("running on host {bin:?} | {args:?}");
+	fn run_adb(&self, adb: &str, bin: PathBuf, args: &[String]) -> Result<()> {
+		let out = Command::new("adb")
+			.arg("-s")
+			.arg(&adb)
+			.arg("push")
+			.arg(&bin)
+			.arg("/data/local/tmp/")
+			.output()?;
+
+		if !out.status.success() {
+			let err = std::str::from_utf8(&out.stderr)?;
+			log::error!("Not success stderr: {err:?}");
+			return Err(Error::msg("host: cmd returned error code"));
+		}
+
+		let fname = bin.file_name().expect("unable to get filename");
+		let fname = fname.to_str().expect("unable to convert to string");
+		let adbname = format!("/data/local/tmp/{fname}");
+		log::info!("execing {adbname:?}");
+		let out = Command::new("adb")
+			.arg("-s")
+			.arg(&adb)
+			.arg("shell")
+			.arg(&adbname)
+			.output()?;
+		if !out.status.success() {
+			let err = std::str::from_utf8(&out.stderr)?;
+			log::error!("Not success stderr: {err:?}");
+			Err(Error::msg("host: cmd returned error code"))
+		} else {
+			Ok(())
+		}
+
+	}
+	fn run_host(&self, bin: PathBuf, args: &[String]) -> Result<()> {
 		let out = Command::new(bin)
 			.env("RUST_TEST_TIME_UNIT", "50000,50000")
 			.arg("-Zunstable-options")
@@ -220,6 +251,17 @@ impl HostArgs {
 			let stdout = std::str::from_utf8(&out.stdout)?;
 			println!("stdout {stdout}");
 			Ok(())
+		}
+	}
+	fn run(&self, _arch: String, bin: PathBuf, args: Vec<String>) -> Result<()> {
+		// Not implemented yet
+		log::debug!("running on host {bin:?} | {args:?}");
+
+		// assert!(self.adb.is_none());
+		if let Some(adb) = &self.adb {
+			self.run_adb(adb, bin, &args)
+		} else {
+			self.run_host(bin, &args)
 		}
 	}
 }
