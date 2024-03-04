@@ -1,55 +1,10 @@
 extend= [
-  { path = "coverage_grcov.makefile.toml" }
+  { path = "coverage_grcov.makefile.toml" },
+  { path = "pai-make-targets/build.toml" },
+  { path = "pai-make-targets/fix.toml" },
+  { path = "pai-make-targets/test.toml" },
+  { path = "pai-make-targets/publish.toml" },
 ]
-
-
-[env]
-docargs = "--target-dir=output|--quiet|--no-deps|--target=${@}"
-buildargs = "--target-dir=output|--features=plugins|--features=syscalls|--target=${@}"
-clippyargs = "--target-dir=output|--no-deps|--all-targets|--all-features|--target=${@}"
-
-
-# Various fixes which should be executed before publish
-[tasks.fixfmt]
-install_crate = "rustfmt"
-command = "cargo"
-args = ["fmt", "--", "--emit=files"]
-
-[tasks.fixclippy]
-command = "cross"
-install_crate = "clippy"
-args = ["clippy", "@@split(clippyargs,|)", "--fix"]
-
-[tasks.update]
-command = "cargo"
-args = ["update"]
-
-[tasks.publish]
-dependencies = ["fixclippy", "fixfmt", "update"]
-command = "cargo"
-args = ["publish"]
-
-[tasks.publishdry]
-extend = "publish"
-args = ["publish", "--dry-run"]
-
-
-# Various checks which should be executed before publish
-[tasks.checkfmt]
-install_crate = "rustfmt"
-command = "cargo"
-args = ["fmt", "--quiet", "--check"]
-
-
-[tasks.checkclippy]
-command = "cross"
-install_crate = "clippy"
-args = ["clippy", "@@split(clippyargs,|)", "--message-format=json", "--", "-Dwarnings"]
-
-[tasks.clippy]
-command = "cross"
-install_crate = "clippy"
-args = ["clippy", "@@split(clippyargs,|)"]
 
 [tasks.coverage]
 alias="coverage_grcov"
@@ -58,45 +13,60 @@ alias="coverage_grcov"
 command = "cargo"
 args = ["bench", "--features=syscalls"]
 
-
-# Various tasks which expect target argument(s)
-
-[tasks.drytest]
-command = "cross"
-args = ["test", "@@split(buildargs,|)", "--no-run"]
-
-[tasks.testnative]
-command = "cross"
-args = ["test", "@@split(buildargs,|)"]
-
-[tasks.test]
-command = "rust-script"
-install_crate = "rust-script"
-args = [
-	"${CARGO_MAKE_WORKING_DIRECTORY}/scripts/test-runner.rs",
-	"--config",
-	"${CARGO_MAKE_WORKING_DIRECTORY}/runner_config.toml",
-	"@@split(buildargs,|)",
-]
-
-[tasks.build]
-command = "cross"
-args = ["build", "@@split(buildargs,|)"]
-
-[tasks.release]
-command = "cross"
-args = ["build", "@@split(buildargs,|)", "--release"]
-
-# Doc also expects target argument
+# # Doc also expects target argument
 [tasks.docpublic]
-command = "cross"
-args = ["doc", "@@split(docargs,|)"]
+command = "cargo"
+args = ["doc", "--quiet", "--all-features", "--no-deps", "--target=${@}"]
 
 [tasks.docprivate]
-command = "cross"
-args = ["doc", "@@split(docargs,|)", "--document-private-items"]
-
-
-[tasks.clean]
 command = "cargo"
-args = ["clean"]
+args = ["doc", "--quiet", "--all-features", "--no-deps", "--target=${@}", "--document-private-items"]
+
+[tasks.mintest]
+extend = "test"
+args = ["test"]
+
+[tasks.plugin-test]
+extend = "test"
+args = ["test", "--features", "plugins"]
+
+[tasks.syscalls-test]
+extend = "test"
+args = ["test", "--features", "syscalls"]
+
+# Run tests in all possible configuration, some tests are then run multiple
+# times.
+[tasks.fullhosttest]
+dependencies = [ "mintest", "test", "plugin-test", "syscalls-test" ]
+
+[tasks.test-x86]
+env = { TARGET = ["i686-unknown-linux-gnu"] }
+run_task = "crosstest"
+
+[tasks.test-x86_64]
+run_task = "fullhosttest"
+
+[tasks.test-armv7-gnueabihf]
+env = { TARGET = ["armv7-unknown-linux-gnueabihf"] }
+run_task = "crosstest"
+
+[tasks.test-aarch64]
+env = { TARGET = ["aarch64-linux-android"] }
+run_task = "crosstest"
+
+[tasks.fulltest]
+dependencies = ["test-x86_64", "test-x86", "test-armv7-gnueabihf", "test-aarch64"]
+
+# Afterwards run with:
+# "qemu-system-arm" "-nographic" "-snapshot" "-smp" "4" "-m" "1G" "-kernel" "scripts/images/arm-linux-gnueabi/zImage" "-M" "vexpress-a9" "-drive" "file=scripts/images/arm-linux-gnueabi/rootfs-ready.qcow2,if=sd" "-append" "rootwait console=ttyAMA0,115200 root=/dev/mmcblk0" "-net" "nic,model=lan9118" "-dtb" "scripts/images/arm-linux-gnueabi/vexpress-v2p-ca9.dtb" "-net" "user,hostfwd=tcp::10023-:22"
+[tasks.update-rootfs-arm]
+script = "./scripts/qemu-runner.rs"
+args = [
+	"-vv", "--arch", "ArmEabi",
+	"--kernel", "scripts/images/arm-linux-gnueabi/zImage",
+	"--disk", "scripts/images/arm-linux-gnueabi/rootfs-ready.qcow2",
+	"--no-snapshot", "--user", "shell",
+	"--identity scripts/keys/qemu_id_rsa",
+	"--pubkey", "scripts/keys/qemu_id_rsa.pub",
+	"id"
+]

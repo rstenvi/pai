@@ -1,0 +1,3 @@
+[submodule "pai-make-targets"]
+	path = pai-make-targets
+	url = https://github.com/rstenvi/pai-make-targets.git
