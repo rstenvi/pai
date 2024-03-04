@@ -242,6 +242,7 @@ impl RunQemu {
 			None
 		};
 
+		log::debug!("out {out:?}");
 		let succ = out.status.success();
 		if succ {
 			Ok(outstr.to_string())

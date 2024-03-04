@@ -364,3 +364,40 @@ pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
 		risv64::ret_shellcode(code)
 	}
 }
+
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	macro_rules! gen_test_regs_arch {
+		($arch:ident) => {
+			paste::paste! {
+				#[test]
+				pub fn [<test_regs_ $arch>]() {
+					let regs = crate::arch::$arch::user_regs_struct::default();
+					let mut regs: crate::Registers = regs.into();
+
+					regs.set_pc(1);
+					regs.set_sp(2);
+
+					assert_eq!(regs.get_pc(), 1);
+					assert_eq!(regs.get_sp(), 2);
+				}
+			}
+		}
+	}
+
+	#[cfg(target_arch = "x86_64")]
+	gen_test_regs_arch! { x86_64 }
+
+	#[cfg(target_arch = "x86")]
+	gen_test_regs_arch! { x86 }
+
+	#[cfg(target_arch = "aarch64")]
+	gen_test_regs_arch! { aarch64 }
+
+	#[cfg(target_arch = "aarch32")]
+	gen_test_regs_arch! { aarch32 }
+
+}

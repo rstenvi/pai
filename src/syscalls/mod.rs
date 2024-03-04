@@ -56,29 +56,29 @@ impl std::fmt::Display for LenType {
 	}
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-#[repr(C)]
-pub struct libc_stat {
-	pub st_dev: libc::dev_t,
-	pub st_ino: libc::ino_t,
-	pub st_nlink: libc::nlink_t,
-	pub st_mode: libc::mode_t,
-	pub st_uid: libc::uid_t,
-	pub st_gid: libc::gid_t,
-	__pad0: libc::c_int,
-	pub st_rdev: libc::dev_t,
-	pub st_size: libc::off_t,
-	pub st_blksize: libc::blksize_t,
-	pub st_blocks: libc::blkcnt_t,
-	pub st_atime: libc::time_t,
-	pub st_atime_nsec: i64,
-	pub st_mtime: libc::time_t,
-	pub st_mtime_nsec: i64,
-	pub st_ctime: libc::time_t,
-	pub st_ctime_nsec: i64,
-	__unused: [i64; 3],
-}
+// #[allow(non_camel_case_types)]
+// #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+// #[repr(C)]
+// pub struct libc_stat {
+// 	pub st_dev: libc::dev_t,
+// 	pub st_ino: libc::ino_t,
+// 	pub st_nlink: libc::nlink_t,
+// 	pub st_mode: libc::mode_t,
+// 	pub st_uid: libc::uid_t,
+// 	pub st_gid: libc::gid_t,
+// 	__pad0: libc::c_int,
+// 	pub st_rdev: libc::dev_t,
+// 	pub st_size: libc::off_t,
+// 	pub st_blksize: libc::blksize_t,
+// 	pub st_blocks: libc::blkcnt_t,
+// 	pub st_atime: libc::time_t,
+// 	pub st_atime_nsec: i64,
+// 	pub st_mtime: libc::time_t,
+// 	pub st_mtime_nsec: i64,
+// 	pub st_ctime: libc::time_t,
+// 	pub st_ctime_nsec: i64,
+// 	__unused: [i64; 3],
+// }
 
 
 impl std::fmt::Display for Value {

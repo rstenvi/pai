@@ -185,6 +185,9 @@ struct Args {
 	features: Vec<String>,
 
 	#[arg(long)]
+	all_features: bool,
+
+	#[arg(long)]
 	target: Vec<String>,
 
 	#[arg(long)]
@@ -202,6 +205,7 @@ impl HostArgs {
 	fn run(&self, _arch: String, bin: PathBuf, args: Vec<String>) -> Result<()> {
 		// Not implemented yet
 		assert!(self.adb.is_none());
+		log::debug!("running on host {bin:?} | {args:?}");
 		let out = Command::new(bin)
 			.env("RUST_TEST_TIME_UNIT", "50000,50000")
 			.arg("-Zunstable-options")
@@ -209,6 +213,8 @@ impl HostArgs {
 			.args(args)
 			.output()?;
 		if !out.status.success() {
+			let err = std::str::from_utf8(&out.stderr)?;
+			log::error!("Not success stderr: {err:?}");
 			return Err(Error::msg("host: cmd returned error code"))
 		} else {
 			let stdout = std::str::from_utf8(&out.stdout)?;
@@ -250,6 +256,7 @@ impl QemuArgs {
 		cmd.arg(&bin);
 		cmd.arg(format!("/home/{}/{fname}", self.user));
 		cmd.args(args);
+		log::info!("qemu command: {cmd:?}");
 
 		let out = cmd.output().expect("qemu test failed");
 		let stdout = std::str::from_utf8(&out.stdout)?;
@@ -317,6 +324,9 @@ fn main() -> anyhow::Result<()> {
 	for feature in args.features.iter() {
 		cmd.arg(format!("--features={feature}"));
 	}
+	if args.all_features {
+		cmd.arg(format!("--all-features"));
+	}
 	for target in args.target.iter() {
 		cmd.arg(format!("--target={target}"));
 	}
@@ -335,6 +345,7 @@ fn main() -> anyhow::Result<()> {
 
 	if !args.no_run {
 		let cargs = std::mem::take(&mut args.args);
+
 		for path in realtests.into_iter() {
 			let target = extract_arch(&path);
 			config.run(target, path, cargs.clone())?;

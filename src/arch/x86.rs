@@ -23,31 +23,31 @@ pub(crate) const SYSCALL: [u8; 2] = [0xcd, 0x80];
 #[repr(C)]
 #[derive(pai_macros::PaiRegs, Eq, PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct user_regs_struct {
-	pub ebx: libc::c_long,
-	pub ecx: libc::c_long,
-	pub edx: libc::c_long,
-	pub esi: libc::c_long,
-	pub edi: libc::c_long,
-	pub ebp: libc::c_long,
+	pub ebx: u32,
+	pub ecx: u32,
+	pub edx: u32,
+	pub esi: u32,
+	pub edi: u32,
+	pub ebp: u32,
 
 	#[setsysno]
-	pub eax: libc::c_long,
-	pub xds: libc::c_long,
-	pub xes: libc::c_long,
-	pub xfs: libc::c_long,
-	pub xgs: libc::c_long,
+	pub eax: u32,
+	pub xds: u32,
+	pub xes: u32,
+	pub xfs: u32,
+	pub xgs: u32,
 
 	#[getsysno]
-	pub orig_eax: libc::c_long,
+	pub orig_eax: u32,
 
 	#[pc]
-	pub eip: libc::c_long,
-	pub xcs: libc::c_long,
-	pub eflags: libc::c_long,
+	pub eip: u32,
+	pub xcs: u32,
+	pub eflags: u32,
 
 	#[sp]
-	pub esp: libc::c_long,
-	pub xss: libc::c_long,
+	pub esp: u32,
+	pub xss: u32,
 }
 
 #[cfg(target_arch = "x86")]

@@ -188,7 +188,7 @@ impl Tracer {
 		// breakpoint on the next instruction instead.
 		#[cfg(target_arch = "arm")]
 		let restart = if cont == Cont::Step {
-			let pc: usize = tracee.regs.pc().into();
+			let pc = tracee.regs.get_pc();
 			// No support for Thumb mode yet
 			assert!(pc & 0b11 == 0);
 			self.insert_single_sw_bp(/*0, */ tid, &mut tracee, (pc + 8).into())?;
@@ -480,6 +480,7 @@ impl Tracer {
 		tid: Tid,
 	) -> Result<Stop> {
 		let pc = tracee.regs.get_pc();
+		
 		log::trace!("signal @ {pc:x}");
 		if signal == pete::Signal::SIGTRAP {
 			// The program counter can either point to BP instruction or next
@@ -492,7 +493,7 @@ impl Tracer {
 			}
 		} else if signal == pete::Signal::SIGBUS {
 			#[cfg(target_arch = "arm")]
-			if let Some(stop) = self.check_if_swbp(tracee, tid, pc)? {
+			if let Some(stop) = self.check_if_swbp(tracee, tid, pc.into())? {
 				return Ok(stop);
 			}
 		}

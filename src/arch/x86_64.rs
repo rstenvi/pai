@@ -25,41 +25,41 @@ pub(crate) const SYSCALL: [u8; 2] = [0x0f, 0x05];
 #[repr(C)]
 #[derive(pai_macros::PaiRegs, Eq, PartialEq, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct user_regs_struct {
-	pub r15: libc::c_ulonglong,
-	pub r14: libc::c_ulonglong,
-	pub r13: libc::c_ulonglong,
-	pub r12: libc::c_ulonglong,
-	pub rbp: libc::c_ulonglong,
-	pub rbx: libc::c_ulonglong,
-	pub r11: libc::c_ulonglong,
-	pub r10: libc::c_ulonglong,
-	pub r9: libc::c_ulonglong,
-	pub r8: libc::c_ulonglong,
+	pub r15: u64,
+	pub r14: u64,
+	pub r13: u64,
+	pub r12: u64,
+	pub rbp: u64,
+	pub rbx: u64,
+	pub r11: u64,
+	pub r10: u64,
+	pub r9: u64,
+	pub r8: u64,
 
 	#[setsysno]
-	pub rax: libc::c_ulonglong,
-	pub rcx: libc::c_ulonglong,
-	pub rdx: libc::c_ulonglong,
-	pub rsi: libc::c_ulonglong,
-	pub rdi: libc::c_ulonglong,
+	pub rax: u64,
+	pub rcx: u64,
+	pub rdx: u64,
+	pub rsi: u64,
+	pub rdi: u64,
 
 	#[getsysno]
-	pub orig_rax: libc::c_ulonglong,
+	pub orig_rax: u64,
 
 	#[pc]
-	pub rip: libc::c_ulonglong,
-	pub cs: libc::c_ulonglong,
-	pub eflags: libc::c_ulonglong,
+	pub rip: u64,
+	pub cs: u64,
+	pub eflags: u64,
 
 	#[sp]
-	pub rsp: libc::c_ulonglong,
-	pub ss: libc::c_ulonglong,
-	pub fs_base: libc::c_ulonglong,
-	pub gs_base: libc::c_ulonglong,
-	pub ds: libc::c_ulonglong,
-	pub es: libc::c_ulonglong,
-	pub fs: libc::c_ulonglong,
-	pub gs: libc::c_ulonglong,
+	pub rsp: u64,
+	pub ss: u64,
+	pub fs_base: u64,
+	pub gs_base: u64,
+	pub ds: u64,
+	pub es: u64,
+	pub fs: u64,
+	pub gs: u64,
 }
 
 #[cfg(target_arch = "x86_64")]
