@@ -7,7 +7,7 @@ use crate::{
 		},
 		Client, Command, ManagerCmd, ProcessCmd, RemoteCmd, Response, ThreadCmd,
 	},
-	arch::NamedRegs,
+	arch::RegisterAccess,
 	ctrl::ClientState,
 	evtlog::{Logger, Loggers, RealLogger},
 	target::{GenericCc, TargetCode},
@@ -387,12 +387,12 @@ impl CtrlTracer {
 		cmd: ThreadCmd,
 	) -> Result<Option<Response>> {
 		let r = match cmd {
-			ThreadCmd::GetLibcRegs => {
+			ThreadCmd::GetRegisters => {
 				let ins = self.tracer.get_libc_regs(tid);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)
 			}
-			ThreadCmd::SetLibcRegs { regs } => {
+			ThreadCmd::SetRegisters { regs } => {
 				let ins = self.tracer.set_libc_regs(tid, *regs);
 				let val = serde_json::to_value(ins)?;
 				Response::Value(val)

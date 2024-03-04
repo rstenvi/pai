@@ -264,8 +264,8 @@ where
 			.collect();
 		Ok(r)
 	}
-	pub fn get_libc_regs(&mut self, tid: Tid) -> Result<crate::Registers> {
-		let cmd = RemoteCmd::get_libc_regs(tid);
+	pub fn get_registers(&mut self, tid: Tid) -> Result<crate::Registers> {
+		let cmd = RemoteCmd::get_registers(tid);
 		self.wr_value_remote(cmd)
 	}
 	pub fn get_trampoline_addr(&mut self, tid: Tid, tramp: TrampType) -> Result<TargetPtr> {
@@ -280,8 +280,8 @@ where
 		let cmd = RemoteCmd::set_trampoline_code(tramp, code);
 		self.wr_value_remote(cmd)
 	}
-	pub fn set_libc_regs(&mut self, tid: Tid, regs: crate::Registers) -> Result<()> {
-		let cmd = RemoteCmd::set_libc_regs(tid, regs);
+	pub fn set_registers(&mut self, tid: Tid, regs: crate::Registers) -> Result<()> {
+		let cmd = RemoteCmd::set_registers(tid, regs);
 		self.wr_value_remote(cmd)
 	}
 	pub fn get_pid(&mut self) -> Result<Pid> {

@@ -1,7 +1,7 @@
 use crate::target::Target;
 use crate::{
 	api::{client::IdWrapper, messages::Stopped},
-	arch::NamedRegs,
+	arch::RegisterAccess,
 	evtlog::Loggers,
 	target::GenericCc,
 	utils::process::Tid,
@@ -186,7 +186,7 @@ impl ClientThread {
 		}
 		Ok(())
 	}
-	fn fill_syscall_regs(args: &mut Vec<u64>, cc: &GenericCc, regs: &dyn NamedRegs) -> Result<()> {
+	fn fill_syscall_regs(args: &mut Vec<u64>, cc: &GenericCc, regs: &dyn RegisterAccess) -> Result<()> {
 		let len = args.capacity();
 		for i in 0..len {
 			let ins = cc.get_arg_regonly(i, regs)?;
@@ -196,9 +196,9 @@ impl ClientThread {
 	}
 	#[cfg(feature = "syscalls")]
 	fn transform_syscall(&mut self, tid: Tid, entry: bool) -> Result<Option<Response>> {
-		use crate::{api::args::Enrich, arch::NamedRegs, syscalls::Direction};
+		use crate::{api::args::Enrich, arch::RegisterAccess, syscalls::Direction};
 		log::trace!("transform syscall {tid} {entry}");
-		let regs = self.client.get_libc_regs(tid)?;
+		let regs = self.client.get_registers(tid)?;
 		if entry {
 			let sysno = regs.get_sysno();
 			if self.args.handles_syscall_sysno(tid, sysno) {

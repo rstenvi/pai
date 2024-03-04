@@ -1,5 +1,7 @@
+//! Code relevant to parsing syscall arguments.
+
 use crate::api::{Client, Command, Response};
-use crate::arch::NamedRegs;
+use crate::arch::RegisterAccess;
 use crate::buildinfo::BuildArch;
 use crate::target::Target;
 use crate::Error;
@@ -13,8 +15,8 @@ use std::collections::HashMap;
 use std::io::Read;
 use syzlang_parser::parser::{self, ArgOpt, ArgType, Argument, Identifier};
 
-pub mod parsed;
-pub use parsed::{Syscall, Syscalls};
+pub(crate) mod parsed;
+pub(crate) use parsed::{Syscall, Syscalls};
 
 macro_rules! get_parsed {
 	() => {

@@ -1,4 +1,4 @@
-//! A client can use and [Args] object to control behaviour in trace controllers
+//! A client can use [Args] object to control behaviour in trace controllers
 //! components.
 use crate::api::messages::Cont;
 use crate::utils::process::Tid;
@@ -13,11 +13,27 @@ struct Breakpoint {
 	// numhit: usize,
 }
 
+/// Decide behaviour when syscall is detected and how much enrichment of
+/// arguments to perform.
 #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Enrich {
+	/// This is called None, but it does do some parsing:
+	/// 
+	/// - Detect system call name
+	/// - Detect number of arguments
+	/// - Find name of argument
 	#[default]
 	None,
+
+	/// In addition to steps taken in [Enrich::None], also:
+	/// 
+	/// - Annotate with metadata about argument
+	/// - Find out which flag values int resolves to
 	Basic,
+
+	/// In addition to steps taken in [Enrich::Basic], also:
+	/// 
+	/// - Read data from pointers to construct strings, objects, integers, etc.
 	Full,
 }
 impl std::str::FromStr for Enrich {
@@ -253,7 +269,7 @@ impl Args {
 	}
 
 	#[cfg(feature = "syscalls")]
-	/// Returns true if we handle this syscall or all syscalls
+	/// Returns true ifm we handle this syscall or all syscalls
 	fn handles_syscall_sysno(&self, sysno: usize) -> bool {
 		self.intercept_all_syscalls || self.syscall_traced.contains(&sysno)
 	}

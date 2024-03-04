@@ -14,23 +14,45 @@ use crate::syscalls::SyscallItem;
 
 use super::Args;
 
+/// To perform certain tasks in the tracee, we rely on some trampoline code
+/// snippets.
+/// 
+/// The script can query the location of these and also modify the assembly
+/// snippets used.
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Serialize, Deserialize)]
 pub enum TrampType {
+	/// Trigger syscall
 	Syscall,
+
+	/// Call a function in a pre-determined register.
 	Call,
+
+	/// Return from function
 	Ret,
 }
 
+/// On callback functions for hooks and system calls, [CbAction] determines the
+/// next steps to take.
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Serialize, Deserialize)]
 pub enum CbAction {
+	/// Continue as usual
 	None,
+
+	/// Remove the hook
 	Remove,
+
+	/// Return without executing the function/syscall and set return value to
+	/// `ret`
 	EarlyRet { ret: TargetPtr },
 }
 
+/// On breakpoints, [BpRet] determines next action.
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Serialize, Deserialize)]
 pub enum BpRet {
+	/// Keep the breakpoint
 	Keep,
+
+	/// Remove the breakpoint
 	Remove,
 }
 
@@ -113,7 +135,7 @@ impl From<u8> for SymbolBind {
 }
 
 #[derive(Debug)]
-pub struct MasterComm {
+pub(crate) struct MasterComm {
 	pub client: usize,
 	pub cmd: Command,
 }
@@ -124,6 +146,7 @@ impl MasterComm {
 	}
 }
 
+/// Different types of events one can register to receive.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum RegEvent {
 	Clone,
@@ -143,11 +166,11 @@ pub enum RegEvent {
 }
 impl RegEvent {
 	#[allow(non_snake_case)]
-	pub fn SIGKILL() -> Self {
+	pub(crate) fn SIGKILL() -> Self {
 		Self::Signal(libc::SIGKILL)
 	}
 
-	pub fn from_event(event: &EventInner) -> Self {
+	pub(crate) fn from_event(event: &EventInner) -> Self {
 		match event {
 			EventInner::FileOpened { fname: _, fd: _ } => Self::Files,
 			EventInner::FileClosed { fname: _, fd: _ } => Self::Files,
@@ -203,12 +226,11 @@ impl std::fmt::Display for EventPrctl {
 	}
 }
 
+/// All the different reasons the target may have stopped.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum Stop {
 	SyscallEnter,
 	SyscallExit,
-
-	// SyscallDone { sysno: usize, ret: TargetPtr },
 	Exit { code: i32 },
 	Signal { signal: i32, group: bool },
 	Clone { pid: Tid },
@@ -223,6 +245,7 @@ pub enum Stop {
 	Seccomp { data: u16 },
 }
 
+/// Whenever the target stops, this struct describes the current state.
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct Stopped {
 	pub pc: TargetPtr,
@@ -259,11 +282,12 @@ impl std::fmt::Display for Stopped {
 }
 
 impl Stopped {
-	pub fn new(pc: TargetPtr, stop: Stop, tid: Tid) -> Self {
+	pub(crate) fn new(pc: TargetPtr, stop: Stop, tid: Tid) -> Self {
 		Self { pc, stop, tid }
 	}
 }
 
+/// An event which has happened on the target.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct Event {
 	pub tid: Option<Tid>,
@@ -275,10 +299,10 @@ impl std::fmt::Display for Event {
 	}
 }
 impl Event {
-	pub fn new(event: EventInner) -> Self {
+	pub(crate) fn new(event: EventInner) -> Self {
 		Self { tid: None, event }
 	}
-	pub fn new_attached(tid: Tid, event: EventInner) -> Self {
+	pub(crate) fn new_attached(tid: Tid, event: EventInner) -> Self {
 		Self {
 			tid: Some(tid),
 			event,
@@ -359,6 +383,7 @@ impl std::fmt::Display for EventInner {
 	}
 }
 
+/// The different states threads can be in.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum ThreadStatus {
 	Running,
@@ -373,6 +398,7 @@ impl ThreadStatus {
 	}
 }
 
+/// Information about a thread on the target.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct Thread {
 	pub id: Tid,
@@ -385,7 +411,7 @@ impl Thread {
 }
 
 #[derive(Default, Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-pub enum Cont {
+pub(crate) enum Cont {
 	#[default]
 	Cont,
 	Syscall,
@@ -406,7 +432,7 @@ impl From<Cont> for pete::Restart {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub enum StrMatch {
+enum StrMatch {
 	Equal,
 	EndsWith,
 	StartsWith,
@@ -419,7 +445,7 @@ impl StrMatch {
 	}
 }
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct Search {
+struct Search {
 	s: String,
 	m: StrMatch,
 }
@@ -465,10 +491,10 @@ pub enum BpType {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum ThreadCmd {
 	/// Get all registers
-	GetLibcRegs,
+	GetRegisters,
 
 	/// Set all registers
-	SetLibcRegs {
+	SetRegisters {
 		regs: Box<crate::Registers>,
 	},
 
@@ -650,10 +676,10 @@ impl RemoteCmd {
 		let cmd = ProcessCmd::GetThreadsStatus;
 		Self::Process { cmd }
 	}
-	pub fn get_libc_regs(tid: Tid) -> Self {
+	pub fn get_registers(tid: Tid) -> Self {
 		Self::Thread {
 			tid,
-			cmd: ThreadCmd::GetLibcRegs,
+			cmd: ThreadCmd::GetRegisters,
 		}
 	}
 	pub fn get_trampoline_addr(tid: Tid, tramp: TrampType) -> Self {
@@ -673,10 +699,10 @@ impl RemoteCmd {
 			cmd: ProcessCmd::SetTrampolineCode { tramp, code },
 		}
 	}
-	pub fn set_libc_regs(tid: Tid, regs: crate::Registers) -> Self {
+	pub fn set_registers(tid: Tid, regs: crate::Registers) -> Self {
 		Self::Thread {
 			tid,
-			cmd: ThreadCmd::SetLibcRegs {
+			cmd: ThreadCmd::SetRegisters {
 				regs: Box::new(regs),
 			},
 		}
@@ -693,7 +719,7 @@ pub enum ClientCmd {
 }
 
 #[derive(Debug, Clone)]
-pub enum NewClientReq {
+pub(crate) enum NewClientReq {
 	Regular,
 }
 
@@ -766,6 +792,7 @@ pub enum ManagerCmd {
 	},
 }
 
+/// All the allowable commands to control the tracee.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Command {
 	/// Commands targeting the traced process
@@ -838,12 +865,12 @@ impl Command {
 		let cmd = ClientProxy::ResolveSyscall(s.into());
 		Self::ClientProxy { cmd }
 	}
-
 	pub fn manager(cmd: ManagerCmd) -> Self {
 		Self::Manager { cmd }
 	}
 }
 
+/// All the possible responses to a [Command].
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum Response {
 	Ack,

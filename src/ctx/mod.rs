@@ -530,7 +530,7 @@ mod tests {
 			client.get_config().unwrap();
 			assert!(client.get_config_thread(0).unwrap().is_none());
 
-			client.get_libc_regs(tid).unwrap();
+			client.get_registers(tid).unwrap();
 			client.get_tids().unwrap();
 			let write = "Hello World";
 			let addr1 = client.write_scratch_string(tid, write).unwrap();

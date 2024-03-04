@@ -1,3 +1,6 @@
+//! Whenever a breakpoint is hit on function entry, we create a [CallFrame]
+//! object to allow retrieval of arguments.
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -16,19 +19,20 @@ macro_rules! arg_as_signed {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CallLocation {
+enum CallLocation {
 	Entry,
 	Exit,
 	Unknown,
 }
 
+/// One argument retrieved from [CallFrame]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallFrameArg {
 	raw: TargetPtr,
 }
 
 impl CallFrameArg {
-	pub fn new(raw: TargetPtr) -> Self {
+	fn new(raw: TargetPtr) -> Self {
 		Self { raw }
 	}
 	pub fn raw(&self) -> TargetPtr {
@@ -53,17 +57,18 @@ impl CallFrameArg {
 	arg_as_signed! { usize }
 }
 
+/// Provides access to argument(s) in tracee when hook is at function entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallFrame {
-	pub tid: Tid,
 	pub regs: crate::Registers,
-	pub func: u64,
+	func: u64,
+	tid: Tid,
 	output: Option<CallFrameArg>,
 	cc: GenericCc,
 }
 
 impl CallFrame {
-	pub fn new(tid: Tid, func: u64, regs: crate::Registers) -> Self {
+	pub(crate) fn new(tid: Tid, func: u64, regs: crate::Registers) -> Self {
 		let cc = GenericCc::new_target_systemv().unwrap();
 		Self {
 			tid,
@@ -74,15 +79,17 @@ impl CallFrame {
 		}
 	}
 
+	pub fn function_addr(&self) -> u64 { self.func }
+	pub fn tid(&self) -> Tid { self.tid }
 	pub fn arg(&self, idx: usize, client: &mut crate::Client) -> Result<CallFrameArg> {
 		let val = self.cc.get_arg(idx, &self.regs, client)?;
 		let ins = CallFrameArg::new(val.into());
 		Ok(ins)
 	}
-	pub fn retval(&self) -> Result<CallFrameArg> {
-		self.output.as_ref().cloned().ok_or(crate::Error::NotFound)
+	pub fn retval(&self) -> Result<&CallFrameArg> {
+		self.output.as_ref().ok_or(crate::Error::NotFound)
 	}
-	pub fn set_output(&mut self, output: TargetPtr) {
+	pub(crate) fn set_output(&mut self, output: TargetPtr) {
 		self.output = Some(CallFrameArg::new(output));
 	}
 }

@@ -2,7 +2,7 @@
 //!
 //! ABI is here: <https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-1.0.pdf>
 
-use super::NamedRegs;
+use super::RegisterAccess;
 use crate::{api::CallFrame, Client, Result, TargetPtr};
 use serde::{Deserialize, Serialize};
 

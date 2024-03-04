@@ -5,7 +5,7 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::api::args::Enrich;
 use crate::api::messages::{BpRet, CbAction, ElfSymbol, Stop, Stopped, SymbolType, TrampType};
 use crate::api::{ArgsBuilder, CallFrame};
-use crate::arch::NamedRegs;
+use crate::arch::RegisterAccess;
 use crate::exe::elf::Elf;
 #[cfg(feature = "plugins")]
 use crate::plugin::{plugins::*, Plugin};
@@ -683,7 +683,7 @@ where
 		addr: TargetPtr,
 		args: &[TargetPtr],
 	) -> Result<TargetPtr> {
-		let mut regs = self.client.get_libc_regs(tid)?;
+		let mut regs = self.client.get_registers(tid)?;
 		let oregs = regs.clone();
 		log::debug!("interrupted @ pc {:x}", oregs.get_pc());
 		for (i, arg) in args.iter().enumerate() {
@@ -697,14 +697,14 @@ where
 		regs.set_pc(pc.into());
 		log::debug!("setting pc {pc:x}");
 		self.cc.set_reg_call_tramp(&mut regs, addr)?;
-		self.client.set_libc_regs(tid, regs)?;
+		self.client.set_registers(tid, regs)?;
 		self.client.run_until_trap(tid)?;
 
-		let regs = self.client.get_libc_regs(tid)?;
+		let regs = self.client.get_registers(tid)?;
 		let ret = self.cc.get_retval(&regs)?;
 
 		log::debug!("setting back oregs");
-		self.client.set_libc_regs(tid, oregs)?;
+		self.client.set_registers(tid, oregs)?;
 
 		Ok(ret.into())
 	}
@@ -901,7 +901,7 @@ where
 			}
 		} else if let Some(mut frame) = std::mem::take(&mut self.callframes.remove(&(tid, addr))) {
 			log::debug!("found function exit BP at {addr:x}");
-			if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&frame.func.into())) {
+			if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&frame.function_addr().into())) {
 				// if let Some(exit) = std::mem::take(&mut exit) {
 
 				// We maintain the same callframe so that the user can parse
@@ -914,7 +914,7 @@ where
 				// responsibility to understand that they're reading output
 				// and not input. This code simply supplies the values as
 				// they were when the function call was made.
-				let mut regs = self.client.get_libc_regs(tid)?;
+				let mut regs = self.client.get_registers(tid)?;
 				let retval = self.cc.get_retval(&regs)?;
 				frame.set_output(retval.into());
 				match (cb.exit)(self, &frame) {
@@ -926,18 +926,18 @@ where
 						},
 						CbAction::EarlyRet { ret } => {
 							self.cc.set_retval(ret.into(), &mut regs)?;
-							self.client.set_libc_regs(tid, regs)?;
+							self.client.set_registers(tid, regs)?;
 						}
 					},
 					Err(e) => {
 						log::error!("callback triggered error {e:?}");
 					}
 				}
-				self.funcentrycbs.insert(frame.func.into(), cb);
+				self.funcentrycbs.insert(frame.function_addr().into(), cb);
 			}
 		} else if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&addr)) {
 			log::debug!("found function entry BP at {addr:x}");
-			let regs = self.client.get_libc_regs(tid)?;
+			let regs = self.client.get_registers(tid)?;
 			let retaddr = self.cc.get_return_addr(&regs, &mut self.client)?;
 			let mut frame = CallFrame::new(tid, addr.into(), regs);
 			let (skipexit, remove) = match (cb.entry)(self, &frame) {
@@ -947,7 +947,7 @@ where
 					CbAction::EarlyRet { ret } => {
 						self.cc.set_retval(ret.into(), &mut frame.regs)?;
 						frame.set_output(ret);
-						self.client.set_libc_regs(tid, frame.regs.clone())?;
+						self.client.set_registers(tid, frame.regs.clone())?;
 						self.client.exec_ret(tid)?;
 						let rem2 = match (cb.exit)(self, &frame) {
 							Ok(a) => match a {
@@ -985,7 +985,7 @@ where
 			}
 		} else if let Some(mut got) = self.gothooks.remove(&addr) {
 			log::debug!("hit gothook {addr:x} | real: {:x}", got.real);
-			let mut regs = self.client.get_libc_regs(tid)?;
+			let mut regs = self.client.get_registers(tid)?;
 
 			if let Some(mut frame) = std::mem::take(&mut got.frame) {
 				// Function exit
@@ -1000,7 +1000,7 @@ where
 						CbAction::Remove => false,
 						CbAction::EarlyRet { ret } => {
 							self.cc.set_retval(ret.into(), &mut regs)?;
-							self.client.set_libc_regs(tid, regs.clone())?;
+							self.client.set_registers(tid, regs.clone())?;
 							true
 						}
 					},
@@ -1021,7 +1021,7 @@ where
 
 				// Make sure we execute from real func when we continue
 				regs.set_pc(got.real.into());
-				self.client.set_libc_regs(tid, regs.clone())?;
+				self.client.set_registers(tid, regs.clone())?;
 
 				let mut frame = CallFrame::new(tid, addr.into(), regs.clone());
 				let retaddr = self.cc.get_return_addr(&regs, &mut self.client)?;
@@ -1034,7 +1034,7 @@ where
 						CbAction::EarlyRet { ret } => {
 							self.cc.set_retval(ret.into(), &mut regs)?;
 							frame.set_output(ret);
-							self.client.set_libc_regs(tid, regs.clone())?;
+							self.client.set_registers(tid, regs.clone())?;
 							self.client.exec_ret(tid)?;
 							false
 						}

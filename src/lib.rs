@@ -1,4 +1,7 @@
 //! # Process Analyzer and Instrumenter
+//! 
+//! A tool to analyze and instrument running processes. Currently, only Linux is
+//! supported and the only tracing backend supported is currently `ptrace`.
 //!
 //! ## API
 //!
@@ -197,7 +200,7 @@ pub(crate) mod trace;
 pub mod plugin;
 
 #[cfg(feature = "syscalls")]
-pub mod syscalls;
+pub(crate) mod syscalls;
 
 #[cfg(feature = "syscalls")]
 use std::io::Read;
@@ -436,6 +439,7 @@ impl std::fmt::Display for TargetPtr {
 pub type Result<T> = std::result::Result<T, crate::Error>;
 
 pub type Registers = crate::arch::ArchRegisters;
+pub use crate::arch::RegisterAccess;
 
 /// [api::Client] interface for all non-internal clients.
 pub type Client = crate::api::Client<api::Command, api::Response>;

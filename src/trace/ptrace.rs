@@ -1,6 +1,6 @@
 use crate::{
 	api::messages::{BpType, Cont, Stop, Stopped, Thread, ThreadStatus, TrampType},
-	arch::{self, prep_native_syscall, NamedRegs},
+	arch::{self, prep_native_syscall, RegisterAccess},
 	buildinfo::BuildArch,
 	target::GenericCc,
 	utils::{process::Pid, AllocedMemory, MmapBuild},

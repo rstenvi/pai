@@ -12,6 +12,11 @@ pub mod riscv64;
 pub mod x86;
 pub mod x86_64;
 
+
+/// All possible register values for supported architectures.
+/// 
+/// All reading/writing of registers should be done through [RegisterAccess] or
+/// [crate::target::GenericCc].
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum ArchRegisters {
 	X86_64(x86_64::user_regs_struct),
@@ -34,7 +39,7 @@ macro_rules! forward_reg {
 	};
 }
 
-impl NamedRegs for ArchRegisters {
+impl RegisterAccess for ArchRegisters {
 	fn get_sp(&self) -> u64 {
 		forward_reg! { self, get_sp }
 	}
@@ -78,7 +83,7 @@ impl NamedRegs for ArchRegisters {
 
 macro_rules! impl_named_regs {
 	($for:ident) => {
-		impl crate::arch::NamedRegs for $for {
+		impl crate::arch::RegisterAccess for $for {
 			fn get_sp(&self) -> u64 {
 				self._get_sp()
 			}
@@ -186,23 +191,74 @@ macro_rules! impl_conv_pete_generic {
 }
 pub(crate) use impl_conv_pete_generic;
 
-pub trait NamedRegs {
+/// Architecture-neutral manner to read/write register.
+/// 
+/// ## Example
+/// 
+/// ```rust
+/// // This would normally be provided through some method
+/// use pai::RegisterAccess;
+/// let regs = pai::arch::x86_64::user_regs_struct::default();
+/// let mut regs: pai::Registers = regs.into();
+/// 
+/// // Below is the relevant code
+/// 
+/// regs.set_pc(0xdeadbeef);
+/// assert_eq!(regs.get_pc(), 0xdeadbeef);
+/// 
+/// // If you need access to a specic named register, you need to
+/// // get offset and sizes to the registers. You don't need to do
+/// // this before every access, just do it once on some register.
+/// let (off, size) = (regs.offset_of("rax").unwrap(), regs.size_of("rax").unwrap());
+/// 
+/// // We can now get the register
+/// let mut rax = Vec::with_capacity(size);
+/// regs.get_value(off, size, &mut rax).unwrap();
+/// 
+/// // A more convenient way to get the registers is by specifying a calling
+/// // convention.
+/// let cc = pai::target::GenericCc::new_syscall_target().unwrap();
+/// let arg0 = cc.get_arg_regonly(0, &regs);
+/// ```
+pub trait RegisterAccess {
+	/// Get stack pointer (SP)
 	fn get_sp(&self) -> u64;
+
+	/// Get program counter (PC)
 	fn get_pc(&self) -> u64;
+
+	/// Set syscall number to be used in system calls.
 	fn get_sysno(&self) -> usize;
 
+	/// Set stack pointer (SP)
 	fn set_sp(&mut self, sp: u64);
+
+	/// Set program counter (PC)
 	fn set_pc(&mut self, pc: u64);
+
+	/// Get syscall number used in system calls.
 	fn set_sysno(&mut self, sysno: usize);
 
+	/// Get offset of a register based on the name.
+	/// 
+	/// This can be used in later calls to [RegisterAccess::get_value] and
+	/// [RegisterAccess::set_value].
 	fn offset_of(&self, regs: &str) -> Result<usize>;
+
+	/// Get size of register based on name.
+	/// 
+	/// Should be used in conjunction with [RegisterAccess::offset_of].
 	fn size_of(&self, regs: &str) -> Result<usize>;
+
+	/// Write value of register at `offset` with `size` into `data`
 	fn get_value(&self, offset: usize, size: usize, data: &mut Vec<u8>) -> Result<()>;
+
+	/// Write `data` into register at `offet`
 	fn set_value(&mut self, offset: usize, data: &[u8]) -> Result<()>;
 }
 
 pub(crate) fn prep_native_syscall(
-	regs: &mut dyn NamedRegs,
+	regs: &mut dyn RegisterAccess,
 	sysno: usize,
 	args: &[TargetPtr],
 ) -> Result<()> {

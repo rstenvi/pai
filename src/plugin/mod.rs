@@ -1,4 +1,7 @@
 //! All the plugins which exist in code tree
+//! 
+//! **NB!** This API is unstable and very unfinished, you probably don't want to
+//! use it.
 
 use crate::{
 	api::{Client, Command, Response},
