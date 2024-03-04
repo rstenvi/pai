@@ -685,6 +685,7 @@ where
 	) -> Result<TargetPtr> {
 		let mut regs = self.client.get_libc_regs(tid)?;
 		let oregs = regs.clone();
+		log::debug!("interrupted @ pc {:x}", oregs.get_pc());
 		for (i, arg) in args.iter().enumerate() {
 			log::debug!("arg[{i}]: = {arg:x}");
 			self.cc
@@ -702,6 +703,7 @@ where
 		let regs = self.client.get_libc_regs(tid)?;
 		let ret = self.cc.get_retval(&regs)?;
 
+		log::debug!("setting back oregs");
 		self.client.set_libc_regs(tid, oregs)?;
 
 		Ok(ret.into())

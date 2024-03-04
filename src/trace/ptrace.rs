@@ -101,6 +101,12 @@ impl TraceStop {
 	pub fn tid(&self) -> Tid {
 		self.tracee.pid.as_raw() as Tid
 	}
+	pub fn refresh_regs(&mut self) -> Result<()> {
+		let regs = self.tracee.registers()?;
+		let regs = regs.into();
+		self.regs = regs;
+		Ok(())
+	}
 }
 
 pub struct Tracer {
@@ -719,7 +725,8 @@ impl Tracer {
 	// 	Ok(ret)
 	// }
 	fn fix_non_fatal(&mut self, error: TraceError) -> Error {
-		if let Some(tracee) = error.tracee {
+		if let Some(mut tracee) = error.tracee {
+			tracee.refresh_regs().expect("fatal error when getting registers");
 			self.tracee.insert(tracee.tid(), tracee);
 		} else {
 			log::error!("tracee on tid was fatal, tid probably exited or crashed");
@@ -856,12 +863,12 @@ impl Tracer {
 		max: usize,
 	) -> TraceResult<TraceStop> {
 		if let Some(pc) = self.tramps.get(tramp) {
-			let mut regs = tracee.regs.clone();
+			// let mut regs = tracee.regs.clone();
 			let pc = *pc;
-			regs.set_pc(pc.into());
+			tracee.regs.set_pc(pc.into());
 			tracee
 				.tracee
-				.set_registers(regs.into())
+				.set_registers(tracee.regs.clone().into())
 				.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 			Ok(tracee)
 		} else if max > 0 {
@@ -996,6 +1003,7 @@ impl Tracer {
 
 		let retval = self.syscallcc.get_retval(&tracee.regs)?;
 		tracee.tracee.set_registers(oregs.into())?;
+		tracee.refresh_regs().expect("fatal error when getting registers");
 
 		self.insert_tracee(tracee.tracee)?;
 		Ok(retval.into())
@@ -1249,6 +1257,7 @@ impl Tracer {
 			.tracee
 			.set_registers(oregs)
 			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
+		tracee.refresh_regs().expect("fatal error when getting registers");
 		Ok(tracee)
 	}
 }
