@@ -214,16 +214,24 @@ impl Process {
 	// }
 	pub fn exe_module(&self) -> Result<MemoryMap> {
 		let exe = self.proc.exe()?;
+		let exe = std::fs::canonicalize(exe)?;
+		log::debug!("looking for exe {exe:?}");
 		let mut r: Vec<_> = self
 			.proc_modules()?
 			.into_iter()
-			.filter(|x| x.path_is(&exe))
+			.filter(|x| {
+				log::trace!("checking path {:?}", x.path);
+				x.path_is(&exe)
+			})
 			.collect();
 
-		if r.len() == 1 {
-			Ok(r.remove(0))
-		} else {
-			Err(Error::msg("exe module not found"))
+		match r.len() {
+			0 => Err(Error::msg("found no module in map matching executable")),
+			1 => Ok(r.remove(0)),
+			_ => {
+				log::warn!("multiple candidates for exe (returning first match): {r:?}");
+				Ok(r.remove(0))
+			}
 		}
 	}
 
