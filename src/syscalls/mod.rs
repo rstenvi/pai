@@ -1,5 +1,6 @@
 //! Code relevant to parsing syscall arguments.
 
+use crate::api::messages::{Direction, LenType, SysArg, SysValue, SyscallItem, Value, ValueLen};
 use crate::api::{Client, Command, Response};
 use crate::arch::RegisterAccess;
 use crate::buildinfo::BuildArch;
@@ -43,12 +44,7 @@ macro_rules! write_syscalls {
 	};
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub enum LenType {
-	Len,
-	Bytesize,
-	Bitsize,
-}
+
 
 impl std::fmt::Display for LenType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -84,111 +80,6 @@ pub struct libc_stat {
 	__unused: [i64; 3],
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ValueLen {
-	ltype: LenType,
-	value: TargetPtr,
-}
-impl std::fmt::Display for ValueLen {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_fmt(format_args!("len({}, 0x{:x})", self.ltype, self.value))
-	}
-}
-
-impl ValueLen {
-	fn new(ltype: LenType, value: TargetPtr) -> Self {
-		Self { ltype, value }
-	}
-	pub fn bytes(&self, itemsz: usize) -> usize {
-		let v: usize = self.value.into();
-		match self.ltype {
-			LenType::Len => itemsz * v,
-			LenType::Bytesize => v,
-			LenType::Bitsize => v / 8,
-		}
-	}
-}
-
-/// Similar to [serde_json::Value], but some added entries for easier
-/// interpretation.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub enum Value {
-	Void {
-		value: TargetPtr,
-	},
-	ByteArray {
-		buffer: Vec<u8>,
-	},
-	Flag {
-		set: Vec<String>,
-	},
-	Const {
-		matches: bool,
-		symbol: String,
-	},
-	Len {
-		of: String,
-		len: ValueLen,
-	},
-	Int {
-		value: serde_json::value::Number,
-		bits: usize,
-	},
-	Vma {
-		value: TargetPtr,
-		bits: usize,
-	},
-	Resource {
-		name: String,
-		sub: Option<Box<Self>>,
-	},
-	ShallowPtr {
-		value: TargetPtr,
-		arg: ArgType,
-		opts: Vec<ArgOpt>,
-		optional: bool,
-	},
-	Fd {
-		fd: i32,
-	},
-	FdConst {
-		value: i32,
-		name: String,
-	},
-	Filename {
-		path: String,
-	},
-	String {
-		string: String,
-	},
-	Error {
-		code: i32,
-		msg: String,
-	},
-	Stat {
-		stat: libc_stat,
-	},
-	Bool {
-		value: bool,
-	},
-	Buffer {
-		ptr: TargetPtr,
-	},
-
-	FileOffset {
-		offset: usize,
-	},
-
-	Struct {
-		name: String,
-		value: serde_json::Value,
-	},
-
-	ParsedPtr {
-		old: Box<Self>,
-		value: Box<Self>,
-	},
-}
 
 impl std::fmt::Display for Value {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -198,7 +89,7 @@ impl std::fmt::Display for Value {
 			Self::Buffer { ptr } => f.write_fmt(format_args!("buffer({ptr})")),
 			Self::Bool { value } => f.write_fmt(format_args!("bool({value})")),
 			Self::Error { code, msg } => f.write_fmt(format_args!("{code} {msg}")),
-			Self::Stat { stat: _ } => f.write_fmt(format_args!("struct stat {{}}")),
+			// Self::Stat { stat: _ } => f.write_fmt(format_args!("struct stat {{}}")),
 			Self::String { string } => f.write_fmt(format_args!("\"{string}\"")),
 			Self::Filename { path } => f.write_fmt(format_args!("\"{path}\"")),
 			Self::Fd { fd } => f.write_fmt(format_args!("fd({fd})")),
@@ -391,11 +282,8 @@ impl Value {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct SysValue {
-	pub raw_value: TargetPtr,
-	pub parsed: Option<Value>,
-}
+
+
 impl std::fmt::Display for SysValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		if let Some(parsed) = self.parsed.as_ref() {
@@ -418,12 +306,7 @@ impl SysValue {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct SysArg {
-	pub name: String,
-	value: SysValue,
-	dir: Direction,
-}
+
 impl std::fmt::Display for SysArg {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!("{}={}", self.name, self.value))
@@ -466,12 +349,7 @@ impl SysArg {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub enum Direction {
-	In,
-	Out,
-	InOut,
-}
+
 
 impl Direction {
 	pub fn matches(&self, other: &Self) -> bool {
@@ -495,14 +373,7 @@ impl From<syzlang_parser::parser::Direction> for Direction {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct SyscallItem {
-	pub tid: Tid,
-	pub sysno: usize,
-	pub name: String,
-	pub args: Vec<SysArg>,
-	pub output: Option<SysValue>,
-}
+
 
 impl std::fmt::Display for SyscallItem {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

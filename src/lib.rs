@@ -228,7 +228,7 @@ cast_signed! { usize, isize }
 
 #[cfg(feature = "syscalls")]
 pub(crate) struct IoctlCmd {
-	dir: Option<syscalls::Direction>,
+	dir: Option<Direction>,
 	itype: u32,
 	nr: u32,
 	size: u32,
@@ -246,10 +246,10 @@ impl From<u32> for IoctlCmd {
 		let dir = match dir {
 			0 => None,
 			// Userland to kernel
-			1 => Some(syscalls::Direction::In),
+			1 => Some(Direction::In),
 			// kernel to userlang
-			2 => Some(syscalls::Direction::Out),
-			3 => Some(syscalls::Direction::InOut),
+			2 => Some(Direction::Out),
+			3 => Some(Direction::InOut),
 			_ => bug!("IoctlCmd"),
 		};
 		Self {
@@ -549,6 +549,8 @@ macro_rules! gbugreport {
 	};
 }
 
+#[cfg(feature = "syscalls")]
+use api::messages::Direction;
 use buildinfo::BuildEndian;
 pub(crate) use gbugreport;
 

@@ -1,11 +1,10 @@
 use crate::{
 	api::{
-		messages::{CbAction, Event, EventInner, RegEvent},
+		messages::{CbAction, Event, EventInner, RegEvent, SyscallItem},
 		ArgsBuilder, Client, Command, Response,
 	},
 	ctx,
 	plugin::Plugin,
-	syscalls::SyscallItem,
 	utils, Result, TargetPtr,
 };
 

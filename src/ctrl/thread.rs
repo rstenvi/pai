@@ -12,7 +12,7 @@ use crossbeam_channel::{Receiver, Sender};
 #[cfg(feature = "syscalls")]
 use crate::api::messages::Stop;
 #[cfg(feature = "syscalls")]
-use crate::syscalls::SyscallItem;
+use crate::api::{args::Enrich, messages::{Direction, SyscallItem}};
 
 use crate::api::{
 	args::{Args, ClientArgs},
@@ -168,9 +168,9 @@ impl ClientThread {
 		&mut self,
 		sysno: usize,
 		sys: &mut SyscallItem,
-		dir: crate::syscalls::Direction,
+		dir: Direction,
 	) -> Result<()> {
-		use crate::api::args::Enrich;
+		
 		let enrich = self.args.enrich_syscall_sysno(sys.tid, sysno);
 		match enrich {
 			Enrich::None => {}
@@ -196,7 +196,7 @@ impl ClientThread {
 	}
 	#[cfg(feature = "syscalls")]
 	fn transform_syscall(&mut self, tid: Tid, entry: bool) -> Result<Option<Response>> {
-		use crate::{api::args::Enrich, arch::RegisterAccess, syscalls::Direction};
+		use crate::{api::args::Enrich, arch::RegisterAccess, api::messages::Direction};
 		log::trace!("transform syscall {tid} {entry}");
 		let regs = self.client.get_registers(tid)?;
 		if entry {

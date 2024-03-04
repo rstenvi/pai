@@ -15,7 +15,7 @@ use crate::target::GenericCc;
 use crate::utils::{LoadDependency, LoadedPlugin};
 
 #[cfg(feature = "syscalls")]
-use crate::syscalls::SyscallItem;
+use crate::api::messages::SyscallItem;
 
 #[cfg(feature = "plugins")]
 use crate::api::messages::EventInner;

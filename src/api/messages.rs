@@ -9,9 +9,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "syscalls")]
-use crate::syscalls::SyscallItem;
-
 use super::Args;
 
 /// To perform certain tasks in the tracee, we rely on some trampoline code
@@ -224,6 +221,156 @@ impl std::fmt::Display for EventPrctl {
 			EventPrctl::GetDumpable => f.write_fmt(format_args!("GetDumpable)")),
 		}
 	}
+}
+
+#[cfg(feature = "syscalls")]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub enum LenType {
+	Len,
+	Bytesize,
+	Bitsize,
+}
+
+#[cfg(feature = "syscalls")]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ValueLen {
+	ltype: LenType,
+	value: TargetPtr,
+}
+#[cfg(feature = "syscalls")]
+impl std::fmt::Display for ValueLen {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_fmt(format_args!("len({}, 0x{:x})", self.ltype, self.value))
+	}
+}
+#[cfg(feature = "syscalls")]
+impl ValueLen {
+	pub(crate) fn new(ltype: LenType, value: TargetPtr) -> Self {
+		Self { ltype, value }
+	}
+	pub fn bytes(&self, itemsz: usize) -> usize {
+		let v: usize = self.value.into();
+		match self.ltype {
+			LenType::Len => itemsz * v,
+			LenType::Bytesize => v,
+			LenType::Bitsize => v / 8,
+		}
+	}
+}
+
+#[cfg(feature = "syscalls")]
+/// Similar to [serde_json::Value], but some added entries for easier
+/// interpretation.
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub enum Value {
+	Void {
+		value: TargetPtr,
+	},
+	ByteArray {
+		buffer: Vec<u8>,
+	},
+	Flag {
+		set: Vec<String>,
+	},
+	Const {
+		matches: bool,
+		symbol: String,
+	},
+	Len {
+		of: String,
+		len: ValueLen,
+	},
+	Int {
+		value: serde_json::value::Number,
+		bits: usize,
+	},
+	Vma {
+		value: TargetPtr,
+		bits: usize,
+	},
+	Resource {
+		name: String,
+		sub: Option<Box<Self>>,
+	},
+	ShallowPtr {
+		value: TargetPtr,
+		arg: syzlang_parser::parser::ArgType,
+		opts: Vec<syzlang_parser::parser::ArgOpt>,
+		optional: bool,
+	},
+	Fd {
+		fd: i32,
+	},
+	FdConst {
+		value: i32,
+		name: String,
+	},
+	Filename {
+		path: String,
+	},
+	String {
+		string: String,
+	},
+	Error {
+		code: i32,
+		msg: String,
+	},
+	// Stat {
+	// 	stat: libc_stat,
+	// },
+	Bool {
+		value: bool,
+	},
+	Buffer {
+		ptr: TargetPtr,
+	},
+
+	FileOffset {
+		offset: usize,
+	},
+
+	Struct {
+		name: String,
+		value: serde_json::Value,
+	},
+
+	ParsedPtr {
+		old: Box<Self>,
+		value: Box<Self>,
+	},
+}
+
+#[cfg(feature = "syscalls")]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub enum Direction {
+	In,
+	Out,
+	InOut,
+}
+
+#[cfg(feature = "syscalls")]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SysValue {
+	pub raw_value: TargetPtr,
+	pub parsed: Option<Value>,
+}
+
+#[cfg(feature = "syscalls")]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SysArg {
+	pub name: String,
+	pub(crate) value: SysValue,
+	pub(crate) dir: Direction,
+}
+
+#[cfg(feature = "syscalls")]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SyscallItem {
+	pub tid: Tid,
+	pub sysno: usize,
+	pub name: String,
+	pub args: Vec<SysArg>,
+	pub output: Option<SysValue>,
 }
 
 /// All the different reasons the target may have stopped.
