@@ -137,9 +137,9 @@ pub enum RegEvent {
 	PluinLoad,
 	Dlopen,
 	Prctl,
-	Read,
+	// Read,
 	Mmap,
-	MsgLog,
+	// MsgLog,
 }
 impl RegEvent {
 	#[allow(non_snake_case)]
@@ -155,12 +155,12 @@ impl RegEvent {
 			EventInner::PluginLoad { ptype: _, id: _ } => Self::PluinLoad,
 			EventInner::Dlopen { fname: _ } => Self::Dlopen,
 			EventInner::Prctl { event: _ } => Self::Prctl,
-			EventInner::Read {
-				fname: _,
-				addr: _,
-				bytes: _,
-				offset: _,
-			} => Self::Read,
+			// EventInner::Read {
+			// 	fname: _,
+			// 	addr: _,
+			// 	bytes: _,
+			// 	offset: _,
+			// } => Self::Read,
 			EventInner::Mmap {
 				addr: _,
 				size: _,
@@ -169,7 +169,7 @@ impl RegEvent {
 				fd: _,
 				offset: _,
 			} => Self::Mmap,
-			EventInner::MsgLog { source: _, msg: _ } => Self::MsgLog,
+			// EventInner::MsgLog { source: _, msg: _ } => Self::MsgLog,
 		}
 	}
 }
@@ -217,6 +217,10 @@ pub enum Stop {
 	Fork { newpid: Tid },
 	Step { pc: TargetPtr },
 	Exec { old: Tid },
+	Signalling { signal: i32, core_dumped: bool },
+	VforkStart { new: Tid },
+	VforkDone { new: Tid },
+	Seccomp { data: u16 },
 }
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -303,12 +307,12 @@ pub enum EventInner {
 	Prctl {
 		event: EventPrctl,
 	},
-	Read {
-		fname: String,
-		addr: TargetPtr,
-		bytes: usize,
-		offset: usize,
-	},
+	// Read {
+	// 	fname: String,
+	// 	addr: TargetPtr,
+	// 	bytes: usize,
+	// 	offset: usize,
+	// },
 	Mmap {
 		addr: TargetPtr,
 		size: TargetPtr,
@@ -317,10 +321,10 @@ pub enum EventInner {
 		fd: TargetPtr,
 		offset: TargetPtr,
 	},
-	MsgLog {
-		source: String,
-		msg: serde_json::Value,
-	},
+	// MsgLog {
+	// 	source: String,
+	// 	msg: serde_json::Value,
+	// },
 }
 
 impl std::fmt::Display for EventInner {
@@ -336,21 +340,21 @@ impl std::fmt::Display for EventInner {
 			EventInner::PluginLoad { ptype, id } => f.write_fmt(format_args!("PluginLoad({ptype}) -> {id}")),
 			EventInner::Dlopen { fname } => f.write_fmt(format_args!("Dlopen({fname})")),
 			EventInner::Prctl { event } => f.write_fmt(format_args!("Prctl({event})")),
-			EventInner::Read {
-				fname: _,
-				addr: _,
-				bytes: _,
-				offset: _,
-			} => todo!(),
+			// EventInner::Read {
+			// 	fname: _,
+			// 	addr: _,
+			// 	bytes: _,
+			// 	offset: _,
+			// } => todo!(),
 			EventInner::Mmap {
-				addr: _,
-				size: _,
-				prot: _,
-				flags: _,
-				fd: _,
-				offset: _,
-			} => todo!(),
-			EventInner::MsgLog { source: _, msg: _ } => todo!(),
+				addr,
+				size,
+				prot,
+				flags,
+				fd,
+				offset,
+			} => f.write_fmt(format_args!("Mmap(0x{addr:x}, 0x{size:x}, {prot:?}, {flags}, 0x{fd:x} 0x{offset:x})")),
+			// EventInner::MsgLog { source: _, msg: _ } => todo!(),
 		}
 	}
 }

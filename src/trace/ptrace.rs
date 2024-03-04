@@ -77,12 +77,12 @@ impl From<pete::Stop> for Stop {
 			}
 			pete::Stop::Exiting { exit_code } => Self::Exit { code: exit_code },
 			pete::Stop::Signaling {
-				signal: _,
-				core_dumped: _,
-			} => todo!(),
-			pete::Stop::Vfork { new: _ } => todo!(),
-			pete::Stop::VforkDone { new: _ } => todo!(),
-			pete::Stop::Seccomp { data: _ } => todo!(),
+				signal,
+				core_dumped,
+			} => Self::Signalling { signal: signal as i32, core_dumped },
+			pete::Stop::Vfork { new } => Self::VforkStart { new: new.as_raw() as Tid },
+			pete::Stop::VforkDone { new } => Self::VforkDone { new: new.as_raw() as Tid },
+			pete::Stop::Seccomp { data } => Self::Seccomp { data },
 		}
 	}
 }
@@ -307,11 +307,8 @@ impl Tracer {
 		let mut tids = self.get_tids()?;
 
 		for (key, tracee) in self.tracee.iter() {
-			if let Ok(idx) = tids.binary_search(key) {
-				tids.remove(idx);
-			} else {
-				todo!();
-			}
+			let idx = tids.binary_search(key)?;
+			tids.remove(idx);
 			let stop: Stop = tracee.tracee.stop.into();
 			let status = ThreadStatus::Stopped(stop);
 			let ins = Thread::new(*key, status);
@@ -406,15 +403,10 @@ impl Tracer {
 		self._wait(false)
 	}
 	pub fn wait(&mut self) -> Result<Stopped> {
-		self._wait(true)?.ok_or(Error::TargetStopped)
+		self._wait()?.ok_or(Error::TargetStopped)
 	}
-	fn _wait(&mut self, force: bool) -> Result<Option<Stopped>> {
-		let tracee = if force {
-			self.tracer.wait()?
-		} else {
-			todo!();
-			// self.tracer.wait_if_ready()?
-		};
+	fn _wait(&mut self) -> Result<Option<Stopped>> {
+		let tracee = self.tracer.wait()?;
 		if let Some(tracee) = tracee {
 			log::debug!("stop {:?} | pid {:?}", tracee.stop, tracee.pid);
 
@@ -435,13 +427,14 @@ impl Tracer {
 			let ret = Stopped::new(pc.into(), stop, tid);
 			log::debug!("rstop {ret:?}");
 			Ok(Some(ret))
-		} else if force {
+		} else {
 			log::debug!("target stopped");
 			Err(Error::TargetStopped)
-		} else {
-			log::trace!("no tracee found on soft wait");
-			Ok(None)
 		}
+		// else {
+		// 	log::trace!("no tracee found on soft wait");
+		// 	Ok(None)
+		// }
 	}
 	fn check_if_swbp(
 		&mut self,
@@ -829,33 +822,6 @@ impl Tracer {
 			Err(Error::Unknown)
 		}
 	}
-	//fn __exec_ret(
-	//	&mut self,
-	//	mut tracee: TraceStop,
-	//	mut regs: Registers,
-	//	pc: TargetPtr,
-	//) -> TraceResult<TraceStop> {
-	//	regs.set_pc(pc.into());
-	//	tracee.tracee
-	//		.set_registers(regs.into())
-	//		.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
-	//	Ok(tracee)
-	//}
-	//fn _exec_ret(
-	//	&mut self,
-	//	tracee: TraceStop,
-	//	regs: Registers,
-	//	maxattempts: usize,
-	//) -> TraceResult<TraceStop> {
-	//	if let Some(pc) = self.tramps.get(&TrampType::Ret) {
-	//		self.__exec_ret(tracee, regs, *pc)
-	//	} else if maxattempts > 0 {
-	//		let tracee = self.init_tramps(tracee)?;
-	//		self._exec_ret(tracee, regs, maxattempts - 1)
-	//	} else {
-	//		todo!();
-	//	}
-	//}
 	fn _exec_tramp(
 		&mut self,
 		mut tracee: TraceStop,
@@ -1050,42 +1016,45 @@ impl Tracer {
 	}
 	fn signal_is_bkpt(signal: &pete::Signal) -> Result<bool> {
 		match signal {
-			Signal::SIGHUP => todo!(),
-			Signal::SIGINT => todo!(),
-			Signal::SIGQUIT => todo!(),
 			Signal::SIGILL => Err(Error::Signal {
 				signal: *signal as i32,
 			}),
 			Signal::SIGTRAP => Ok(true),
-			Signal::SIGABRT => todo!(),
-			Signal::SIGBUS => todo!(),
-			Signal::SIGFPE => todo!(),
-			Signal::SIGKILL => todo!(),
-			Signal::SIGUSR1 => todo!(),
 			Signal::SIGSEGV => Err(Error::Signal {
 				signal: *signal as i32,
 			}),
-			Signal::SIGUSR2 => todo!(),
-			Signal::SIGPIPE => todo!(),
-			Signal::SIGALRM => todo!(),
-			Signal::SIGTERM => todo!(),
-			Signal::SIGSTKFLT => todo!(),
-			Signal::SIGCHLD => todo!(),
-			Signal::SIGCONT => todo!(),
-			Signal::SIGSTOP => todo!(),
-			Signal::SIGTSTP => todo!(),
-			Signal::SIGTTIN => todo!(),
-			Signal::SIGTTOU => todo!(),
-			Signal::SIGURG => todo!(),
-			Signal::SIGXCPU => todo!(),
-			Signal::SIGXFSZ => todo!(),
-			Signal::SIGVTALRM => todo!(),
-			Signal::SIGPROF => todo!(),
-			Signal::SIGWINCH => todo!(),
-			Signal::SIGIO => todo!(),
-			Signal::SIGPWR => todo!(),
-			Signal::SIGSYS => todo!(),
-			_ => todo!(),
+			_ => Err(Error::Signal {
+				signal: *signal as i32,
+			}),
+			// Signal::SIGHUP => todo!(),
+			// Signal::SIGINT => todo!(),
+			// Signal::SIGQUIT => todo!(),
+			// Signal::SIGABRT => todo!(),
+			// Signal::SIGBUS => todo!(),
+			// Signal::SIGFPE => todo!(),
+			// Signal::SIGKILL => todo!(),
+			// Signal::SIGUSR1 => todo!(),
+			// Signal::SIGUSR2 => todo!(),
+			// Signal::SIGPIPE => todo!(),
+			// Signal::SIGALRM => todo!(),
+			// Signal::SIGTERM => todo!(),
+			// Signal::SIGSTKFLT => todo!(),
+			// Signal::SIGCHLD => todo!(),
+			// Signal::SIGCONT => todo!(),
+			// Signal::SIGSTOP => todo!(),
+			// Signal::SIGTSTP => todo!(),
+			// Signal::SIGTTIN => todo!(),
+			// Signal::SIGTTOU => todo!(),
+			// Signal::SIGURG => todo!(),
+			// Signal::SIGXCPU => todo!(),
+			// Signal::SIGXFSZ => todo!(),
+			// Signal::SIGVTALRM => todo!(),
+			// Signal::SIGPROF => todo!(),
+			// Signal::SIGWINCH => todo!(),
+			// Signal::SIGIO => todo!(),
+			// Signal::SIGPWR => todo!(),
+			// Signal::SIGSYS => todo!(),
+			
 		}
 	}
 	fn cb_stop_is_bkpt(stop: &pete::Stop) -> Result<bool> {
@@ -1097,17 +1066,10 @@ impl Tracer {
 				signal,
 				core_dumped: _,
 			} => Self::signal_is_bkpt(signal),
-			pete::Stop::Attach => todo!(),
-			pete::Stop::Group { signal: _ } => todo!(),
-			pete::Stop::SyscallEnter => todo!(),
-			pete::Stop::SyscallExit => todo!(),
-			pete::Stop::Clone { new: _ } => todo!(),
-			pete::Stop::Fork { new: _ } => todo!(),
-			pete::Stop::Exec { old: _ } => todo!(),
-			pete::Stop::Exiting { exit_code: _ } => todo!(),
-			pete::Stop::Vfork { new: _ } => todo!(),
-			pete::Stop::VforkDone { new: _ } => todo!(),
-			pete::Stop::Seccomp { data: _ } => todo!(),
+			_ => {
+				log::warn!("got unexpected stop {stop:?} when waiting for breakpoint");
+				Ok(false)
+			},
 		}
 	}
 	fn find_executable_space(&self) -> Result<TargetPtr> {

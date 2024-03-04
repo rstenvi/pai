@@ -285,7 +285,9 @@ impl Value {
 	}
 	fn new_error_or_default(err: i32, def: Self) -> Self {
 		log::trace!("err {err:?} | {err:x}");
-		match -err {
+		let err = std::num::Wrapping(err);
+		let err = (-err).0;
+		match err {
 			libc::ENOENT => Value::new_error(err, "ENOENT"),
 			libc::ESRCH => Value::new_error(err, "ESRCH"),
 			libc::EINTR => Value::new_error(err, "EINTR"),
@@ -624,7 +626,7 @@ impl BuildValue {
 				self.evaluate_size_struct(names, &st)
 			} else {
 				log::warn!("unknown ident {ident:?}");
-				todo!();
+				Err(Error::Unsupported)
 			}
 		} else if matches!(
 			arg,
@@ -1223,7 +1225,6 @@ impl SyscallItem {
 		if let Some(flag) = flag {
 			for val in flag.args() {
 				match val {
-					parser::Value::Int(_v) => todo!(),
 					parser::Value::Ident(n) => {
 						let v = Self::resolve_const_ident(&n.name);
 						let ones = usize::count_ones(v.into());
@@ -1315,7 +1316,7 @@ impl From<parser::Arch> for BuildArch {
 			parser::Arch::Aarch32 => Self::Aarch32,
 			parser::Arch::Mips64le => todo!(),
 			parser::Arch::Ppc64le => todo!(),
-			parser::Arch::Riscv64 => todo!(),
+			parser::Arch::Riscv64 => Self::RiscV64,
 			parser::Arch::S390x => todo!(),
 			parser::Arch::Native => todo!(),
 		}

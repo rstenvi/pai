@@ -321,15 +321,6 @@ fn add_functions(parsed: &mut Parsed) {
 
 #[cfg(feature = "syscalls")]
 fn get_syscall_data(_build: &BuildInfo) -> anyhow::Result<String> {
-	//let syzarch = match &build.target.arch {
-	//	BuildArch::Aarch64 => syzlang_parser::parser::Arch::Aarch64,
-	//	BuildArch::Aarch32 => syzlang_parser::parser::Arch::Aarch32,
-	//	BuildArch::X86_64 => syzlang_parser::parser::Arch::X86_64,
-	//	BuildArch::X86 => syzlang_parser::parser::Arch::X86,
-	//	BuildArch::Mips => todo!(),
-	//	BuildArch::RiscV64 => syzlang_parser::parser::Arch::Riscv64,
-	//};
-
 	let data = syzlang_data::linux::PARSED
 		.read()
 		.expect("unable to acquire lock");

@@ -1,6 +1,5 @@
 use crate::{
-	api::{messages::NewClientReq, Client, Command, Response},
-	Result,
+	api::{messages::NewClientReq, Client, Command, Response}, Error, Result
 };
 use crossbeam_channel::{unbounded, Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
@@ -43,7 +42,7 @@ impl AcceptNewClient {
 		match self.rx.recv_timeout(Duration::from_millis(10)) {
 			Ok(n) => Ok(Some(n)),
 			Err(RecvTimeoutError::Timeout) => Ok(None),
-			Err(RecvTimeoutError::Disconnected) => todo!(),
+			Err(RecvTimeoutError::Disconnected) => Err(Error::Unknown),
 		}
 	}
 	pub fn send(&self, client: crate::Client) -> Result<()> {

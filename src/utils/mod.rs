@@ -370,10 +370,9 @@ impl LoadedPlugin {
 		}
 	}
 	pub fn update_dependency(&mut self, dep: &LoadDependency) {
-		if matches!(dep, LoadDependency::Manual) {
-			self.load = dep.clone();
-		} else {
-			todo!();
+		match dep {
+			LoadDependency::Manual => self.load = dep.clone(),
+			LoadDependency::Plugins(_) => panic!("update dependency method not supported"),
 		}
 	}
 	pub fn add_dependency(&mut self, id: usize) {

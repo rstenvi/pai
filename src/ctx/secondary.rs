@@ -519,7 +519,7 @@ where
 					let dl = Prctl::init(client)?;
 					Self::start_plugin(dl)?
 				}
-				_ => todo!(),
+				_ => panic!("called plugin not implemented yet: {plugin:?}"),
 			};
 			let event = EventInner::PluginLoad {
 				ptype: plugin.clone(),
@@ -832,7 +832,10 @@ where
 				Ok(action) => match action {
 					CbAction::None => false,
 					CbAction::Remove => true,
-					CbAction::EarlyRet { ret: _ } => todo!(),
+					CbAction::EarlyRet { ret: _ } => {
+						log::error!("EarlyRet for syscalls not implemented yet");
+						return Err(Error::Unsupported);
+					},
 				},
 				Err(e) => {
 					log::error!("syscall callback on {sysno} returned error: {e:?}");
@@ -852,7 +855,10 @@ where
 				Ok(action) => match action {
 					CbAction::None => false,
 					CbAction::Remove => true,
-					CbAction::EarlyRet { ret: _ } => todo!(),
+					CbAction::EarlyRet { ret: _ } => {
+						log::error!("EarlyRet for syscalls not implemented yet");
+						return Err(Error::Unsupported);
+					},
 				},
 				Err(e) => {
 					log::warn!("syscall cb resulted in error: '{e:?}'");
@@ -914,7 +920,10 @@ where
 				match (cb.exit)(self, &frame) {
 					Ok(action) => match action {
 						CbAction::None => {}
-						CbAction::Remove => todo!(),
+						CbAction::Remove => {
+							log::error!("Remove from function entry not implemented yet");
+							return Err(Error::Unsupported);
+						},
 						CbAction::EarlyRet { ret } => {
 							self.cc.set_retval(ret.into(), &mut regs)?;
 							self.client.set_libc_regs(tid, regs)?;

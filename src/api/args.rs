@@ -287,6 +287,10 @@ impl Args {
 			Stop::Fork { newpid: _ } => Some(self.registered.contains(&RegEvent::Fork)),
 			Stop::Step { pc: _ } => Some(self.handle_steps),
 			Stop::Exec { old: _ } => Some(self.handle_exec),
+			_ => {
+				log::warn!("unimplemented signal {stop:?}");
+				None
+			}
 		};
 		log::debug!("handles stop {stop:?} => {r:?}");
 		r

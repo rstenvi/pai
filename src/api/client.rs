@@ -490,7 +490,10 @@ impl Client<Command, Response> {
 		let r = self.write_read(cmd)?;
 		let r: Option<usize> = match r {
 			Response::Value(v) => serde_json::from_value(v)?,
-			_ => todo!(),
+			_ => {
+				log::warn!("got unexpected value {r:?} when resolving syscall");
+				None
+			},
 		};
 		let r = r.ok_or(Error::NotFound)?;
 		Ok(r)

@@ -456,6 +456,7 @@ macro_rules! error_from_crate {
 	};
 }
 
+error_from_crate! { usize }
 error_from_crate! { crossbeam_channel::RecvError }
 error_from_crate! { std::num::TryFromIntError }
 error_from_crate! { std::num::ParseIntError }
