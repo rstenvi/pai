@@ -22,6 +22,7 @@ pub enum ArchRegisters {
 	X86(x86::user_regs_struct),
 	Aarch32(aarch32::user_regs_struct),
 	Aarch64(aarch64::user_regs_struct),
+	Riscv64(riscv64::user_regs_struct),
 }
 
 macro_rules! forward_reg {
@@ -31,6 +32,7 @@ macro_rules! forward_reg {
 			ArchRegisters::X86(x) => x.$func($($args)*),
 			ArchRegisters::Aarch32(x) => x.$func($($args)*),
 			ArchRegisters::Aarch64(x) => x.$func($($args)*),
+			ArchRegisters::Riscv64(x) => x.$func($($args)*),
 		}
 	};
 	($self:ident, $func:ident) => {
@@ -203,6 +205,71 @@ macro_rules! get_def_little {
 }
 pub(crate) use get_def_little;
 
+macro_rules! gen_syscall_shellcode {
+	() => {
+		pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
+			let endian = crate::target::Target::endian();
+			let isbig = endian.is_big();
+
+			let nop = crate::arch::get_def_little!(NOP, isbig);
+			let syscall = crate::arch::get_def_little!(SYSCALL, isbig);
+			let swbp = crate::arch::get_def_little!(SW_BP, isbig);
+
+			code.extend_from_slice(&nop);
+			code.extend_from_slice(&syscall);
+			code.extend_from_slice(&swbp);
+		}
+	};
+}
+pub(crate) use gen_syscall_shellcode;
+
+macro_rules! gen_call_shellcode {
+	() => {
+		pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
+			let endian = crate::target::Target::endian();
+			let isbig = endian.is_big();
+
+			let nop = crate::arch::get_def_little!(NOP, isbig);
+			let call_tramp = crate::arch::get_def_little!(CALL_TRAMP, isbig);
+			let swbp = crate::arch::get_def_little!(SW_BP, isbig);
+
+			code.extend_from_slice(&nop);
+			code.extend_from_slice(&call_tramp);
+			code.extend_from_slice(&swbp);
+		}
+	};
+}
+pub(crate) use gen_call_shellcode;
+
+macro_rules! gen_ret_shellcode {
+	() => {
+		pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
+			let endian = crate::target::Target::endian();
+			let isbig = endian.is_big();
+
+			let nop = crate::arch::get_def_little!(NOP, isbig);
+			let ret = crate::arch::get_def_little!(RET, isbig);
+
+			code.extend_from_slice(&nop);
+			code.extend_from_slice(&ret);
+		}
+	};
+}
+pub(crate) use gen_ret_shellcode;
+
+macro_rules! gen_bp_shellcode {
+	() => {
+		pub(crate) fn bp_shellcode(code: &mut Vec<u8>) {
+			let endian = crate::target::Target::endian();
+			let isbig = endian.is_big();
+			let swbp = crate::arch::get_def_little!(SW_BP, isbig);
+			code.extend_from_slice(&swbp);
+		}
+	};
+}
+pub(crate) use gen_bp_shellcode;
+
+
 /// Architecture-neutral manner to read/write register.
 ///
 /// ## Example
@@ -283,100 +350,6 @@ pub(crate) fn prep_native_syscall(
 	Ok(())
 }
 
-pub(crate) fn bp_code() -> &'static [u8] {
-	#[cfg(target_arch = "aarch64")]
-	{
-		&crate::arch::aarch64::SW_BP
-	}
-
-	#[cfg(target_arch = "arm")]
-	{
-		&crate::arch::aarch32::SW_BP
-	}
-
-	#[cfg(target_arch = "x86_64")]
-	{
-		&crate::arch::x86_64::SW_BP
-	}
-
-	#[cfg(target_arch = "x86")]
-	{
-		&crate::arch::x86::SW_BP
-	}
-
-	#[cfg(target_arch = "riscv64")]
-	{
-		todo!();
-	}
-}
-
-pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
-	#[cfg(target_arch = "x86")]
-	{
-		x86::syscall_shellcode(code)
-	}
-	#[cfg(target_arch = "x86_64")]
-	{
-		x86_64::syscall_shellcode(code)
-	}
-	#[cfg(target_arch = "arm")]
-	{
-		aarch32::syscall_shellcode(code)
-	}
-	#[cfg(target_arch = "aarch64")]
-	{
-		aarch64::syscall_shellcode(code)
-	}
-	#[cfg(target_arch = "riscv64")]
-	{
-		risvc64::syscall_shellcode(code)
-	}
-}
-pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
-	#[cfg(target_arch = "x86")]
-	{
-		x86::call_shellcode(code)
-	}
-	#[cfg(target_arch = "x86_64")]
-	{
-		x86_64::call_shellcode(code)
-	}
-	#[cfg(target_arch = "arm")]
-	{
-		aarch32::call_shellcode(code)
-	}
-	#[cfg(target_arch = "aarch64")]
-	{
-		aarch64::call_shellcode(code)
-	}
-	#[cfg(target_arch = "riscv64")]
-	{
-		risv64::call_shellcode(code)
-	}
-}
-pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
-	#[cfg(target_arch = "x86")]
-	{
-		x86::ret_shellcode(code)
-	}
-	#[cfg(target_arch = "x86_64")]
-	{
-		x86_64::ret_shellcode(code)
-	}
-	#[cfg(target_arch = "arm")]
-	{
-		aarch32::ret_shellcode(code)
-	}
-	#[cfg(target_arch = "aarch64")]
-	{
-		aarch64::ret_shellcode(code)
-	}
-	#[cfg(target_arch = "riscv64")]
-	{
-		risv64::ret_shellcode(code)
-	}
-}
-
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -408,6 +381,9 @@ mod test {
 	#[cfg(target_arch = "aarch64")]
 	gen_test_regs_arch! { aarch64 }
 
-	#[cfg(target_arch = "aarch32")]
+	#[cfg(target_arch = "arm")]
 	gen_test_regs_arch! { aarch32 }
+
+	#[cfg(target_arch = "riscv64")]
+	gen_test_regs_arch! { riscv64 }
 }

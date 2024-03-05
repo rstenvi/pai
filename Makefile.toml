@@ -3,7 +3,23 @@ extend= [
   { path = "pai-make-targets/build.toml" },
   { path = "pai-make-targets/fix.toml" },
   { path = "pai-make-targets/test.toml" },
+  { path = "pai-make-targets/enforce.toml" },
   { path = "pai-make-targets/publish.toml" },
+]
+
+[tasks.publish]
+dependencies = ["enforcestd", "buildall", "fulltest"]
+
+[tasks.build]
+args = [ "build", "--all-features", "--target-dir=output", "--target=${@}"]
+
+[tasks.buildall]
+command = "cargo"
+args = [
+	"make", "build",
+	"x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu",
+	"aarch64-unknown-linux-gnu", "armv7-unknown-linux-gnueabihf",
+	"riscv64gc-unknown-linux-gnu",
 ]
 
 [tasks.coverage]

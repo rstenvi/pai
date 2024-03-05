@@ -2,8 +2,8 @@
 
 To run all available tests on host target run:
 
-~~~
-cargo make testnative
+~~~{.bash}
+cargo make test
 ~~~
 
 ## Cross-platform tests
@@ -40,7 +40,7 @@ identity = "/path/to/keys/pai_id_rsa"
 ### QEMU
 
 Below is an example for running in QEMU using the script in
-[scripts/qemu-runner.rs](scripts/qemu-runner.rs). 
+[scripts/qemu-runner.rs](scripts/qemu-runner.rs).
 
 ~~~{.toml}
 user = "shell"
@@ -56,8 +56,7 @@ For this to work, you need to do two things:
 1. Generate SSH keys
     - `ssh-keygen -f scripts/keys/qemu_id_rsa`
     - You only need to do this once and then use same keys for all QEMU test
-	targets
+      targets
 2. Generate buildroot images
     - See more details under
       [scripts/buildroot/README.md](scripts/buildroot/README.md)
-

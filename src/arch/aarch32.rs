@@ -64,17 +64,7 @@ super::impl_from_generic! { user_regs_struct, Aarch32 }
 
 super::impl_named_regs! { user_regs_struct }
 
-pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
-	code.extend_from_slice(&NOP);
-	code.extend_from_slice(&SYSCALL);
-	code.extend_from_slice(&SW_BP);
-}
-pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
-	code.extend_from_slice(&NOP);
-	code.extend_from_slice(&CALL_TRAMP);
-	code.extend_from_slice(&SW_BP);
-}
-pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
-	code.extend_from_slice(&NOP);
-	code.extend_from_slice(&RET);
-}
+super::gen_syscall_shellcode! { }
+super::gen_call_shellcode! { }
+super::gen_ret_shellcode! { }
+super::gen_bp_shellcode! {}

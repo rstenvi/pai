@@ -74,3 +74,6 @@ pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
 	code.extend_from_slice(&NOP);
 	code.extend_from_slice(&RET);
 }
+pub(crate) fn bp_shellcode(code: &mut Vec<u8>) {
+	code.extend_from_slice(&SW_BP);
+}

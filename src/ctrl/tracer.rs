@@ -371,10 +371,11 @@ impl CtrlTracer {
 		self.exec_raw_syscall(tid, sysno, &args)
 	}
 	fn alloc_and_write_bp(&mut self, tid: Tid) -> Result<TargetPtr> {
-		let bp = TargetCode::breakpoint();
+		let mut bp = Vec::with_capacity(4);
+		TargetCode::bp_shellcode(&mut bp);
 		let prot = Perms::new().read().exec();
 		let mem = self.tracer.api_alloc_scratch(tid, bp.len(), prot)?;
-		self.tracer.write_memory(tid, mem.addr(), bp)?;
+		self.tracer.write_memory(tid, mem.addr(), &bp)?;
 		self.tracer
 			.mark_addr_as_breakpoint(mem.addr(), BpType::Recurring)?;
 

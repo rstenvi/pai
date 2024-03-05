@@ -41,6 +41,7 @@ pub struct user_regs_struct {
 	pub a4: u64,
 	pub a5: u64,
 	pub a6: u64,
+	#[sysno]
 	pub a7: u64,
 	pub s2: u64,
 	pub s3: u64,
@@ -58,37 +59,17 @@ pub struct user_regs_struct {
 	pub t6: u64,
 }
 
-pub(crate) fn syscall_shellcode(code: &mut Vec<u8>) {
-	let endian = Target::endian();
-	let isbig = endian.is_big();
+#[cfg(target_arch = "riscv64")]
+super::impl_from_pete! { user_regs_struct }
 
-	let nop = get_def_little!(NOP, isbig);
-	let syscall = get_def_little!(SYSCALL, isbig);
-	let swbp = get_def_little!(SW_BP, isbig);
+#[cfg(target_arch = "riscv64")]
+super::impl_conv_pete_generic! { user_regs_struct, Riscv64 }
 
-	code.extend_from_slice(&nop);
-	code.extend_from_slice(&syscall);
-	code.extend_from_slice(&swbp);
-}
-pub(crate) fn call_shellcode(code: &mut Vec<u8>) {
-	let endian = Target::endian();
-	let isbig = endian.is_big();
+super::impl_from_generic! { user_regs_struct, Riscv64 }
 
-	let nop = get_def_little!(NOP, isbig);
-	let call_tramp = get_def_little!(CALL_TRAMP, isbig);
-	let swbp = get_def_little!(SW_BP, isbig);
+super::impl_named_regs! { user_regs_struct }
 
-	code.extend_from_slice(&nop);
-	code.extend_from_slice(&call_tramp);
-	code.extend_from_slice(&swbp);
-}
-pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
-	let endian = Target::endian();
-	let isbig = endian.is_big();
-
-	let nop = get_def_little!(NOP, isbig);
-	let ret = get_def_little!(RET, isbig);
-
-	code.extend_from_slice(&nop);
-	code.extend_from_slice(&ret);
-}
+super::gen_syscall_shellcode! { }
+super::gen_call_shellcode! { }
+super::gen_ret_shellcode! { }
+super::gen_bp_shellcode! {}

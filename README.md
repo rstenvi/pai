@@ -8,7 +8,7 @@ Process Analyzer and Instrumenter
 Recommended way to include the crate, even though API is not expected to be
 stable until version `0.2.0`, is:
 
-~~~
+~~~{.toml}
 pai = { version = "0.1", features = ["syscalls"] }
 ~~~
 
@@ -16,41 +16,50 @@ The feature `syscalls` is only needed if you want to resolve the arguments of
 system calls. So if you want to resolve the system call number to a name, an
 argument to strings, etc.
 
-There are some example of use under `examples/` more information will be written when the API is more stable.
+There are some example of use under `examples/` more information will be written
+when the API is more stable.
 
 ## Standalone tools using pai
 
 - [pai-strace](https://github.com/rstenvi/pai-strace) - strace-like tool
 - [pai-inject-so](https://github.com/rstenvi/pai-inject-so) - inject SO-file into process
 
-## Cross-compilation
+## Compilation
 
-For information about how cross-compilation of Rust programs work, see
-[Cross-compilation](https://rust-lang.github.io/rustup/cross-compilation.html)
-in the rustup book.
+A regular build for native can be compiled with:
 
-### Targets tested
+~~~{.bash}
+cargo build --all-features
+~~~
 
-- `x86_64-unknown-linux-gnu`
-- `i686-unknown-linux-gnu`
-- `aarch64-unkown-linux-gnu`
-- `aarch64-linux-android`
-- `armv7-unknown-linux-gnueabihf` - ARMv7-A Linux, hardfloat (kernel 3.2, glibc 2.17)
-- `arm-unknown-linux-gnueabihf` - ARMv6 Linux, hardfloat (kernel 3.2, glibc 2.17)
+### Cross-compilation
 
-### Targets we check build for
+The recommended way to cross-compile is to use
+[cross](https://github.com/cross-rs/cross)
 
-These targets are built, but there is no automatic testing for them
+This is setup in [Makefile.toml](Makefile.toml), so you can build for all
+desired targets with:
 
-- `arm-unknown-linux-gnueabi` - ARMv6 Linux (kernel 3.2, glibc 2.17)
-- `x86_64-linux-android`
-- `i686-linux-android`
+~~~{.bash}
+cargo make build i686-unknown-linux-gnu x86_64-unknown-linux-gnu ...
+~~~
 
-### Recommended method in Docker
-
-The recommended way to cross-compile is to use [cross](https://github.com/cross-rs/cross)
+Build output from `cross` will sometimes interfere with build output from
+`cargo` so all `cross` builds will go to directory `output/`, leaving `target/`
+for regular cargo commands.
 
 Builds will then work as expected, but most test-targets will fail because the
 testing method used doesn't support `ptrace`.
 
 To run cross-architecture tests correctly see [testing.md](testing.md)
+
+## Targets tested
+
+We don't want to test all cross-combination of builds, but try to test all
+platforms supported and all architectures supported.
+
+- **platforms:** GNU, Android, Musl
+- **architectures:** x86_64, x86, Aarch64, Aarch32
+
+The [Makefile.toml](Makefile.toml) target `fulltest` is executed before new
+versions are published.

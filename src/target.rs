@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::arch::RegisterAccess;
+use crate::arch::{self, RegisterAccess};
 use crate::buildinfo::{BuildArch, BuildEndian, BuildInfo, BuildTarget};
 use crate::{Error, Result};
 
@@ -228,25 +228,29 @@ impl Target {
 	}
 }
 
+macro_rules! gen_shellcode_code {
+	($ident:ident) => {
+		pub fn $ident(code: &mut Vec<u8>) {
+			let arch = Target::arch();
+			match arch {
+				BuildArch::Aarch64 => crate::arch::aarch64::$ident(code),
+				BuildArch::Aarch32 => crate::arch::aarch32::$ident(code),
+				BuildArch::X86_64 => crate::arch::x86_64::$ident(code),
+				BuildArch::X86 => crate::arch::x86::$ident(code),
+				BuildArch::Mips => todo!(),
+				BuildArch::RiscV64 => crate::arch::riscv64::$ident(code),
+			}
+		}
+	};
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct TargetCode {}
 impl TargetCode {
-	pub fn breakpoint() -> &'static [u8] {
-		let arch = &crate::TARGET_INFO
-			.read()
-			.expect("unable to read TARGET_INFO")
-			.target
-			.arch;
-
-		match arch {
-			BuildArch::Aarch64 => &crate::arch::aarch64::SW_BP,
-			BuildArch::Aarch32 => &crate::arch::aarch32::SW_BP,
-			BuildArch::X86_64 => &crate::arch::x86_64::SW_BP,
-			BuildArch::X86 => &crate::arch::x86::SW_BP,
-			BuildArch::Mips => todo!(),
-			BuildArch::RiscV64 => todo!(),
-		}
-	}
+	gen_shellcode_code! { bp_shellcode }
+	gen_shellcode_code! { syscall_shellcode }
+	gen_shellcode_code! { call_shellcode }
+	gen_shellcode_code! { ret_shellcode }
 }
 
 /// Access to argument(s) based on a defined calling convention.
@@ -288,7 +292,7 @@ impl GenericCc {
 			crate::buildinfo::BuildArch::X86_64 => Self::new_syscall_x86_64(),
 			crate::buildinfo::BuildArch::X86 => Self::new_syscall_x86(),
 			crate::buildinfo::BuildArch::Mips => todo!(),
-			crate::buildinfo::BuildArch::RiscV64 => todo!(),
+			crate::buildinfo::BuildArch::RiscV64 => Self::new_syscall_riscv64(),
 		}
 	}
 	fn new_systemv(arch: crate::buildinfo::BuildArch) -> Result<Self> {
@@ -298,7 +302,7 @@ impl GenericCc {
 			crate::buildinfo::BuildArch::X86_64 => Self::new_systemv_x86_64(),
 			crate::buildinfo::BuildArch::X86 => Self::new_systemv_x86(),
 			crate::buildinfo::BuildArch::Mips => todo!(),
-			crate::buildinfo::BuildArch::RiscV64 => todo!(),
+			crate::buildinfo::BuildArch::RiscV64 => Self::new_systemv_riscv64(),
 		}
 	}
 	fn new_systemv_x86() -> Result<Self> {
@@ -315,6 +319,30 @@ impl GenericCc {
 		let retval = CcArgAccess::from_named_reg("eax", &regs)?;
 		let calltramp = CcArgAccess::from_named_reg("eax", &regs)?;
 		let returnaddr = Some(CcArgAccess::from_sp_offset(0, 4));
+
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
+		Ok(ret)
+	}
+	fn new_systemv_riscv64() -> Result<Self> {
+		let regs = crate::arch::riscv64::user_regs_struct::default();
+		let args = vec![
+			CcArgAccess::from_named_reg("a0", &regs)?,
+			CcArgAccess::from_named_reg("a1", &regs)?,
+			CcArgAccess::from_named_reg("a2", &regs)?,
+			CcArgAccess::from_named_reg("a3", &regs)?,
+			CcArgAccess::from_named_reg("a4", &regs)?,
+			CcArgAccess::from_named_reg("a5", &regs)?,
+			CcArgAccess::from_named_reg("a6", &regs)?,
+			CcArgAccess::from_named_reg("a7", &regs)?,
+		];
+		let retval = CcArgAccess::from_named_reg("a0", &regs)?;
+		let calltramp = CcArgAccess::from_named_reg("t0", &regs)?;
+		let returnaddr = Some(CcArgAccess::from_named_reg("ra", &regs)?);
 
 		let ret = Self {
 			args,
@@ -403,6 +431,28 @@ impl GenericCc {
 		];
 		let retval = CcArgAccess::from_reg_offset("x0", 0, 8);
 		let calltramp = CcArgAccess::from_reg_offset("x9", 9 * 8, 8);
+		let returnaddr = None;
+
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
+		Ok(ret)
+	}
+	fn new_syscall_riscv64() -> Result<Self> {
+		let regs = crate::arch::riscv64::user_regs_struct::default();
+		let args = vec![
+			CcArgAccess::from_named_reg("a0", &regs)?,
+			CcArgAccess::from_named_reg("a1", &regs)?,
+			CcArgAccess::from_named_reg("a2", &regs)?,
+			CcArgAccess::from_named_reg("a3", &regs)?,
+			CcArgAccess::from_named_reg("a4", &regs)?,
+			CcArgAccess::from_named_reg("a5", &regs)?,
+		];
+		let retval = CcArgAccess::from_named_reg("a0", &regs)?;
+		let calltramp = CcArgAccess::from_named_reg("t0", &regs)?;
 		let returnaddr = None;
 
 		let ret = Self {
@@ -674,4 +724,6 @@ mod test {
 	gen_test_cc_arch! { aarch64 }
 
 	gen_test_cc_arch! { aarch32 }
+
+	gen_test_cc_arch! { riscv64 }
 }

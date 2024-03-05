@@ -2,7 +2,7 @@ use crate::{
 	api::messages::{BpType, Stop, Stopped, Thread, ThreadStatus, TrampType, Wait},
 	arch::{self, prep_native_syscall, RegisterAccess},
 	buildinfo::BuildArch,
-	target::GenericCc,
+	target::{GenericCc, TargetCode},
 	utils::{process::Pid, AllocedMemory, MmapBuild},
 };
 use std::{collections::HashMap, process::Command};
@@ -12,7 +12,6 @@ use nix::{sys::ptrace, unistd::ForkResult};
 use pete::{Restart, Signal, Tracee};
 use procfs::process::MMPermissions;
 
-use crate::arch::{call_shellcode, ret_shellcode, syscall_shellcode};
 use crate::{
 	utils::process::{MemoryMap, Process, Tid},
 	utils::{Location, Perms},
@@ -162,14 +161,14 @@ impl Tracer {
 	fn default_trampcode() -> HashMap<TrampType, Vec<u8>> {
 		let mut ret = HashMap::new();
 		let mut code = Vec::new();
-		syscall_shellcode(&mut code);
+		TargetCode::syscall_shellcode(&mut code);
 		ret.insert(TrampType::Syscall, std::mem::take(&mut code));
 		assert!(code.is_empty());
 
-		call_shellcode(&mut code);
+		TargetCode::call_shellcode(&mut code);
 		ret.insert(TrampType::Call, std::mem::take(&mut code));
 
-		ret_shellcode(&mut code);
+		TargetCode::ret_shellcode(&mut code);
 		ret.insert(TrampType::Ret, std::mem::take(&mut code));
 
 		ret
@@ -491,9 +490,14 @@ impl Tracer {
 		log::trace!("signal @ {pc:x}");
 		if signal == pete::Signal::SIGTRAP {
 			// The program counter can either point to BP instruction or next
-			// instruction
+			// instruction. Breakpoint is always the same size, so could just
+			// hardcode it.
 			#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-			let pc = pc - arch::bp_code().len() as u64;
+			let pc = pc - {
+				let mut sc = Vec::new();
+				TargetCode::bp_shellcode(&mut sc);
+				sc.len() as u64
+			};
 
 			if let Some(stop) = self.check_if_swbp(tracee, tid, pc.into())? {
 				return Ok(stop);
@@ -636,9 +640,10 @@ impl Tracer {
 	}
 
 	fn _insert_single_sw_bp(&mut self, tracee: &mut TraceStop, bp: SwBp) -> Result<()> {
-		let code = arch::bp_code();
+		let mut code = Vec::new();
+		TargetCode::bp_shellcode(&mut code);
 
-		tracee.tracee.write_memory(bp.addr.into(), code)?;
+		tracee.tracee.write_memory(bp.addr.into(), &code)?;
 		self.swbps.insert(bp.addr, bp);
 		Ok(())
 	}
@@ -650,7 +655,8 @@ impl Tracer {
 		tracee: &mut TraceStop,
 		addr: TargetPtr,
 	) -> Result<()> {
-		let code = arch::bp_code();
+		let mut code = Vec::new();
+		TargetCode::bp_shellcode(&mut code);
 
 		if let Some(_bp) = self.swbps.get_mut(&addr) {
 		} else {
