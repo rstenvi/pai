@@ -1,5 +1,5 @@
 use crate::{
-	api::messages::{BpType, Cont, Stop, Stopped, Thread, ThreadStatus, TrampType},
+	api::messages::{BpType, Stop, Stopped, Thread, ThreadStatus, TrampType, Wait},
 	arch::{self, prep_native_syscall, RegisterAccess},
 	buildinfo::BuildArch,
 	target::GenericCc,
@@ -46,7 +46,7 @@ impl TraceError {
 		}
 	}
 }
-type TraceResult<T> = std::result::Result<T, TraceError>;
+type TraceResult<T> = std::result::Result<T, Box<TraceError>>;
 
 impl From<pete::Stop> for Stop {
 	fn from(value: pete::Stop) -> Self {
@@ -79,9 +79,16 @@ impl From<pete::Stop> for Stop {
 			pete::Stop::Signaling {
 				signal,
 				core_dumped,
-			} => Self::Signalling { signal: signal as i32, core_dumped },
-			pete::Stop::Vfork { new } => Self::VforkStart { new: new.as_raw() as Tid },
-			pete::Stop::VforkDone { new } => Self::VforkDone { new: new.as_raw() as Tid },
+			} => Self::Signalling {
+				signal: signal as i32,
+				core_dumped,
+			},
+			pete::Stop::Vfork { new } => Self::VforkStart {
+				new: new.as_raw() as Tid,
+			},
+			pete::Stop::VforkDone { new } => Self::VforkDone {
+				new: new.as_raw() as Tid,
+			},
 			pete::Stop::Seccomp { data } => Self::Seccomp { data },
 		}
 	}
@@ -118,7 +125,7 @@ pub struct Tracer {
 	tramps: HashMap<TrampType, TargetPtr>,
 	tracee: HashMap<Tid, TraceStop>,
 	scratch: HashMap<Perms, AllocedMemory>,
-	lastaction: HashMap<Tid, Cont>,
+	lastaction: HashMap<Tid, Wait>,
 	pendingswbps: HashMap<Tid, SwBp>,
 	syscallcc: GenericCc,
 }
@@ -175,7 +182,7 @@ impl Tracer {
 			.arch
 			.clone()
 	}
-	pub fn cont(&mut self, tid: Tid, cont: Cont) -> Result<()> {
+	pub fn cont(&mut self, tid: Tid, cont: Wait) -> Result<()> {
 		log::debug!("cont {tid} {cont:?}");
 		self.lastaction.insert(tid, cont);
 		let mut tracee = self.remove_tracee(tid)?;
@@ -187,12 +194,12 @@ impl Tracer {
 		// <https://stackoverflow.com/a/25268484> We therefore insert a
 		// breakpoint on the next instruction instead.
 		#[cfg(target_arch = "arm")]
-		let restart = if cont == Cont::Step {
+		let restart = if cont == Wait::Step {
 			let pc = tracee.regs.get_pc();
 			// No support for Thumb mode yet
 			assert!(pc & 0b11 == 0);
 			self.insert_single_sw_bp(/*0, */ tid, &mut tracee, (pc + 8).into())?;
-			Cont::Cont.into()
+			Wait::Cont.into()
 		} else {
 			cont.into()
 		};
@@ -280,7 +287,7 @@ impl Tracer {
 			let tracee = self.remove_tracee(tid)?;
 			let tracee = self
 				.init_tramps(tracee)
-				.map_err(|x| self.fix_non_fatal(x))?;
+				.map_err(|x| self.fix_non_fatal(*x))?;
 			let v = self._get_trampoline_addr(tid, t, maxattempts - 1);
 			self.tracee.insert(tid, tracee);
 			v
@@ -458,14 +465,14 @@ impl Tracer {
 			}
 
 			#[cfg(target_arch = "arm")]
-			if let Some(Cont::Step) = self.lastaction.get(&tid) {
+			if let Some(Wait::Step) = self.lastaction.get(&tid) {
 				return Ok(Some(Stop::Step { pc }));
 			}
 
 			log::trace!("returning breakpoint");
 			let stop = Stop::Breakpoint { pc, /*, clients*/ };
 			Some(stop)
-		} else if let Some(Cont::Step) = self.lastaction.get(&tid) {
+		} else if let Some(Wait::Step) = self.lastaction.get(&tid) {
 			let ret = Stop::Step { pc };
 			Some(ret)
 		} else {
@@ -480,7 +487,7 @@ impl Tracer {
 		tid: Tid,
 	) -> Result<Stop> {
 		let pc = tracee.regs.get_pc();
-		
+
 		log::trace!("signal @ {pc:x}");
 		if signal == pete::Signal::SIGTRAP {
 			// The program counter can either point to BP instruction or next
@@ -720,7 +727,9 @@ impl Tracer {
 	// }
 	fn fix_non_fatal(&mut self, error: TraceError) -> Error {
 		if let Some(mut tracee) = error.tracee {
-			tracee.refresh_regs().expect("fatal error when getting registers");
+			tracee
+				.refresh_regs()
+				.expect("fatal error when getting registers");
 			self.tracee.insert(tracee.tid(), tracee);
 		} else {
 			log::error!("tracee on tid was fatal, tid probably exited or crashed");
@@ -732,7 +741,7 @@ impl Tracer {
 		let tracee = self.remove_tracee(tid)?;
 		let tracee = self
 			.run_until(tracee, Self::cb_stop_is_bkpt)
-			.map_err(|x| self.fix_non_fatal(x))?;
+			.map_err(|x| self.fix_non_fatal(*x))?;
 		self.tracee.insert(tid, tracee);
 		Ok(())
 	}
@@ -842,14 +851,17 @@ impl Tracer {
 			let tracee = self.init_tramps(tracee)?;
 			self._exec_tramp(tracee, tramp, max - 1)
 		} else {
-			Err(TraceError::new(tracee.tracee, Error::TooManyAttempts))
+			Err(Box::new(TraceError::new(
+				tracee.tracee,
+				Error::TooManyAttempts,
+			)))
 		}
 	}
 	pub fn set_regs_to_exec_tramp(&mut self, tid: Tid, tramp: &TrampType) -> Result<()> {
 		let tracee = self.remove_tracee(tid)?;
 		let tracee = self
 			._exec_tramp(tracee, tramp, 1)
-			.map_err(|x| self.fix_non_fatal(x))?;
+			.map_err(|x| self.fix_non_fatal(*x))?;
 		self.insert_tracee(tracee.tracee)?;
 		Ok(())
 	}
@@ -962,15 +974,17 @@ impl Tracer {
 
 		let tracee = self
 			._exec_tramp(tracee, &TrampType::Syscall, 1)
-			.map_err(|x| self.fix_non_fatal(x))?;
+			.map_err(|x| self.fix_non_fatal(*x))?;
 
 		let mut tracee = self
 			.run_until(tracee, Self::cb_stop_is_bkpt)
-			.map_err(|x| self.fix_non_fatal(x))?;
+			.map_err(|x| self.fix_non_fatal(*x))?;
 
 		let retval = self.syscallcc.get_retval(&tracee.regs)?;
 		tracee.tracee.set_registers(oregs.into())?;
-		tracee.refresh_regs().expect("fatal error when getting registers");
+		tracee
+			.refresh_regs()
+			.expect("fatal error when getting registers");
 
 		self.insert_tracee(tracee.tracee)?;
 		Ok(retval.into())
@@ -1002,7 +1016,7 @@ impl Tracer {
 					pete::Stop::SignalDelivery { signal } => {
 						if *signal as i32 == Signal::SIGSEGV as i32 {
 							let err = Error::msg("received SIGSEGV");
-							return Err(TraceError::new(tracee, err));
+							return Err(Box::new(TraceError::new(tracee, err)));
 						}
 					}
 					_ => log::warn!("unexpected stop, trying to continue {:?}", tracee.stop),
@@ -1013,7 +1027,7 @@ impl Tracer {
 				.map_err(|x| TraceError::new(tracee, x.into()))?;
 		}
 		log::error!("tracer wait ended in none");
-		Err(TraceError::new_fatal(Error::TargetStopped))
+		Err(Box::new(TraceError::new_fatal(Error::TargetStopped)))
 	}
 	fn signal_is_bkpt(signal: &pete::Signal) -> Result<bool> {
 		match signal {
@@ -1055,7 +1069,6 @@ impl Tracer {
 			// Signal::SIGIO => todo!(),
 			// Signal::SIGPWR => todo!(),
 			// Signal::SIGSYS => todo!(),
-			
 		}
 	}
 	fn cb_stop_is_bkpt(stop: &pete::Stop) -> Result<bool> {
@@ -1070,7 +1083,7 @@ impl Tracer {
 			_ => {
 				log::warn!("got unexpected stop {stop:?} when waiting for breakpoint");
 				Ok(false)
-			},
+			}
 		}
 	}
 	fn find_executable_space(&self) -> Result<TargetPtr> {
@@ -1220,7 +1233,9 @@ impl Tracer {
 			.tracee
 			.set_registers(oregs)
 			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
-		tracee.refresh_regs().expect("fatal error when getting registers");
+		tracee
+			.refresh_regs()
+			.expect("fatal error when getting registers");
 		Ok(tracee)
 	}
 }
@@ -1346,7 +1361,7 @@ mod test {
 		let (mut tracer, tid) = spawn().unwrap();
 
 		// Just send continue and wait until stop
-		tracer.cont(tid, Cont::Cont).unwrap();
+		tracer.cont(tid, Wait::Cont).unwrap();
 		let stop = tracer.wait();
 		log::trace!("stop {stop:?}");
 	}
@@ -1359,7 +1374,7 @@ mod test {
 		// Single step for a while
 		let mut lastpc: usize = 0;
 		for _i in 0..10 {
-			tracer.cont(tid, Cont::Step).unwrap();
+			tracer.cont(tid, Wait::Step).unwrap();
 			let stop = tracer.wait().unwrap();
 
 			assert!(matches!(stop.stop, Stop::Step { pc: _ }));
@@ -1368,7 +1383,7 @@ mod test {
 		}
 
 		// Continue until exit
-		tracer.cont(tid, Cont::Cont).unwrap();
+		tracer.cont(tid, Wait::Cont).unwrap();
 		let stop = tracer.wait();
 		log::trace!("stop {stop:?}");
 	}
@@ -1379,7 +1394,7 @@ mod test {
 
 		// Trace all syscalls
 		loop {
-			tracer.cont(tid, Cont::Syscall).unwrap();
+			tracer.cont(tid, Wait::Syscall).unwrap();
 			let stop = tracer.wait();
 			match stop {
 				Ok(stop) => {
@@ -1426,11 +1441,11 @@ mod test {
 		let d = tracer.read_memory(tid, runentry, 4).unwrap();
 		log::trace!("bytes {d:?}");
 
-		tracer.cont(tid, Cont::Cont).unwrap();
+		tracer.cont(tid, Wait::Cont).unwrap();
 		let stop = tracer.wait().unwrap();
 		log::trace!("stop1 {stop:?}");
 
-		tracer.cont(tid, Cont::Cont).unwrap();
+		tracer.cont(tid, Wait::Cont).unwrap();
 		let _stop = tracer.wait();
 	}
 
@@ -1468,7 +1483,7 @@ mod test {
 	fn trace_err() {
 		let (mut tracer, tid) = spawn().unwrap();
 		let t = tid + 42;
-		let r = tracer.cont(t, Cont::Cont);
+		let r = tracer.cont(t, Wait::Cont);
 		log::debug!("err {r:?}");
 		assert!(r.is_err());
 		assert!(tracer.detach(t).is_err());
@@ -1514,7 +1529,7 @@ mod test {
 		let (mut tracer, tid) = setup_in_mem(&bin).unwrap();
 
 		loop {
-			tracer.cont(tid, Cont::Syscall).unwrap();
+			tracer.cont(tid, Wait::Syscall).unwrap();
 			let stop = tracer.wait();
 			match stop {
 				Ok(stop) => {

@@ -214,7 +214,7 @@ mod tests {
 	#[cfg(feature = "syscalls")]
 	#[test]
 	fn clientmgr_strace0() {
-    	use crate::api::messages::Direction;
+		use crate::api::messages::Direction;
 
 		let mut ctx = set_up_int(0).unwrap();
 		let sec = ctx.secondary_mut();
@@ -224,12 +224,8 @@ mod tests {
 			format!("{sys}");
 			sys.enrich_values().unwrap();
 			format!("{sys}");
-			sys.parse_deep::<crate::api::Command>(
-				sys.tid,
-				cl.client_mut(),
-				Direction::InOut,
-			)
-			.unwrap();
+			sys.parse_deep::<crate::api::Command>(sys.tid, cl.client_mut(), Direction::InOut)
+				.unwrap();
 			let _sys = format!("{sys}");
 			*(cl.data_mut()) += 1;
 			Ok(CbAction::None)

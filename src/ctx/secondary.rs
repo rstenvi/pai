@@ -87,6 +87,11 @@ impl<Entry, Exit> Callback<Entry, Exit> {
 	}
 }
 
+type StoredHook<T, Err> = Callback<HookEntryCb<T, Err>, HookExitCb<T, Err>>;
+
+#[cfg(feature = "syscalls")]
+type SyscallHook<T, Err> = Callback<SyscallEntryCb<T, Err>, SyscallExitCb<T, Err>>;
+
 /// Each connected client will get access  to this context object.
 ///
 /// This object will always belong to a [crate::ctx::Main] and will never be
@@ -109,7 +114,7 @@ where
 	signalcbs: HashMap<i32, SignalCb<T, Err>>,
 
 	#[cfg(feature = "syscalls")]
-	syscallcb: Option<Callback<SyscallEntryCb<T, Err>, SyscallExitCb<T, Err>>>,
+	syscallcb: Option<SyscallHook<T, Err>>,
 
 	eventcb: Option<EventCb<T, Err>>,
 	stepcb: Option<StepCb<T, Err>>,
@@ -117,9 +122,9 @@ where
 
 	callframes: HashMap<(Tid, TargetPtr), CallFrame>,
 
-	funcentrycbs: HashMap<TargetPtr, Callback<HookEntryCb<T, Err>, HookExitCb<T, Err>>>,
+	funcentrycbs: HashMap<TargetPtr, StoredHook<T, Err>>,
 	#[cfg(feature = "syscalls")]
-	syscallcbs: HashMap<usize, Callback<SyscallEntryCb<T, Err>, SyscallExitCb<T, Err>>>,
+	syscallcbs: HashMap<usize, SyscallHook<T, Err>>,
 
 	stoppedcb: Option<StoppedCb<T, Err>>,
 
@@ -519,6 +524,7 @@ where
 					let dl = Prctl::init(client)?;
 					Self::start_plugin(dl)?
 				}
+				#[cfg(not(feature = "syscalls"))]
 				_ => panic!("called plugin not implemented yet: {plugin:?}"),
 			};
 			let event = EventInner::PluginLoad {
@@ -835,7 +841,7 @@ where
 					CbAction::EarlyRet { ret: _ } => {
 						log::error!("EarlyRet for syscalls not implemented yet");
 						return Err(Error::Unsupported);
-					},
+					}
 				},
 				Err(e) => {
 					log::error!("syscall callback on {sysno} returned error: {e:?}");
@@ -858,7 +864,7 @@ where
 					CbAction::EarlyRet { ret: _ } => {
 						log::error!("EarlyRet for syscalls not implemented yet");
 						return Err(Error::Unsupported);
-					},
+					}
 				},
 				Err(e) => {
 					log::warn!("syscall cb resulted in error: '{e:?}'");
@@ -901,7 +907,9 @@ where
 			}
 		} else if let Some(mut frame) = std::mem::take(&mut self.callframes.remove(&(tid, addr))) {
 			log::debug!("found function exit BP at {addr:x}");
-			if let Some(cb) = std::mem::take(&mut self.funcentrycbs.remove(&frame.function_addr().into())) {
+			if let Some(cb) =
+				std::mem::take(&mut self.funcentrycbs.remove(&frame.function_addr().into()))
+			{
 				// if let Some(exit) = std::mem::take(&mut exit) {
 
 				// We maintain the same callframe so that the user can parse
@@ -923,7 +931,7 @@ where
 						CbAction::Remove => {
 							log::error!("Remove from function entry not implemented yet");
 							return Err(Error::Unsupported);
-						},
+						}
 						CbAction::EarlyRet { ret } => {
 							self.cc.set_retval(ret.into(), &mut regs)?;
 							self.client.set_registers(tid, regs)?;

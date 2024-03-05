@@ -306,7 +306,7 @@ impl GenericCc {
 		let regs = crate::arch::x86::user_regs_struct::default();
 		let args = vec![
 			CcArgAccess::from_sp_offset(4, 4),
-			CcArgAccess::from_sp_offset((1 * 4) + 4, 4),
+			CcArgAccess::from_sp_offset(4 + 4, 4),
 			CcArgAccess::from_sp_offset((2 * 4) + 4, 4),
 			CcArgAccess::from_sp_offset((3 * 4) + 4, 4),
 			CcArgAccess::from_sp_offset((4 * 4) + 4, 4),
@@ -349,7 +349,7 @@ impl GenericCc {
 	fn new_systemv_aarch64() -> Result<Self> {
 		let args = vec![
 			CcArgAccess::from_reg_offset("x0", 0, 8),
-			CcArgAccess::from_reg_offset("x1", 1 * 8, 8),
+			CcArgAccess::from_reg_offset("x1", 8, 8),
 			CcArgAccess::from_reg_offset("x2", 2 * 8, 8),
 			CcArgAccess::from_reg_offset("x3", 3 * 8, 8),
 			CcArgAccess::from_reg_offset("x4", 4 * 8, 8),
@@ -394,7 +394,7 @@ impl GenericCc {
 		// let regs = crate::arch::x86::user_regs_struct::default();
 		let args = vec![
 			CcArgAccess::from_reg_offset("x0", 0, 8),
-			CcArgAccess::from_reg_offset("x1", 1 * 8, 8),
+			CcArgAccess::from_reg_offset("x1", 8, 8),
 			CcArgAccess::from_reg_offset("x2", 2 * 8, 8),
 			CcArgAccess::from_reg_offset("x3", 3 * 8, 8),
 			CcArgAccess::from_reg_offset("x4", 4 * 8, 8),
@@ -590,7 +590,12 @@ impl GenericCc {
 	) -> Result<()> {
 		Self::_set_arg(&self.calltramp, regs, value.into(), None)
 	}
-	pub fn set_arg_regonly(&self, num: usize, val: u64, regs: &mut dyn RegisterAccess) -> Result<()> {
+	pub fn set_arg_regonly(
+		&self,
+		num: usize,
+		val: u64,
+		regs: &mut dyn RegisterAccess,
+	) -> Result<()> {
 		let arg = self.args.get(num).ok_or(Error::Unknown)?;
 		Self::_set_arg(arg, regs, val, None)
 	}
@@ -598,7 +603,11 @@ impl GenericCc {
 		let arg = self.args.get(num).ok_or(Error::Unknown)?;
 		Self::_get_arg(arg, regs, None)
 	}
-	pub fn get_return_addr(&self, regs: &dyn RegisterAccess, client: &mut crate::Client) -> Result<u64> {
+	pub fn get_return_addr(
+		&self,
+		regs: &dyn RegisterAccess,
+		client: &mut crate::Client,
+	) -> Result<u64> {
 		let arg = self.returnaddr.as_ref().ok_or(Error::unsupported())?;
 		Self::_get_arg(arg, regs, Some(client))
 	}

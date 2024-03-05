@@ -55,7 +55,7 @@ pub struct Virtuals {
 }
 
 impl Virtuals {
-	pub fn from_virtuals(&mut self, virtuals: Vec<Syscall>, _consts: &parser::Consts) {
+	pub fn parse_from_virtuals(&mut self, virtuals: Vec<Syscall>, _consts: &parser::Consts) {
 		for virt in virtuals.into_iter() {
 			if virt.ident.name == "ioctl" {
 				let name = virt.ident.subname.join("_");
@@ -122,16 +122,14 @@ impl Syscalls {
 
 		this
 	}
+	#[allow(dead_code)]
 	fn resolve_const(arg: &parser::Argument, consts: &parser::Consts) {
-		match &arg.argtype {
-			parser::ArgType::Ident(id) => {
-				let _m = consts
-					.consts
-					.iter()
-					.filter(|x| x.name == id.name)
-					.collect::<Vec<_>>();
-			}
-			_ => {}
+		if let parser::ArgType::Ident(id) = &arg.argtype {
+			let _m = consts
+				.consts
+				.iter()
+				.filter(|x| x.name == id.name)
+				.collect::<Vec<_>>();
 		}
 	}
 	pub fn remove_virtual(&mut self) {
@@ -140,7 +138,7 @@ impl Syscalls {
 				.extract_if(|x| !x.ident.subname.is_empty())
 				.collect::<Vec<_>>();
 
-			self.virts.from_virtuals(virts, &self.parsed.consts);
+			self.virts.parse_from_virtuals(virts, &self.parsed.consts);
 		}
 
 		let _ = self

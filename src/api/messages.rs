@@ -13,7 +13,7 @@ use super::Args;
 
 /// To perform certain tasks in the tracee, we rely on some trampoline code
 /// snippets.
-/// 
+///
 /// The script can query the location of these and also modify the assembly
 /// snippets used.
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Serialize, Deserialize)]
@@ -524,7 +524,9 @@ impl std::fmt::Display for EventInner {
 				flags,
 				fd,
 				offset,
-			} => f.write_fmt(format_args!("Mmap(0x{addr:x}, 0x{size:x}, {prot:?}, {flags}, 0x{fd:x} 0x{offset:x})")),
+			} => f.write_fmt(format_args!(
+				"Mmap(0x{addr:x}, 0x{size:x}, {prot:?}, {flags}, 0x{fd:x} 0x{offset:x})"
+			)),
 			// EventInner::MsgLog { source: _, msg: _ } => todo!(),
 		}
 	}
@@ -558,7 +560,7 @@ impl Thread {
 }
 
 #[derive(Default, Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-pub(crate) enum Cont {
+pub(crate) enum Wait {
 	#[default]
 	Cont,
 	Syscall,
@@ -568,12 +570,12 @@ pub(crate) enum Cont {
 	Step,
 }
 
-impl From<Cont> for pete::Restart {
-	fn from(value: Cont) -> Self {
+impl From<Wait> for pete::Restart {
+	fn from(value: Wait) -> Self {
 		match value {
-			Cont::Cont => pete::Restart::Continue,
-			Cont::Syscall => pete::Restart::Syscall,
-			Cont::Step => pete::Restart::Step,
+			Wait::Cont => pete::Restart::Continue,
+			Wait::Syscall => pete::Restart::Syscall,
+			Wait::Step => pete::Restart::Step,
 		}
 	}
 }

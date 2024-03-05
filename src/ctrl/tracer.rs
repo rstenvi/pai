@@ -2,8 +2,8 @@ use crate::{
 	api::{
 		args::ClientArgs,
 		messages::{
-			BpType, Cont, Event, ExecSyscall, LogFormat, LogOutput, MasterComm, NewClientReq,
-			RegEvent, Stopped, TrampType,
+			BpType, Event, ExecSyscall, LogFormat, LogOutput, MasterComm, NewClientReq, RegEvent,
+			Stopped, TrampType, Wait,
 		},
 		Client, Command, ManagerCmd, ProcessCmd, RemoteCmd, Response, ThreadCmd,
 	},
@@ -247,10 +247,10 @@ impl CtrlTracer {
 		self.loggers.log_response(&rsp)?;
 		Ok(())
 	}
-	fn find_cont(&mut self, tid: Tid) -> Cont {
-		let mut ret = Cont::Cont;
+	fn find_cont(&mut self, tid: Tid) -> Wait {
+		let mut ret = Wait::Cont;
 		for (key, client) in self.clients.iter_mut() {
-			let c: Cont = client.get_cont(tid);
+			let c: Wait = client.get_cont(tid);
 			log::debug!("cont {key} {tid} {c:?}");
 			if c > ret {
 				ret = c;
@@ -639,7 +639,7 @@ pub struct ClientMaster {
 	pending: Vec<Response>,
 	handle: JoinHandle<Result<()>>,
 	args: ClientArgs,
-	single_cont: HashMap<Tid, (Cont, usize)>,
+	single_cont: HashMap<Tid, (Wait, usize)>,
 }
 
 impl ClientMaster {
@@ -716,15 +716,15 @@ impl ClientMaster {
 	}
 
 	pub fn set_step_ins(&mut self, tid: Tid, count: usize) {
-		self.single_cont.insert(tid, (Cont::Step, count));
+		self.single_cont.insert(tid, (Wait::Step, count));
 	}
-	fn _get_cont(&mut self, tid: Tid) -> Cont {
+	fn _get_cont(&mut self, tid: Tid) -> Wait {
 		match self.state {
-			ClientState::Detaching => Cont::default(),
+			ClientState::Detaching => Wait::default(),
 			_ => self.args.get_cont(tid),
 		}
 	}
-	pub fn get_cont(&mut self, tid: Tid) -> Cont {
+	pub fn get_cont(&mut self, tid: Tid) -> Wait {
 		let ret = if let Some((c, mut count)) = self.single_cont.remove(&tid) {
 			count -= 1;
 			if count == 0 {

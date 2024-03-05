@@ -44,8 +44,6 @@ macro_rules! write_syscalls {
 	};
 }
 
-
-
 impl std::fmt::Display for LenType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -79,7 +77,6 @@ impl std::fmt::Display for LenType {
 // 	pub st_ctime_nsec: i64,
 // 	__unused: [i64; 3],
 // }
-
 
 impl std::fmt::Display for Value {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -282,8 +279,6 @@ impl Value {
 	}
 }
 
-
-
 impl std::fmt::Display for SysValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		if let Some(parsed) = self.parsed.as_ref() {
@@ -305,7 +300,6 @@ impl SysValue {
 		self.raw_value
 	}
 }
-
 
 impl std::fmt::Display for SysArg {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -341,15 +335,11 @@ impl SysArg {
 	}
 	pub fn clear_parsed(&mut self) {
 		log::debug!("clearing {:?}", self.value.parsed);
-		if let Some(parsed) = std::mem::take(&mut self.value.parsed) {
-			if let Value::ParsedPtr { old, value: _ } = parsed {
-				self.value.parsed = Some(*old);
-			}
+		if let Some(Value::ParsedPtr { old, value: _ }) = std::mem::take(&mut self.value.parsed) {
+			self.value.parsed = Some(*old);
 		}
 	}
 }
-
-
 
 impl Direction {
 	pub fn matches(&self, other: &Self) -> bool {
@@ -372,8 +362,6 @@ impl From<syzlang_parser::parser::Direction> for Direction {
 		}
 	}
 }
-
-
 
 impl std::fmt::Display for SyscallItem {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -412,7 +400,7 @@ enum TmpParseValue {
 }
 
 impl TmpParseValue {
-	fn as_value(self) -> Result<serde_json::Value> {
+	fn into_value(self) -> Result<serde_json::Value> {
 		match self {
 			TmpParseValue::Number(v) => Ok(serde_json::to_value(v)?),
 			TmpParseValue::Ptr(v, _) => Ok(serde_json::to_value(v.as_u64())?),

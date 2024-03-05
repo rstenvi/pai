@@ -12,7 +12,10 @@ use crossbeam_channel::{Receiver, Sender};
 #[cfg(feature = "syscalls")]
 use crate::api::messages::Stop;
 #[cfg(feature = "syscalls")]
-use crate::api::{args::Enrich, messages::{Direction, SyscallItem}};
+use crate::api::{
+	args::Enrich,
+	messages::{Direction, SyscallItem},
+};
 
 use crate::api::{
 	args::{Args, ClientArgs},
@@ -164,13 +167,7 @@ impl ClientThread {
 		Ok(Some(Response::Event(event)))
 	}
 	#[cfg(feature = "syscalls")]
-	fn enrich(
-		&mut self,
-		sysno: usize,
-		sys: &mut SyscallItem,
-		dir: Direction,
-	) -> Result<()> {
-		
+	fn enrich(&mut self, sysno: usize, sys: &mut SyscallItem, dir: Direction) -> Result<()> {
 		let enrich = self.args.enrich_syscall_sysno(sys.tid, sysno);
 		match enrich {
 			Enrich::None => {}
@@ -186,7 +183,11 @@ impl ClientThread {
 		}
 		Ok(())
 	}
-	fn fill_syscall_regs(args: &mut Vec<u64>, cc: &GenericCc, regs: &dyn RegisterAccess) -> Result<()> {
+	fn fill_syscall_regs(
+		args: &mut Vec<u64>,
+		cc: &GenericCc,
+		regs: &dyn RegisterAccess,
+	) -> Result<()> {
 		let len = args.capacity();
 		for i in 0..len {
 			let ins = cc.get_arg_regonly(i, regs)?;
@@ -196,7 +197,7 @@ impl ClientThread {
 	}
 	#[cfg(feature = "syscalls")]
 	fn transform_syscall(&mut self, tid: Tid, entry: bool) -> Result<Option<Response>> {
-		use crate::{api::args::Enrich, arch::RegisterAccess, api::messages::Direction};
+		use crate::{api::args::Enrich, api::messages::Direction, arch::RegisterAccess};
 		log::trace!("transform syscall {tid} {entry}");
 		let regs = self.client.get_registers(tid)?;
 		if entry {

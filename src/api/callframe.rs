@@ -79,8 +79,12 @@ impl CallFrame {
 		}
 	}
 
-	pub fn function_addr(&self) -> u64 { self.func }
-	pub fn tid(&self) -> Tid { self.tid }
+	pub fn function_addr(&self) -> u64 {
+		self.func
+	}
+	pub fn tid(&self) -> Tid {
+		self.tid
+	}
 	pub fn arg(&self, idx: usize, client: &mut crate::Client) -> Result<CallFrameArg> {
 		let val = self.cc.get_arg(idx, &self.regs, client)?;
 		let ins = CallFrameArg::new(val.into());

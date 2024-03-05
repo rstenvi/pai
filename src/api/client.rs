@@ -493,7 +493,7 @@ impl Client<Command, Response> {
 			_ => {
 				log::warn!("got unexpected value {r:?} when resolving syscall");
 				None
-			},
+			}
 		};
 		let r = r.ok_or(Error::NotFound)?;
 		Ok(r)

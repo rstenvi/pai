@@ -1,6 +1,6 @@
 //! A client can use [Args] object to control behaviour in trace controllers
 //! components.
-use crate::api::messages::Cont;
+use crate::api::messages::Wait;
 use crate::utils::process::Tid;
 use crate::{Result, TargetPtr};
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ struct Breakpoint {
 #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Enrich {
 	/// This is called None, but it does do some parsing:
-	/// 
+	///
 	/// - Detect system call name
 	/// - Detect number of arguments
 	/// - Find name of argument
@@ -26,13 +26,13 @@ pub enum Enrich {
 	None,
 
 	/// In addition to steps taken in [Enrich::None], also:
-	/// 
+	///
 	/// - Annotate with metadata about argument
 	/// - Find out which flag values int resolves to
 	Basic,
 
 	/// In addition to steps taken in [Enrich::Basic], also:
-	/// 
+	///
 	/// - Read data from pointers to construct strings, objects, integers, etc.
 	Full,
 }
@@ -253,12 +253,12 @@ impl Args {
 			Ok(())
 		}
 	}
-	fn get_cont(&self) -> Cont {
+	fn get_cont(&self) -> Wait {
 		log::trace!("{:?}", self.syscall_traced);
 		if self.intercept_all_syscalls || !self.syscall_traced.is_empty() {
-			Cont::Syscall
+			Wait::Syscall
 		} else {
-			Cont::Cont
+			Wait::Cont
 		}
 	}
 	fn handles_syscall_enter(&self) -> bool {
@@ -329,7 +329,7 @@ impl ClientArgs {
 			bps: HashMap::new(),
 		}
 	}
-	pub fn get_cont(&self, tid: Tid) -> Cont {
+	pub fn get_cont(&self, tid: Tid) -> Wait {
 		if let Some(args) = self.threads.get(&tid) {
 			args.get_cont()
 		} else {

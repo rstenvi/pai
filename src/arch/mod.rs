@@ -12,9 +12,8 @@ pub mod riscv64;
 pub mod x86;
 pub mod x86_64;
 
-
 /// All possible register values for supported architectures.
-/// 
+///
 /// All reading/writing of registers should be done through [RegisterAccess] or
 /// [crate::target::GenericCc].
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -191,30 +190,43 @@ macro_rules! impl_conv_pete_generic {
 }
 pub(crate) use impl_conv_pete_generic;
 
+macro_rules! get_def_little {
+	($get:ident, $isbig:expr) => {
+		if $isbig {
+			let mut r = $get.clone();
+			r.reverse();
+			r
+		} else {
+			$get
+		}
+	};
+}
+pub(crate) use get_def_little;
+
 /// Architecture-neutral manner to read/write register.
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```rust
 /// // This would normally be provided through some method
 /// use pai::RegisterAccess;
 /// let regs = pai::arch::x86_64::user_regs_struct::default();
 /// let mut regs: pai::Registers = regs.into();
-/// 
+///
 /// // Below is the relevant code
-/// 
+///
 /// regs.set_pc(0xdeadbeef);
 /// assert_eq!(regs.get_pc(), 0xdeadbeef);
-/// 
+///
 /// // If you need access to a specic named register, you need to
 /// // get offset and sizes to the registers. You don't need to do
 /// // this before every access, just do it once on some register.
 /// let (off, size) = (regs.offset_of("rax").unwrap(), regs.size_of("rax").unwrap());
-/// 
+///
 /// // We can now get the register
 /// let mut rax = Vec::with_capacity(size);
 /// regs.get_value(off, size, &mut rax).unwrap();
-/// 
+///
 /// // A more convenient way to get the registers is by specifying a calling
 /// // convention.
 /// let cc = pai::target::GenericCc::new_syscall_target().unwrap();
@@ -240,13 +252,13 @@ pub trait RegisterAccess {
 	fn set_sysno(&mut self, sysno: usize);
 
 	/// Get offset of a register based on the name.
-	/// 
+	///
 	/// This can be used in later calls to [RegisterAccess::get_value] and
 	/// [RegisterAccess::set_value].
 	fn offset_of(&self, regs: &str) -> Result<usize>;
 
 	/// Get size of register based on name.
-	/// 
+	///
 	/// Should be used in conjunction with [RegisterAccess::offset_of].
 	fn size_of(&self, regs: &str) -> Result<usize>;
 
@@ -365,7 +377,6 @@ pub(crate) fn ret_shellcode(code: &mut Vec<u8>) {
 	}
 }
 
-
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -385,7 +396,7 @@ mod test {
 					assert_eq!(regs.get_sp(), 2);
 				}
 			}
-		}
+		};
 	}
 
 	#[cfg(target_arch = "x86_64")]
@@ -399,5 +410,4 @@ mod test {
 
 	#[cfg(target_arch = "aarch32")]
 	gen_test_regs_arch! { aarch32 }
-
 }

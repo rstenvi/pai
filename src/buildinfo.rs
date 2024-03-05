@@ -58,6 +58,23 @@ pub enum BuildEndian {
 	Big,
 	Native,
 }
+impl BuildEndian {
+	pub fn is_big(&self) -> bool {
+		match self {
+			BuildEndian::Little => false,
+			BuildEndian::Big => true,
+			BuildEndian::Native => {
+				#[cfg(target_endian = "big")]
+				{ true }
+				#[cfg(target_endian = "little")]
+				{ false }
+			},
+		}
+	}
+	pub fn is_little(&self) -> bool {
+		!self.is_big()
+	}
+}
 
 impl std::str::FromStr for BuildEndian {
 	type Err = anyhow::Error;

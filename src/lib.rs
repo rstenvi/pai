@@ -1,5 +1,5 @@
 //! # Process Analyzer and Instrumenter
-//! 
+//!
 //! A tool to analyze and instrument running processes. Currently, only Linux is
 //! supported and the only tracing backend supported is currently `ptrace`.
 //!

@@ -1,5 +1,6 @@
 use crate::{
-	api::{messages::NewClientReq, Client, Command, Response}, Error, Result
+	api::{messages::NewClientReq, Client, Command, Response},
+	Error, Result,
 };
 use crossbeam_channel::{unbounded, Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
