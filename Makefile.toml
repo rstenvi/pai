@@ -70,6 +70,11 @@ run_task = "crosstest"
 env = { TARGET = ["aarch64-linux-android"] }
 run_task = "crosstest"
 
+# This only builds with cargo and not cross, so no automatic testing yet.
+[tasks.test-riscv64]
+env = { TARGET = ["riscv64gc-unknown-linux-gnu"] }
+run_task = "crosstest"
+
 [tasks.fulltest]
 dependencies = ["test-x86_64", "test-x86", "test-armv7-gnueabihf", "test-aarch64"]
 

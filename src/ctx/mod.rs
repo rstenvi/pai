@@ -183,7 +183,7 @@ mod tests {
 		assert_eq!(rsp, Response::TargetExit);
 	}
 
-	#[cfg(not(target_arch = "arm"))]
+	#[cfg(not(any(target_arch = "arm", target_arch = "riscv64")))]
 	#[test]
 	fn clientmgr_step1() {
 		let mut ctx = set_up_int(42).unwrap();

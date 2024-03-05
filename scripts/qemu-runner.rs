@@ -37,6 +37,7 @@ enum Arch {
 	X86_64,
 	Aarch64,
 	ArmEabi,
+	Riscv64,
 }
 impl Arch {
 	fn qemu_from_arch(&self) -> String {
@@ -45,6 +46,7 @@ impl Arch {
 			Self::X86 => String::from("qemu-system-i386"),
 			Self::X86_64 => String::from("qemu-system-x86_64"),
 			Self::Aarch64 => String::from("qemu-system-aarch64"),
+			Self::Riscv64 => String::from("qemu-system-riscv64"),
 		}
 	}
 }
@@ -57,6 +59,7 @@ impl std::str::FromStr for Arch {
 			"x86" => Ok(Self::X86),
 			"x86_64" => Ok(Self::X86_64),
 			"aarch64" => Ok(Self::Aarch64),
+			"riscv64" => Ok(Self::Riscv64),
 			_ => Err(anyhow::Error::msg("unsupported arch")),
 		}
 	}
@@ -153,6 +156,8 @@ impl RunQemu {
 				c.arg("max");
 				c.arg("-append");
 				c.arg("'console=ttyAMA0 root=/dev/vda earlyprintk=serial page_alloc.shuffle selinux=0 nokaslr'");
+				c.arg("-net");
+				c.arg(format!("user,hostfwd=tcp::{}-:22", args.port));
 			},
 			Arch::X86 => {
 				c.arg("-drive");
@@ -163,6 +168,8 @@ impl RunQemu {
 				c.arg("pc");
 				c.arg("-append");
 				c.arg("rootwait root=/dev/vda console=tty1 console=ttyS0");
+				c.arg("-net");
+				c.arg(format!("user,hostfwd=tcp::{}-:22", args.port));
 			},
 			Arch::ArmEabi => {
 				c.arg("-M");
@@ -175,15 +182,29 @@ impl RunQemu {
 				c.arg("nic,model=lan9118");
 				c.arg("-dtb");
 				c.arg("scripts/images/arm-linux-gnueabi/vexpress-v2p-ca9.dtb");
+				c.arg("-net");
+				c.arg(format!("user,hostfwd=tcp::{}-:22", args.port));
+			},
+			Arch::Riscv64 => {
+				c.arg("-M");
+				c.arg("virt");
+				c.arg("-bios");
+				c.arg("scripts/images/riscv64gc-linux-gnu/fw_jump.elf");
+				c.arg("-append");
+				c.arg("rootwait root=/dev/vda ro");
+				c.arg("-drive");
+				c.arg(format!("file={},id=hd0", args.disk.display()));
+				c.arg("-device");
+				c.arg("virtio-blk-device,drive=hd0");
+				c.arg("-netdev");
+				c.arg(format!("user,id=net0,hostfwd=tcp:127.0.0.1:{}-:22", args.port));
+				c.arg("-device");
+				c.arg("virtio-net-device,netdev=net0");
 			},
 			_ => todo!(),
 		}
 
-		c.arg("-net");
-		c.arg(format!("user,hostfwd=tcp::{}-:22", args.port));
 		log::debug!("spawning {c:?}");
-		
-
 		let mut child = c.spawn().expect("unable to spawn qemu");
 		let stdout = child.stdout.take()
 			.expect("no stdout")

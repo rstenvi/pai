@@ -4,19 +4,19 @@ use serde::{Deserialize, Serialize};
 use super::get_def_little;
 
 // rasm2 -a x86 -b 64 "ebreak"
-pub(crate) const SW_BP: [u8; 4] = [0x00, 0x10, 0x00, 0x73];
+pub(crate) const SW_BP: [u8; 4] = [0x73, 0x00, 0x10, 0x00];
 
 // rasm2 -a x86 -b 64 "ret"
-pub(crate) const RET: [u8; 4] = [0x00, 0x00, 0x80, 0x67];
+pub(crate) const RET: [u8; 4] = [0x67, 0x80, 0x00, 0x00];
 
 // rasm2 -a x86 -b 64 "jalr t0"
-pub(crate) const CALL_TRAMP: [u8; 4] = [0x00, 0x02, 0x80, 0xe7];
+pub(crate) const CALL_TRAMP: [u8; 4] = [0xe7, 0x80, 0x02, 0x00];
 
 // rasm2 -a x86 -b 64 "nop"
-pub(crate) const NOP: [u8; 4] = [0x00, 0x00, 0x00, 0x13];
+pub(crate) const NOP: [u8; 4] = [0x13, 0x00, 0x00, 0x00];
 
 // rasm2 -a x86 -b 64 "ecall"
-pub(crate) const SYSCALL: [u8; 4] = [0x00, 0x00, 0x00, 0x73];
+pub(crate) const SYSCALL: [u8; 4] = [0x73, 0x00, 0x00, 0x00];
 
 #[allow(non_camel_case_types)]
 #[repr(C)]

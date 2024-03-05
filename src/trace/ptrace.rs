@@ -186,18 +186,18 @@ impl Tracer {
 		self.lastaction.insert(tid, cont);
 		let mut tracee = self.remove_tracee(tid)?;
 
-		#[cfg(not(target_arch = "arm"))]
+		#[cfg(not(any(target_arch = "arm", target_arch = "riscv64")))]
 		let restart = cont.into();
 
 		// arm doesn't support single steps, see:
 		// <https://stackoverflow.com/a/25268484> We therefore insert a
 		// breakpoint on the next instruction instead.
-		#[cfg(target_arch = "arm")]
+		#[cfg(any(target_arch = "arm", target_arch = "riscv64"))]
 		let restart = if cont == Wait::Step {
 			let pc = tracee.regs.get_pc();
 			// No support for Thumb mode yet
 			assert!(pc & 0b11 == 0);
-			self.insert_single_sw_bp(/*0, */ tid, &mut tracee, (pc + 8).into())?;
+			self.insert_single_sw_bp(tid, &mut tracee, (pc + 4).into())?;
 			Wait::Cont.into()
 		} else {
 			cont.into()
@@ -454,7 +454,6 @@ impl Tracer {
 			tracee.regs.set_pc(pc.into());
 			tracee.tracee.set_registers(tracee.regs.clone().into())?;
 
-			//let clients = swbp.clients.clone();
 			if swbp.should_remove() {
 				tracee
 					.tracee
@@ -463,7 +462,7 @@ impl Tracer {
 				self.swbps.insert(pc, swbp);
 			}
 
-			#[cfg(target_arch = "arm")]
+			#[cfg(any(target_arch = "arm", target_arch = "riscv64"))]
 			if let Some(Wait::Step) = self.lastaction.get(&tid) {
 				return Ok(Some(Stop::Step { pc }));
 			}

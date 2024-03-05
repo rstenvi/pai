@@ -63,3 +63,16 @@ platforms supported and all architectures supported.
 
 The [Makefile.toml](Makefile.toml) target `fulltest` is executed before new
 versions are published.
+
+## Known issues
+
+- `PTRACE_SINGLESTEP` is not working correctly on `Aarch32` or `Riscv64`. This
+  is a deliberate limitation of `Aarch32`, I'm unsure if the same is the case
+  for `Riscv64`.
+  - As a workaround, we insert a new breakpoint after the instruction to
+    simulate a single-step.
+  - This workaround is obviously flawed as the next instruction may be a branch.
+    This is currently not detected and the step would then be missed completely.
+  - This bug may appear even if you don't use single-stepping since
+    single-stepping is used internally in those cases we need to redo something
+    on the next instruction, like re-inserting a breakppoint.
