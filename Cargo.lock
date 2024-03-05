@@ -250,9 +250,9 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.11.2"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c012a26a7f605efc424dd53697843a72be7dc86ad2d01f7814337794a12231d"
+checksum = "38b35839ba51819680ba087cd351788c9a3c476841207e0b8cee0b04722343b9"
 dependencies = [
  "anstream",
  "anstyle",
@@ -441,7 +441,7 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 [[package]]
 name = "libc"
 version = "0.2.152"
-source = "git+https://github.com/rstenvi/libc?branch=libc-0.2#97004e240a0b0772403bfb665d29b3a5ea712d07"
+source = "git+https://github.com/rstenvi/libc?branch=libc-0.2#0ee57519c8e7d06e9eee59b18b1e9e9872ef5e8b"
 
 [[package]]
 name = "libc"
@@ -631,7 +631,7 @@ checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 [[package]]
 name = "pete"
 version = "0.12.0"
-source = "git+https://github.com/rstenvi/pete#d4c6e471260e24b703384d18476995f8c7d701a0"
+source = "git+https://github.com/rstenvi/pete#925089bfac8bb443fed3f3afb845c0953219fc6f"
 dependencies = [
  "libc 0.2.152",
  "memoffset 0.8.0",

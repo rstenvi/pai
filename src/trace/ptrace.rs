@@ -1248,6 +1248,7 @@ impl Tracer {
 #[cfg(test)]
 mod test {
 	use super::*;
+	#[cfg(target_arch = "x86_64")]
 	use ::test::Bencher;
 	use serial_test::serial;
 	use std::{fs::OpenOptions, io::Read, path::PathBuf};
@@ -1281,6 +1282,7 @@ mod test {
 		Ok((tracer, tids[0]))
 	}
 
+	#[cfg(target_arch = "x86_64")]
 	#[bench]
 	fn bench_baseline_true(b: &mut Bencher) {
 		b.iter(|| {
@@ -1293,6 +1295,7 @@ mod test {
 		});
 	}
 
+	#[cfg(target_arch = "x86_64")]
 	#[cfg(target_os = "linux")]
 	#[bench]
 	fn bench_baseline_strace(b: &mut Bencher) {
@@ -1316,6 +1319,7 @@ mod test {
 		}
 	}
 
+	#[cfg(target_arch = "x86_64")]
 	#[bench]
 	fn bench_trace_inner(b: &mut Bencher) {
 		b.iter(|| {
@@ -1323,6 +1327,7 @@ mod test {
 		});
 	}
 
+	#[cfg(target_arch = "x86_64")]
 	#[bench]
 	fn bench_trace_read_c_str(b: &mut Bencher) {
 		let (mut tracer, tid) = spawn().unwrap();

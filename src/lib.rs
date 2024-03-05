@@ -182,6 +182,7 @@
 // Necessary for benchmarking
 #![feature(test)]
 
+#[cfg(target_arch = "x86_64")]
 extern crate test;
 
 pub mod api;

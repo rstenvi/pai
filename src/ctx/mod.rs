@@ -11,6 +11,8 @@ pub use secondary::Secondary;
 mod tests {
 	use crate::api::messages::CbAction;
 	use serial_test::serial;
+
+	#[cfg(target_arch = "x86_64")]
 	use test::Bencher;
 
 	#[cfg(feature = "syscalls")]
@@ -54,6 +56,7 @@ mod tests {
 	// 	__set_up(cmd, 0)
 	// }
 
+	#[cfg(target_arch = "x86_64")]
 	#[bench]
 	fn bench_trace_outer(b: &mut Bencher) {
 		clientmgr_basic();
@@ -63,6 +66,7 @@ mod tests {
 		})
 	}
 
+	#[cfg(target_arch = "x86_64")]
 	#[bench]
 	fn bench_trace_strace_raw(b: &mut Bencher) {
 		clientmgr_strace_raw();

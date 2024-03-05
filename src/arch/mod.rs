@@ -11,6 +11,7 @@ pub mod aarch64;
 pub mod riscv64;
 pub mod x86;
 pub mod x86_64;
+pub mod mips32;
 
 /// All possible register values for supported architectures.
 ///
@@ -23,6 +24,7 @@ pub enum ArchRegisters {
 	Aarch32(aarch32::user_regs_struct),
 	Aarch64(aarch64::user_regs_struct),
 	Riscv64(riscv64::user_regs_struct),
+	Mips32(mips32::user_regs_struct),
 }
 
 macro_rules! forward_reg {
@@ -33,6 +35,7 @@ macro_rules! forward_reg {
 			ArchRegisters::Aarch32(x) => x.$func($($args)*),
 			ArchRegisters::Aarch64(x) => x.$func($($args)*),
 			ArchRegisters::Riscv64(x) => x.$func($($args)*),
+			ArchRegisters::Mips32(x) => x.$func($($args)*),
 		}
 	};
 	($self:ident, $func:ident) => {
@@ -360,6 +363,9 @@ mod test {
 				#[test]
 				pub fn [<test_regs_ $arch>]() {
 					let regs = crate::arch::$arch::user_regs_struct::default();
+					let sz1 = std::mem::size_of::<crate::arch::$arch::user_regs_struct>();
+					let sz2 = std::mem::size_of::<pete::Registers>();
+					assert_eq!(sz1, sz2);
 					let mut regs: crate::Registers = regs.into();
 
 					regs.set_pc(1);

@@ -76,3 +76,10 @@ versions are published.
   - This bug may appear even if you don't use single-stepping since
     single-stepping is used internally in those cases we need to redo something
     on the next instruction, like re-inserting a breakppoint.
+
+### Known cross-compilation issues
+
+- `mips-unknown-linux-musl`
+  - Presumably also for other mips targets
+  - <https://github.com/rust-lang/rust/issues/108835#issuecomment-1636983993>
+  - Build with: `RUSTFLAGS='-C opt-level=1' cargo build -Zbuild-std=std --target mips-unknown-linux-musl`

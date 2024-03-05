@@ -8,7 +8,7 @@ use the default configs supplied here, please use git checkout `2023.11`.
 
 You can build the custom config with:
 
-~~~
+~~~{.bash}
 make O=out defconfig BR2_DEFCONFIG=pai_<arch>_defconfig
 make O=out -j$(nproc)
 ~~~
@@ -23,14 +23,14 @@ Boot the image once (using `start-qemu.sh`) to:
 
 To save some space, convert image to `qcow2` format:
 
-~~~
+~~~{.bash}
 qemu-img convert -f raw -O qcow2 rootfs.ext2 rootfs.qcow2
 ~~~
 
 You can now delete `rootfs.ext2` and the resulting disk image in `rootfs.qcow2`
 can be used as an image when running tests.
 
-**Tools in image**
+## Tools in image
 
 The configs provided has some useful debugging tools (the only requirement is an
 SSH-server which works with `~/.ssh/authorized_keys`).
@@ -41,6 +41,17 @@ SSH-server which works with `~/.ssh/authorized_keys`).
 - `strace`
 - `gdbserver` and `gdb`
 
+## Create image for new architecture
+
+Below are the basic steps taken when creating image for a new architecture.
+
+~~~{.bash}
+make O=out/<arch> qemu_<board>_defconfig
+# Make some changes, must at least add SSH server
+make O=out/<arch> menuconfig
+make O=out/<arch> savedefconfig BR2_DEFCONFIG=pai_<arch>_defconfig
+make O=out/<arch> -j4
+~~~
 
 ## Optional 1: Set up for manual testing
 
