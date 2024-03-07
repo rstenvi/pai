@@ -631,7 +631,7 @@ checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 [[package]]
 name = "pete"
 version = "0.12.0"
-source = "git+https://github.com/rstenvi/pete#925089bfac8bb443fed3f3afb845c0953219fc6f"
+source = "git+https://github.com/rstenvi/pete#06b408918db4f4282b64825858bd990b56219b75"
 dependencies = [
  "libc 0.2.152",
  "memoffset 0.8.0",
