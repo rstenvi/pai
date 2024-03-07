@@ -3,4 +3,5 @@ output/
 core.*
 scripts/images
 scripts/keys
+scripts/toolchain
 runner_config.toml

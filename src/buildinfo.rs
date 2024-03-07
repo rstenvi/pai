@@ -14,7 +14,7 @@ pub enum BuildArch {
 	Aarch32,
 	X86_64,
 	X86,
-	Mips,
+	Mips32,
 	RiscV64,
 }
 
@@ -27,7 +27,7 @@ impl std::str::FromStr for BuildArch {
 			"arm" => Ok(Self::Aarch32),
 			"x86_64" => Ok(Self::X86_64),
 			"x86" => Ok(Self::X86),
-			"mips" => Ok(Self::Mips),
+			"mips" => Ok(Self::Mips32),
 			"riscv64" => Ok(Self::RiscV64),
 			_ => Err(anyhow::Error::msg(format!("unknown arch {s}"))),
 		}

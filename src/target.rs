@@ -222,8 +222,7 @@ impl Target {
 		let arch = Self::arch();
 		match arch {
 			BuildArch::Aarch64 | BuildArch::X86_64 | BuildArch::RiscV64 => 8,
-			BuildArch::Aarch32 | BuildArch::X86 => 4,
-			BuildArch::Mips => todo!(),
+			BuildArch::Aarch32 | BuildArch::X86 | BuildArch::Mips32 => 4,
 		}
 	}
 }
@@ -237,7 +236,7 @@ macro_rules! gen_shellcode_code {
 				BuildArch::Aarch32 => crate::arch::aarch32::$ident(code),
 				BuildArch::X86_64 => crate::arch::x86_64::$ident(code),
 				BuildArch::X86 => crate::arch::x86::$ident(code),
-				BuildArch::Mips => todo!(),
+				BuildArch::Mips32 => crate::arch::mips32::$ident(code),
 				BuildArch::RiscV64 => crate::arch::riscv64::$ident(code),
 			}
 		}
@@ -291,7 +290,7 @@ impl GenericCc {
 			crate::buildinfo::BuildArch::Aarch32 => Self::new_syscall_aarch32(),
 			crate::buildinfo::BuildArch::X86_64 => Self::new_syscall_x86_64(),
 			crate::buildinfo::BuildArch::X86 => Self::new_syscall_x86(),
-			crate::buildinfo::BuildArch::Mips => todo!(),
+			crate::buildinfo::BuildArch::Mips32 => Self::new_syscall_mips32(),
 			crate::buildinfo::BuildArch::RiscV64 => Self::new_syscall_riscv64(),
 		}
 	}
@@ -301,7 +300,7 @@ impl GenericCc {
 			crate::buildinfo::BuildArch::Aarch32 => Self::new_systemv_aarch32(),
 			crate::buildinfo::BuildArch::X86_64 => Self::new_systemv_x86_64(),
 			crate::buildinfo::BuildArch::X86 => Self::new_systemv_x86(),
-			crate::buildinfo::BuildArch::Mips => todo!(),
+			crate::buildinfo::BuildArch::Mips32 => Self::new_systemv_mips32(),
 			crate::buildinfo::BuildArch::RiscV64 => Self::new_systemv_riscv64(),
 		}
 	}
@@ -343,6 +342,57 @@ impl GenericCc {
 		let retval = CcArgAccess::from_named_reg("a0", &regs)?;
 		let calltramp = CcArgAccess::from_named_reg("t0", &regs)?;
 		let returnaddr = Some(CcArgAccess::from_named_reg("ra", &regs)?);
+
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
+		Ok(ret)
+	}
+	fn new_systemv_mips32() -> Result<Self> {
+		// Stack registers start at offet 4*4 for some reason, maybe because
+		// they follow 4 registers arguments.
+		const STARTOFF: usize = 4;
+		let regs = crate::arch::mips32::user_regs_struct::default();
+		let args = vec![
+			CcArgAccess::from_named_reg("a0", &regs)?,
+			CcArgAccess::from_named_reg("a1", &regs)?,
+			CcArgAccess::from_named_reg("a2", &regs)?,
+			CcArgAccess::from_named_reg("a3", &regs)?,
+			CcArgAccess::from_sp_offset(STARTOFF * 4, 4),
+			CcArgAccess::from_sp_offset((STARTOFF+1) * 4, 4),
+			CcArgAccess::from_sp_offset((STARTOFF+2) * 4, 4),
+			CcArgAccess::from_sp_offset((STARTOFF+3) * 4, 4),
+		];
+		let retval = CcArgAccess::from_named_reg("v0", &regs)?;
+		let calltramp = CcArgAccess::from_named_reg("t9", &regs)?;
+		let returnaddr = Some(CcArgAccess::from_named_reg("ra", &regs)?);
+
+		let ret = Self {
+			args,
+			retval,
+			calltramp,
+			returnaddr,
+		};
+		Ok(ret)
+	}
+	fn new_syscall_mips32() -> Result<Self> {
+		// TODO: mips/O32
+		let regs = crate::arch::mips32::user_regs_struct::default();
+		let args = vec![
+			CcArgAccess::from_named_reg("a0", &regs)?,
+			CcArgAccess::from_named_reg("a1", &regs)?,
+			CcArgAccess::from_named_reg("a2", &regs)?,
+			CcArgAccess::from_named_reg("a3", &regs)?,
+			CcArgAccess::from_named_reg("a4", &regs)?,
+			CcArgAccess::from_named_reg("a5", &regs)?,
+			CcArgAccess::from_named_reg("a6", &regs)?,
+		];
+		let retval = CcArgAccess::from_named_reg("v0", &regs)?;
+		let calltramp = CcArgAccess::from_named_reg("t4", &regs)?;
+		let returnaddr = None;
 
 		let ret = Self {
 			args,
@@ -701,12 +751,12 @@ mod test {
 					assert_eq!(cc.get_retval(&regs).unwrap(), 42);
 
 
-					for i in 0..6 {
+					for i in 0..4 {
 						log::trace!("setting arg[{i}]");
 						cc.set_arg_regonly(i, 43 + i as u64, &mut regs).unwrap();
 					}
 
-					for i in 0..6 {
+					for i in 0..4 {
 						log::trace!("setting arg[{i}]");
 						let v = cc.get_arg_regonly(i, &mut regs).unwrap();
 						assert_eq!(v, i as u64 + 43);
@@ -726,4 +776,6 @@ mod test {
 	gen_test_cc_arch! { aarch32 }
 
 	gen_test_cc_arch! { riscv64 }
+
+	gen_test_cc_arch! { mips32 }
 }

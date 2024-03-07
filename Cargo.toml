@@ -16,6 +16,7 @@ exclude = [
 [dependencies]
 # We disable all logging below info on release version
 log = {version = "0.4", features = ["release_max_level_info"]}
+# log = {version = "0.4" }
 thiserror = "1.0"
 
 # Data serialization is based on serde

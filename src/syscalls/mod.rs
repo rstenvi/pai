@@ -21,26 +21,35 @@ pub(crate) use parsed::{Syscall, Syscalls};
 
 macro_rules! get_parsed {
 	() => {
-		crate::SYSCALLS
+		{
+		log::trace!("getting read lock");
+		&crate::SYSCALLS
 			.read()
 			.expect("unable to read lock SYSCALLS")
 			.parsed
+		}
 	};
 }
 pub(crate) use get_parsed;
 macro_rules! get_syscalls {
 	() => {
-		crate::SYSCALLS
+		{
+		log::trace!("getting read lock");
+		&crate::SYSCALLS
 			.read()
 			.expect("unable to read lock SYSCALLS")
+		}
 	};
 }
 
 macro_rules! write_syscalls {
 	() => {
-		crate::SYSCALLS
+		{
+		log::trace!("getting write lock");
+		&mut crate::SYSCALLS
 			.write()
 			.expect("unable to write lock SYSCALLS")
+		}
 	};
 }
 
@@ -810,7 +819,7 @@ impl SyscallItem {
 		}
 		Direction::In
 	}
-	fn parse_arg_type(raw: TargetPtr, atype: &ArgType, opts: &[ArgOpt]) -> Option<Value> {
+	fn parse_arg_type(raw: TargetPtr, atype: &ArgType, opts: &[ArgOpt]) -> Result<Option<Value>> {
 		log::trace!("{raw:x} {atype:?}");
 		let dir = Self::get_direction(opts);
 		let isout = matches!(dir, Direction::Out);
@@ -855,61 +864,61 @@ impl SyscallItem {
 				};
 				let err = raw.as_i32();
 				let ret = Value::new_number(value, bytes * 8);
-				Some(if isout {
+				Ok(Some(if isout {
 					Value::new_error_or_default(err, ret)
 				} else {
 					ret
-				})
+				}))
 			}
 			ArgType::Csum => {
 				log::warn!("need to parse csum {opts:?}");
-				None
+				Ok(None)
 			}
 			ArgType::Proc => {
 				log::warn!("need to parse proc {opts:?}");
-				None
+				Ok(None)
 			}
 			ArgType::OffsetOf => {
 				log::warn!("need to parse offsetof {opts:?}");
-				None
+				Ok(None)
 			}
 			ArgType::Fmt => {
 				log::warn!("need to parse fmt {opts:?}");
-				None
+				Ok(None)
 			}
 			ArgType::CompressedImage => {
 				log::warn!("need to parse CompressedImage {opts:?}");
-				None
+				Ok(None)
 			}
-			ArgType::Bool => Some(Value::new_bool(raw != 0.into())),
-			ArgType::Void => Some(Self::error_or_def(raw, Value::new_void(raw))),
+			ArgType::Bool => Ok(Some(Value::new_bool(raw != 0.into()))),
+			ArgType::Void => Ok(Some(Self::error_or_def(raw, Value::new_void(raw)))),
 			ArgType::Vma | ArgType::Vma64 => {
 				let bits = if matches!(atype, ArgType::Vma64) {
 					64
 				} else {
 					std::mem::size_of::<TargetPtr>() * 8
 				};
-				Some(Value::new_vma(raw, bits))
+				Ok(Some(Value::new_vma(raw, bits)))
 			}
 			ArgType::Const => {
-				if let Some(first) = opts.first() {
-					let value = Self::resolve_const_opt(raw, first);
+				Ok(if let Some(first) = opts.first() {
+					let value = Self::resolve_const_opt(raw, first)?;
 					Some(value)
 				} else {
 					None
-				}
+				})
 			}
 			ArgType::Flags => {
-				if let Some(opt) = opts.first() {
-					let set = Self::resolve_flag_opt(raw, opt);
+				Ok(if let Some(opt) = opts.first() {
+					let set = Self::resolve_flag_opt(raw, opt)?;
 					Some(Value::new_flags(set))
 				} else {
 					log::warn!("no argopt to parse flags {atype:?}");
 					None
-				}
+				})
 			}
 			ArgType::Len | ArgType::Bitsize | ArgType::Bytesize => {
-				if let Some(lenof) = opts.first() {
+				Ok(if let Some(lenof) = opts.first() {
 					let lentype = match atype {
 						ArgType::Len => LenType::Len,
 						ArgType::Bitsize => LenType::Bitsize,
@@ -920,12 +929,12 @@ impl SyscallItem {
 					Some(Value::new_len(lenof, lentype, raw))
 				} else {
 					None
-				}
+				})
 			}
 			ArgType::Ident(ident) => match ident.name.as_str() {
-				"boolptr" => Some(Value::new_bool(raw != 0.into())),
-				"buffer" => Some(Value::new_buffer(raw)),
-				"fileoff" => Some(Value::new_file_offset(raw.into())),
+				"boolptr" => Ok(Some(Value::new_bool(raw != 0.into()))),
+				"buffer" => Ok(Some(Value::new_buffer(raw))),
+				"fileoff" => Ok(Some(Value::new_file_offset(raw.into()))),
 				_ => Self::resolve_resource_ident(raw, ident, dir),
 			},
 			ArgType::Ptr | ArgType::Ptr64 => {
@@ -939,14 +948,14 @@ impl SyscallItem {
 							narg.opts.clone(),
 							opt,
 						);
-						Some(ret)
+						Ok(Some(ret))
 					} else {
 						log::warn!("unable to parse second arg as FullArgument");
-						None
+						Ok(None)
 					}
 				} else {
 					log::warn!("unable to get first opt as Direction {opts:?}");
-					None
+					Ok(None)
 				}
 			}
 
@@ -960,11 +969,11 @@ impl SyscallItem {
 			ArgType::Glob => crate::bug!("got glob type w/o pointer first???"),
 		}
 	}
-	fn parse_arg(raw: TargetPtr, arg: &Argument) -> Option<Value> {
+	fn parse_arg(raw: TargetPtr, arg: &Argument) -> Result<Option<Value>> {
 		Self::parse_arg_type(raw, arg.arg_type(), &arg.opts)
 	}
 
-	pub fn patch_ioctl_call(&mut self, dir: &Direction) -> crate::Result<()> {
+	pub fn patch_ioctl_call(&mut self, dir: &Direction) -> Result<()> {
 		// Avoid re-parsing this on entry and exit
 		if *dir == Direction::In || self.args[2].parsed().is_none() {
 			log::debug!("sysno {} is ioctl", self.sysno);
@@ -977,7 +986,7 @@ impl SyscallItem {
 					log::debug!("parsing custom ioctl");
 					let raw = self.args[2].raw_value();
 					log::debug!("raw {raw:x}");
-					let ins = Self::parse_arg(raw, &ioctl.args[2]);
+					let ins = Self::parse_arg(raw, &ioctl.args[2])?;
 					self.args[2].value.parsed = ins;
 
 					// Syzkaller does not necessarily mark input/output
@@ -993,21 +1002,21 @@ impl SyscallItem {
 		}
 		Ok(())
 	}
-	pub fn enrich_values(&mut self) -> crate::Result<()> {
+	pub fn enrich_values(&mut self) -> Result<()> {
 		log::debug!("enriching values sysno: {}", self.sysno);
 
 		if let Some(sys) = get_syscalls!().resolve(self.sysno) {
 			for (i, arg) in sys.args.iter().enumerate() {
 				if self.args[i].value.parsed.is_none() {
 					let raw = self.args[i].raw_value();
-					let ins = Self::parse_arg(raw, arg);
+					let ins = Self::parse_arg(raw, arg)?;
 					self.args[i].value.parsed = ins;
 				}
 			}
 			if let Some(out) = &mut self.output {
 				if out.parsed.is_none() {
 					let opts = vec![ArgOpt::Dir(syzlang_parser::parser::Direction::Out)];
-					let ins = Self::parse_arg_type(out.raw_value(), &sys.output, &opts);
+					let ins = Self::parse_arg_type(out.raw_value(), &sys.output, &opts)?;
 					out.parsed = ins;
 				}
 			}
@@ -1030,18 +1039,18 @@ impl SyscallItem {
 			false
 		}
 	}
-	fn resolve_resource_ident(raw: TargetPtr, ident: &Identifier, dir: Direction) -> Option<Value> {
+	fn resolve_resource_ident(raw: TargetPtr, ident: &Identifier, dir: Direction) -> Result<Option<Value>> {
 		let basics = get_parsed!().resource_to_basics(ident);
 		log::trace!("basics {ident:?} ->  {basics:?}");
 		if Self::argtypes_are_fd(ident, &basics) {
 			let fd = raw.as_i32();
 			let r = Value::new_fd(fd, dir);
-			Some(r)
+			Ok(Some(r))
 		} else if let Some(at) = basics.last().cloned() {
-			let sub = Self::parse_arg_type(raw, &at, &[]);
-			Some(Value::new_resource(ident.name.clone(), sub))
+			let sub = Self::parse_arg_type(raw, &at, &[])?;
+			Ok(Some(Value::new_resource(ident.name.clone(), sub)))
 		} else {
-			None
+			Ok(None)
 		}
 	}
 	fn opt_to_name(opt: &ArgOpt) -> String {
@@ -1052,42 +1061,42 @@ impl SyscallItem {
 			}
 		}
 	}
-	fn resolve_const_opt(raw: TargetPtr, opt: &ArgOpt) -> Value {
+	fn resolve_const_opt(raw: TargetPtr, opt: &ArgOpt) -> Result<Value> {
 		if let ArgOpt::Value(value) = opt {
 			match value {
 				parser::Value::Ident(ident) => {
-					let n = Self::resolve_const_ident(&ident.name);
+					let n = Self::resolve_const_ident(&ident.name)?;
 					let vi32 = raw.as_i32();
 					let matches = n == raw || n == vi32.into();
 					if matches {
 						if ident.name == "AT_FDCWD" {
-							Value::new_fd_const(vi32, "AT_FDCWD")
+							Ok(Value::new_fd_const(vi32, "AT_FDCWD"))
 						} else {
-							Value::new_const(matches, ident.name.clone())
+							Ok(Value::new_const(matches, ident.name.clone()))
 						}
 					} else if ident.name == "AT_FDCWD" {
 						let value: serde_json::value::Number = vi32.into();
 						let sub = Value::new_number(value, 32);
-						Value::new_resource("fd", Some(sub))
+						Ok(Value::new_resource("fd", Some(sub)))
 					} else {
-						crate::bug!("unable to find matching const {:?}", ident.name);
+						Err(Error::msg(format!("unable to find matching const {:?}", ident.name)))
 					}
 				}
-				parser::Value::Int(_n) => Value::new_int_ptrsize(raw),
-				_ => crate::bug!("encountered {value:?} when trying to resolve const"),
+				parser::Value::Int(_n) => Ok(Value::new_int_ptrsize(raw)),
+				_ => Err(Error::msg(format!("encountered {value:?} when trying to resolve const"))),
 			}
 		} else {
-			crate::bug!("encountered {opt:?} when trying to resolve const")
+			Err(Error::msg(format!("encountered {opt:?} when trying to resolve const")))
 		}
 	}
-	fn resolve_flag_ident(raw: TargetPtr, ident: &Identifier) -> Vec<String> {
+	fn resolve_flag_ident(raw: TargetPtr, ident: &Identifier) -> Result<Vec<String>> {
 		let mut ret = Vec::new();
 		let flag = get_parsed!().get_flag(ident).cloned();
 		if let Some(flag) = flag {
 			for val in flag.args() {
 				match val {
 					parser::Value::Ident(n) => {
-						let v = Self::resolve_const_ident(&n.name);
+						let v = Self::resolve_const_ident(&n.name)?;
 						let ones = usize::count_ones(v.into());
 						if ones > 1 {
 							if v == raw {
@@ -1097,43 +1106,43 @@ impl SyscallItem {
 							ret.push(n.name.clone());
 						}
 					}
-					_ => crate::bug!("encountered {val:?} when trying to resolve flag ident"),
+					_ => return Err(Error::msg(format!("encountered {val:?} when trying to resolve flag ident"))),
 				}
 			}
 		}
-		ret
+		Ok(ret)
 	}
-	fn resolve_flag_opt(raw: TargetPtr, opt: &ArgOpt) -> Vec<String> {
+	fn resolve_flag_opt(raw: TargetPtr, opt: &ArgOpt) -> Result<Vec<String>> {
 		match opt {
 			ArgOpt::Ident(ident) => Self::resolve_flag_ident(raw, ident),
-			_ => crate::bug!("encountered {opt:?} when trying to resolve flag opt"),
+			_ => Err(Error::msg(format!("encountered {opt:?} when trying to resolve flag opt"))),
 		}
 	}
-	fn resolve_const_ident(name: &str) -> TargetPtr {
+	fn resolve_const_ident(name: &str) -> Result<TargetPtr> {
 		if let Some(r) = get_parsed!()
 			.consts()
 			.find_name_arch(name, &Target::syzarch())
 		{
 			match r.value() {
-				parser::Value::Int(n) => (*n).into(),
-				_ => crate::bug!(
-					"encountered {:?} when trying to resolve const ident",
-					r.value()
-				),
+				parser::Value::Int(n) => Ok((*n).into()),
+				_ => Err(Error::msg(format!("encountered {:?} when trying to resolve const ident",r.value()))),
 			}
 		} else {
-			crate::bug!("cosnt search for {name:?} returned None");
+			Err(Error::msg(format!("const search for {name:?} returned None")))
 		}
 	}
 
 	pub fn from_regs(tid: Tid, sysno: usize, args: &[u64]) -> Self {
+		log::debug!("parsing from_regs {sysno} {args:?}");
 		let (name, args) = if let Some(sys) = get_syscalls!().resolve(sysno) {
+			log::trace!("sysno {sysno} = {sys:?}");
 			let mut shallows = Vec::new();
 			for (i, arg) in sys.args.iter().enumerate() {
 				let dir = arg.direction().into();
 				let (_atype, _resource) = Self::get_shallow_value(arg.arg_type());
 				let value = args[i].into();
 				let ins = SysArg::new_basic(arg.identifier().safe_name(), value, dir);
+				log::trace!("shallow[{i}]: {ins:?}");
 				shallows.push(ins);
 			}
 			(sys.ident.name.clone(), shallows)
@@ -1153,6 +1162,7 @@ impl SyscallItem {
 		self.output = Some(ins);
 	}
 	fn get_shallow_value(arg: &ArgType) -> (ArgType, Option<Identifier>) {
+		log::debug!("getting shallow for {arg:?}");
 		let (atype, resource) = if let ArgType::Ident(ident) = arg {
 			if let Some(r) = get_parsed!().resource_to_basic_type(ident) {
 				log::debug!("refers to {r:?}");
@@ -1162,6 +1172,7 @@ impl SyscallItem {
 				(arg.clone(), None)
 			}
 		} else {
+			log::trace!("returning same value");
 			(arg.clone(), None)
 		};
 		(atype, resource)
@@ -1175,11 +1186,12 @@ impl From<parser::Arch> for BuildArch {
 			parser::Arch::X86_64 => Self::X86_64,
 			parser::Arch::Aarch64 => Self::Aarch64,
 			parser::Arch::Aarch32 => Self::Aarch32,
-			parser::Arch::Mips64le => todo!(),
-			parser::Arch::Ppc64le => todo!(),
+			parser::Arch::Mips64le => panic!("Mips64le not supported, should not get here"),
+			parser::Arch::Ppc64le => panic!("Ppc64le not supported, should not get here"),
 			parser::Arch::Riscv64 => Self::RiscV64,
-			parser::Arch::S390x => todo!(),
-			parser::Arch::Native => todo!(),
+			parser::Arch::S390x => panic!("S390x not supported, should not get here"),
+			parser::Arch::Mips32 => Self::Mips32,
+			parser::Arch::Native => panic!("From Native not supported"),
 		}
 	}
 }
@@ -1190,7 +1202,7 @@ impl From<BuildArch> for parser::Arch {
 			BuildArch::Aarch32 => Self::Aarch32,
 			BuildArch::X86_64 => Self::X86_64,
 			BuildArch::X86 => Self::X86,
-			BuildArch::Mips => todo!(),
+			BuildArch::Mips32 => Self::Mips32,
 			BuildArch::RiscV64 => Self::Riscv64,
 		}
 	}
@@ -1224,7 +1236,9 @@ impl Syscalls {
 	}
 	pub fn resolve(&self, sysno: usize) -> Option<&Syscall> {
 		let arch = Target::arch();
+		log::trace!("resolving arch {arch:?}");
 		if let Some(calls) = self.syscalls.get(&sysno) {
+			log::trace!("found calls {calls:?}");
 			let rem = calls
 				.iter()
 				.filter(|x| x.for_arch(&arch))

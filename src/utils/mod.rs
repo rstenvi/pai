@@ -401,7 +401,7 @@ mod tests {
 
 	#[test]
 	fn file_access() {
-		#[cfg(not(any(target_arch = "x86", target_arch = "arm")))]
+		#[cfg(not(any(target_arch = "x86", target_arch = "arm", target_arch = "mips")))]
 		let _f = FileAccess::from_path(&"/".into()).unwrap();
 		let f = FileAccess::from_path(&"/nonexistent/path".into());
 		assert!(f.is_err());

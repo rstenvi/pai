@@ -98,7 +98,7 @@ impl BuildTarget {
 			},
 			BuildArch::X86_64 => "x86_64",
 			BuildArch::X86 => "i686",
-			BuildArch::Mips => "mips",
+			BuildArch::Mips32 => "mips",
 			BuildArch::RiscV64 => "riscv64",
 		};
 		let abi = match &self.abi {
@@ -107,9 +107,6 @@ impl BuildTarget {
 			BuildAbi::Eabihf => "eabihf",
 		};
 		let sdklevel = "";
-		//  = if self.os == BuildOs::Android {
-		// 	""
-		// } else { "" };
 		format!("{arch}-{os}{env}{abi}{sdklevel}-")
 	}
 }
@@ -350,6 +347,7 @@ fn get_syscall_data(_build: &BuildInfo) -> anyhow::Result<String> {
 fn acquire_lock(scratch: &Path) -> anyhow::Result<Flock<File>> {
 	let mut lock = PathBuf::from(scratch);
 	lock.push("build.lock");
+	println!("getting lock @ {lock:?}");
 	let lock = std::fs::OpenOptions::new()
 		.create(true)
 		.truncate(true)
@@ -362,7 +360,14 @@ fn acquire_lock(scratch: &Path) -> anyhow::Result<Flock<File>> {
 }
 
 fn main() -> anyhow::Result<()> {
-	let scratch = scratch::path("pai");
+	let scratch = std::env::var_os("OUT_DIR").unwrap();
+	let scratch = PathBuf::from(scratch);
+	let mut scratch = scratch.clone();
+	scratch.push("pai");
+	if !scratch.exists() {
+		std::fs::create_dir(&scratch)?;
+	}
+	// let scratch = scratch::path("pai");
 	// for (key, value) in std::env::vars() {
 	// 	if key.starts_with("CARGO_") {
 	// 		println!("{}: {:?}", key, value);

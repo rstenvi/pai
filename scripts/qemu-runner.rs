@@ -23,8 +23,6 @@ use std::process::ChildStdin;
 use std::process::ChildStderr;
 use std::io::Read;
 use std::process::Command;
-use std::io::BufRead;
-use std::io::{BufWriter, BufReader};
 use anyhow::Result;
 use std::io::Write;
 use std::process::Stdio;
@@ -38,6 +36,7 @@ enum Arch {
 	Aarch64,
 	ArmEabi,
 	Riscv64,
+	Mips32,
 }
 impl Arch {
 	fn qemu_from_arch(&self) -> String {
@@ -47,6 +46,7 @@ impl Arch {
 			Self::X86_64 => String::from("qemu-system-x86_64"),
 			Self::Aarch64 => String::from("qemu-system-aarch64"),
 			Self::Riscv64 => String::from("qemu-system-riscv64"),
+			Self::Mips32 => String::from("qemu-system-mips"),
 		}
 	}
 }
@@ -60,6 +60,7 @@ impl std::str::FromStr for Arch {
 			"x86_64" => Ok(Self::X86_64),
 			"aarch64" => Ok(Self::Aarch64),
 			"riscv64" => Ok(Self::Riscv64),
+			"mips32" => Ok(Self::Mips32),
 			_ => Err(anyhow::Error::msg("unsupported arch")),
 		}
 	}
@@ -132,15 +133,17 @@ impl RunQemu {
 		let mut c = Command::new(qemubin);
 		let c = c.stdin(Stdio::piped());
 		let c = c.stdout(Stdio::piped());
-		let mut c = c.stderr(Stdio::piped());
+		let c = c.stderr(Stdio::piped());
 		c.arg("-nographic");
 		if !args.no_snapshot {
 			c.arg("-snapshot");
 		}
-		c.arg("-smp");
-		c.arg("4");
-		c.arg("-m");
-		c.arg("1G");
+		if !matches!(args.arch, Arch::Mips32) {
+			c.arg("-smp");
+			c.arg("4");
+			c.arg("-m");
+			c.arg("1G");
+		}
 		c.arg("-kernel");
 		c.arg(&args.kernel);
 
@@ -200,6 +203,18 @@ impl RunQemu {
 				c.arg(format!("user,id=net0,hostfwd=tcp:127.0.0.1:{}-:22", args.port));
 				c.arg("-device");
 				c.arg("virtio-net-device,netdev=net0");
+			},
+			Arch::Mips32 => {
+				c.arg("-M");
+				c.arg("malta");
+				c.arg("-drive");
+				c.arg(format!("file={}", args.disk.display()));
+				c.arg("-append");
+				c.arg("rootwait root=/dev/sda");
+				c.arg("-net");
+				c.arg("nic,model=pcnet");
+				c.arg("-net");
+				c.arg(format!("user,hostfwd=tcp::{}-:22", args.port));
 			},
 			_ => todo!(),
 		}
@@ -274,7 +289,7 @@ impl RunQemu {
 	}
 	fn is_alive(&mut self) -> bool {
 		match self.child.try_wait() {
-			Ok(Some(status)) => false,
+			Ok(Some(_status)) => false,
 			Ok(None) => true,
 			Err(e) => {
 				log::debug!("error attempting to wait: {e}");
@@ -332,7 +347,7 @@ impl RunQemu {
 		// Some Qemu instances will hang at the end
 		log::debug!("stopping qemu");
 		for i in 0..20 {
-			if let Some(n) = self.child.try_wait()? {
+			if let Some(_n) = self.child.try_wait()? {
 				break;
 			} else {
 				log::trace!("[{i}]: target not done yet");
@@ -362,6 +377,7 @@ impl RunQemu {
 			Ok(true)
 		}
 	}
+	#[allow(dead_code)]
 	fn delete_user(&mut self) -> Result<()> {
 		let cmd = format!("deluser --remove-home {}", self.args.user);
 		let lines = self.write_cmd(&cmd)?;
@@ -373,15 +389,15 @@ impl RunQemu {
 
 		// Ensure home directory exists
 		let cmd = format!(r#"mkdir -p /home"#);
-		let mut lines = self.write_cmd(&cmd)?;
+		let lines = self.write_cmd(&cmd)?;
 		log::debug!("lines {lines:?}");
 
 		let cmd = format!(r#"adduser --disabled-password --gecos "" {user}"#);
-		let mut lines = self.write_cmd(&cmd)?;
+		let lines = self.write_cmd(&cmd)?;
 		log::debug!("lines {lines:?}");
 
 		let cmd = format!(r#"passwd -u {user}"#);
-		let mut lines = self.write_cmd(&cmd)?;
+		let lines = self.write_cmd(&cmd)?;
 		log::debug!("lines {lines:?}");
 		Ok(())
 	}
@@ -468,7 +484,7 @@ fn main() -> Result<()> {
         .init();
 	log::info!("starting");
 
-	let mut qemu = RunQemu::new(args)?;
+	let qemu = RunQemu::new(args)?;
 	std::thread::sleep(std::time::Duration::from_millis(100));
 	qemu.run_until()?;
 

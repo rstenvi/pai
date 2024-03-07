@@ -607,13 +607,21 @@ lazy_static::lazy_static! {
 #[cfg(feature = "syscalls")]
 lazy_static::lazy_static! {
 	pub(crate) static ref SYSCALLS: std::sync::RwLock<syscalls::Syscalls> = {
-		// This is slower than unencoded, but saves on space in final ELF file
+		// This is slightly slower than unencoded, but saves quite a lot of
+		// space in final ELF file. To see how much time is spent here, see:
+		// bench_load_syscalls_str.
+		log::trace!("getting raw bytes for syscalls");
 		let raw = include_bytes!(concat!(env!("OUT_DIR"), "/syscalls.json.gz"));
 		let mut gz = flate2::bufread::GzDecoder::new(&raw[..]);
 		let mut s = String::new();
 		gz.read_to_string(&mut s).expect("unable to decompress gz from build.rs");
+		log::trace!("decompressed syscalls.json");
+
+		// This is the time-consuming part of the setup and there is little we
+		// can do to speed this up.
 		let mut parsed: syscalls::Syscalls = serde_json::from_str(&s)
 			.expect("unable to parse compressed json from build.rs as variable");
+		log::trace!("parsed syscalls.json");
 		parsed.postprocess();
 		std::sync::RwLock::new(parsed)
 	};
@@ -683,5 +691,39 @@ pub(crate) mod tests {
 		assert_eq!(TargetPtr::new(0xff).as_i8(), -1);
 		assert_eq!(TargetPtr::new(0xff).as_i16(), 0xff);
 		assert_eq!(TargetPtr::new(0xfff0).as_i16(), -16);
+	}
+
+	#[cfg(all(target_arch = "x86_64", feature = "syscalls"))]
+	#[bench]
+	fn bench_load_syscalls_str(b: &mut test::Bencher) {
+		b.iter(move || {
+			load_syscalls_str();
+			std::hint::black_box(())
+		})
+	}
+
+	#[cfg(all(target_arch = "x86_64", feature = "syscalls"))]
+	#[bench]
+	fn bench_load_syscalls_json(b: &mut test::Bencher) {
+		let raw = include_bytes!(concat!(env!("OUT_DIR"), "/syscalls.json.gz"));
+		let mut gz = flate2::bufread::GzDecoder::new(&raw[..]);
+		let mut s = String::new();
+		gz.read_to_string(&mut s).expect("unable to decompress gz from build.rs");
+
+		b.iter(move || {
+			let mut parsed: syscalls::Syscalls = serde_json::from_str(&s)
+				.expect("unable to parse compressed json from build.rs as variable");
+			parsed.postprocess();
+			std::hint::black_box(())
+		})
+	}
+
+	#[cfg(all(target_arch = "x86_64", feature = "syscalls"))]
+	#[test]
+	fn load_syscalls_str() {
+		let raw = include_bytes!(concat!(env!("OUT_DIR"), "/syscalls.json.gz"));
+		let mut gz = flate2::bufread::GzDecoder::new(&raw[..]);
+		let mut s = String::new();
+		gz.read_to_string(&mut s).expect("unable to decompress gz from build.rs");
 	}
 }

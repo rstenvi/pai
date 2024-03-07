@@ -186,13 +186,13 @@ impl Tracer {
 		self.lastaction.insert(tid, cont);
 		let mut tracee = self.remove_tracee(tid)?;
 
-		#[cfg(not(any(target_arch = "arm", target_arch = "riscv64")))]
+		#[cfg(not(any(target_arch = "arm", target_arch = "riscv64", target_arch = "mips")))]
 		let restart = cont.into();
 
 		// arm doesn't support single steps, see:
 		// <https://stackoverflow.com/a/25268484> We therefore insert a
 		// breakpoint on the next instruction instead.
-		#[cfg(any(target_arch = "arm", target_arch = "riscv64"))]
+		#[cfg(any(target_arch = "arm", target_arch = "riscv64", target_arch = "mips"))]
 		let restart = if cont == Wait::Step {
 			let pc = tracee.regs.get_pc();
 			// No support for Thumb mode yet
@@ -422,6 +422,8 @@ impl Tracer {
 			let mut tracee = TraceStop::new(tracee)?;
 
 			let pc = tracee.regs.get_pc();
+			log::debug!("regs {pc:x} | {:?}", tracee.regs);
+
 			let stop = tracee.tracee.stop;
 			let stop = self.handle_wait(&mut tracee, stop, tid)?;
 			if let Some(swbp) = self.pendingswbps.remove(&tid) {
@@ -462,7 +464,7 @@ impl Tracer {
 				self.swbps.insert(pc, swbp);
 			}
 
-			#[cfg(any(target_arch = "arm", target_arch = "riscv64"))]
+			#[cfg(any(target_arch = "arm", target_arch = "riscv64", target_arch = "mips"))]
 			if let Some(Wait::Step) = self.lastaction.get(&tid) {
 				return Ok(Some(Stop::Step { pc }));
 			}
@@ -654,6 +656,8 @@ impl Tracer {
 		tracee: &mut TraceStop,
 		addr: TargetPtr,
 	) -> Result<()> {
+		log::debug!("writing bp at {addr:x}");
+		// std::thread::sleep(std::time::Duration::from_millis(2000));
 		let mut code = Vec::new();
 		TargetCode::bp_shellcode(&mut code);
 
@@ -747,6 +751,7 @@ impl Tracer {
 		let tracee = self
 			.run_until(tracee, Self::cb_stop_is_bkpt)
 			.map_err(|x| self.fix_non_fatal(*x))?;
+		log::debug!("trap @ {:x}", tracee.regs.get_pc());
 		self.tracee.insert(tid, tracee);
 		Ok(())
 	}
@@ -821,10 +826,10 @@ impl Tracer {
 	//	Ok(r.into())
 	//}
 	pub fn exec_sys_anon_mmap(&mut self, tid: Tid, size: usize, prot: Perms) -> Result<TargetPtr> {
-		#[cfg(any(target_arch = "x86", target_arch = "arm"))]
+		#[cfg(any(target_arch = "x86", target_arch = "arm", target_arch = "mips"))]
 		let (sysno, size) = (libc::SYS_mmap2 as usize, size / 4096);
 
-		#[cfg(not(any(target_arch = "x86", target_arch = "arm")))]
+		#[cfg(not(any(target_arch = "x86", target_arch = "arm", target_arch = "mips")))]
 		let (sysno, size) = (libc::SYS_mmap as usize, size);
 
 		let args = MmapBuild::sane_anonymous(size, prot);
@@ -844,7 +849,6 @@ impl Tracer {
 		max: usize,
 	) -> TraceResult<TraceStop> {
 		if let Some(pc) = self.tramps.get(tramp) {
-			// let mut regs = tracee.regs.clone();
 			let pc = *pc;
 			tracee.regs.set_pc(pc.into());
 			tracee
@@ -1141,10 +1145,10 @@ impl Tracer {
 
 		// let mut psize: TargetPtr = unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.into();
 
-		#[cfg(any(target_arch = "x86", target_arch = "arm"))]
+		#[cfg(any(target_arch = "x86", target_arch = "arm", target_arch = "mips"))]
 		let (psize, sysno) = (1.into(), libc::SYS_mmap2);
 
-		#[cfg(not(any(target_arch = "x86", target_arch = "arm")))]
+		#[cfg(not(any(target_arch = "x86", target_arch = "arm", target_arch = "mips")))]
 		let (psize, sysno) = (
 			unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.into(),
 			libc::SYS_mmap,
@@ -1181,8 +1185,8 @@ impl Tracer {
 			.registers()
 			.map_err(|x| TraceError::new(tracee.tracee, x.into()))?;
 		let svc_regs: Registers = nregs.into();
+		log::trace!("svc_regs: {svc_regs:?}");
 		let addr = self.syscallcc.get_retval(&svc_regs).unwrap();
-		// let addr = svc_regs.ret_syscall();
 		log::debug!("addr {addr:x}");
 		let naddr: usize = addr as usize;
 		let ntracee = if naddr < usize::MAX - 100 {
@@ -1376,7 +1380,7 @@ mod test {
 		log::trace!("stop {stop:?}");
 	}
 
-	#[cfg(not(target_arch = "arm"))]
+	#[cfg(not(any(target_arch = "arm", target_arch = "mips")))]
 	#[test]
 	fn trace2() {
 		let (mut tracer, tid) = spawn().unwrap();

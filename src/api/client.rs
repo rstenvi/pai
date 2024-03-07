@@ -507,6 +507,7 @@ impl Client<Command, Response> {
 		self.wr_ack(cmd)
 	}
 	pub fn wait(&mut self) -> Result<Response> {
+		log::trace!("sending Wait command");
 		let cmd = Command::Manager {
 			cmd: ManagerCmd::Wait,
 		};

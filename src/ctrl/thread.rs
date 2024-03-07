@@ -169,6 +169,7 @@ impl ClientThread {
 	#[cfg(feature = "syscalls")]
 	fn enrich(&mut self, sysno: usize, sys: &mut SyscallItem, dir: Direction) -> Result<()> {
 		let enrich = self.args.enrich_syscall_sysno(sys.tid, sysno);
+		log::trace!("enrich {enrich:?} for sysno {sysno}");
 		match enrich {
 			Enrich::None => {}
 			Enrich::Basic => sys.enrich_values()?,
@@ -191,6 +192,7 @@ impl ClientThread {
 		let len = args.capacity();
 		for i in 0..len {
 			let ins = cc.get_arg_regonly(i, regs)?;
+			log::debug!("arg[{i}] = {ins:x}");
 			args.push(ins);
 		}
 		Ok(())
@@ -207,7 +209,13 @@ impl ClientThread {
 				let mut args = Vec::with_capacity(6);
 				Self::fill_syscall_regs(&mut args, &self.syscallcc, &regs)?;
 				let mut ins = SyscallItem::from_regs(tid, sysno, &args);
-				self.enrich(sysno, &mut ins, Direction::In)?;
+
+				// This may happen in instances where target arch is not well
+				// supported, but we should still return the info we have about
+				// the syscall.
+				if let Err(e) = self.enrich(sysno, &mut ins, Direction::In) {
+					log::warn!("got error when enriching syscall(entry) {}:{sysno} | error: {e:?}", ins.name);
+				}
 				let resp = if !self.args.only_notify_syscall_exit(tid) {
 					Some(Response::Syscall(ins.clone()))
 				} else {
@@ -223,7 +231,9 @@ impl ClientThread {
 			let retval = self.syscallcc.get_retval(&regs)?;
 			syscall.fill_in_output(retval.into());
 			log::debug!("sys exit before enrich {syscall:?}");
-			self.enrich(syscall.sysno, &mut syscall, Direction::Out)?;
+			if let Err(e) = self.enrich(syscall.sysno, &mut syscall, Direction::Out) {
+				log::warn!("got error when enriching syscall(exit) {}:{} | error: {e:?}", syscall.name, syscall.sysno);
+			}
 			let ret = Some(Response::Syscall(syscall));
 			Ok(ret)
 		} else {
@@ -293,7 +303,9 @@ impl ClientThread {
 			log::debug!("sending {r:?}");
 			self.client.write(r)?;
 			loop {
+				log::trace!("reading next from client");
 				let r = self.client.read()?;
+				log::trace!("read {r:?} from client");
 				match self.process_response(r) {
 					Ok(r) => {
 						if let Some(r) = r {
@@ -311,6 +323,7 @@ impl ClientThread {
 						log::error!("process_response returned error: {e:?}");
 						let rsp = Response::Error(format!("{e:?}"));
 						self.tx.send(rsp)?;
+						break;
 					}
 				}
 			}

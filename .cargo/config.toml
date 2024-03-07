@@ -1,46 +1,18 @@
 [build]
 target = ["x86_64-unknown-linux-gnu"]
 
-# Path for Android compilers, something like:
-# ~/Android/Sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin
-
-[target.aarch64-linux-android]
-runner = ["./scripts/aarch64-android.sh"]
-linker = "aarch64-linux-android34-clang"
-
-[target.armv7-linux-androideabi]
-linker = "armv7a-linux-androideabi34-clang"
-runner = ["./scripts/aarch64-android.sh"]
-
-[target.i686-linux-android]
-linker = "i686-linux-android34-clang"
-runner = ["./scripts/x86_64-android.sh"]
-
-# [target.arm-unknown-linux-gnueabihf]
-# linker = "arm-linux-gnueabihf-gcc"
-
-# [target.arm-unknown-linux-gnueabi]
-# linker = "arm-linux-gnueabi-gcc"
-
-[target.x86_64-linux-android]
-linker = "x86_64-linux-android34-clang"
-runner = ["./scripts/x86_64-android.sh"]
-
-[target.aarch64-unknown-linux-gnu]
-linker = "aarch64-linux-gnu-gcc"
-
-[target.riscv64gc-unknown-linux-gnu]
-linker = "riscv64-linux-gnu-gcc"
-
 [target.x86_64-unknown-linux-gnu]
 linker = "gcc"
 
-# [target.i686-unknown-linux-gnu]
-
-
 # Builds statically compiled binaries
-[target.x86_64-unknown-linux-musl]
-linker = "./scripts/zig/x86_64-musl.sh"
+# [target.x86_64-unknown-linux-musl]
+# linker = "./scripts/zig/x86_64-musl.sh"
 
-[target.aarch64-unknown-linux-musl]
-linker = "./scripts/zig/aarch64-musl.sh"
+# [target.aarch64-unknown-linux-musl]
+# linker = "./scripts/zig/aarch64-musl.sh"
+
+# To build final executable
+# cargo test --no-run -Zbuild-std=std --target mips-unknown-linux-gnu
+[target.mips-unknown-linux-gnu]
+linker = "./scripts/toolchain/host/bin/mips-buildroot-linux-gnu-gcc"
+rustflags = ["-C", "opt-level=1"]

@@ -1154,8 +1154,9 @@ where
 					Response::Stopped(stopped) => self.handle_stopped(stopped)?,
 					#[cfg(feature = "syscalls")]
 					Response::Syscall(syscall) => self.handle_syscall(syscall)?,
-					Response::TargetExit => panic!("TargetExit was not handled by callback"),
-					Response::Removed => panic!("Removed was not handled by callback"),
+					Response::TargetExit => crate::bug!("TargetExit was not handled by callback"),
+					Response::Removed => crate::bug!("Removed was not handled by callback"),
+					Response::Error(e) => log::error!("got error: {e:?} | trying to continue"),
 					_ => crate::bug!(
 						"unexpected response {rsp:?} in loop, client probably forgot to read something"
 					),

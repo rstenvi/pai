@@ -237,7 +237,12 @@ macro_rules! gen_call_shellcode {
 			let swbp = crate::arch::get_def_little!(SW_BP, isbig);
 
 			code.extend_from_slice(&nop);
+			code.extend_from_slice(&nop);
 			code.extend_from_slice(&call_tramp);
+
+			// This doesn't work correctly on mips (qemu) unless we have an
+			// extra NOP after the call
+			code.extend_from_slice(&nop);
 			code.extend_from_slice(&swbp);
 		}
 	};
@@ -392,4 +397,7 @@ mod test {
 
 	#[cfg(target_arch = "riscv64")]
 	gen_test_regs_arch! { riscv64 }
+
+	#[cfg(target_arch = "mips")]
+	gen_test_regs_arch! { mips32 }
 }
