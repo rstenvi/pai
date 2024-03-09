@@ -64,7 +64,7 @@ super::impl_from_generic! { user_regs_struct, Aarch32 }
 
 super::impl_named_regs! { user_regs_struct }
 
-super::gen_syscall_shellcode! { }
-super::gen_call_shellcode! { }
-super::gen_ret_shellcode! { }
+super::gen_syscall_shellcode! {}
+super::gen_call_shellcode! {}
+super::gen_ret_shellcode! {}
 super::gen_bp_shellcode! {}

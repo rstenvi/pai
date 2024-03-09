@@ -65,10 +65,14 @@ impl BuildEndian {
 			BuildEndian::Big => true,
 			BuildEndian::Native => {
 				#[cfg(target_endian = "big")]
-				{ true }
+				{
+					true
+				}
 				#[cfg(target_endian = "little")]
-				{ false }
-			},
+				{
+					false
+				}
+			}
 		}
 	}
 	pub fn is_little(&self) -> bool {

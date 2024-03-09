@@ -38,29 +38,26 @@ args = ["doc", "--quiet", "--all-features", "--no-deps", "--target=${@}"]
 command = "cargo"
 args = ["doc", "--quiet", "--all-features", "--no-deps", "--target=${@}", "--document-private-items"]
 
-[tasks.mintest]
+[tasks.test-min]
 extend = "test"
 args = ["test"]
 
-[tasks.plugin-test]
+[tasks.test-plugin]
 extend = "test"
 args = ["test", "--features", "plugins"]
 
-[tasks.syscalls-test]
+[tasks.test-syscalls]
 extend = "test"
 args = ["test", "--features", "syscalls"]
-
-# Run tests in all possible configuration, some tests are then run multiple
-# times.
-[tasks.fullhosttest]
-dependencies = [ "mintest", "test", "plugin-test", "syscalls-test" ]
 
 [tasks.test-x86]
 env = { TARGET = ["i686-unknown-linux-gnu"] }
 run_task = "crosstest"
 
 [tasks.test-x86_64]
-run_task = "fullhosttest"
+# Run tests in all possible configuration, some tests are then run multiple
+# times.
+dependencies = [ "test-min", "test-plugin", "test-syscalls", "test" ]
 
 [tasks.test-armv7-gnueabihf]
 env = { TARGET = ["armv7-unknown-linux-gnueabihf"] }
@@ -75,8 +72,20 @@ run_task = "crosstest"
 env = { TARGET = ["riscv64gc-unknown-linux-gnu"] }
 run_task = "crosstest"
 
-[tasks.fulltest]
-dependencies = ["test-x86_64", "test-x86", "test-armv7-gnueabihf", "test-aarch64"]
+[tasks.test-mips]
+env = { TARGET = ["mips-unknown-linux-gnu"] }
+run_task = "crosstest"
+
+
+[tasks.test-all]
+dependencies = [
+	"test-x86_64",
+	"test-x86",
+	"test-armv7-gnueabihf",
+	"test-aarch64",
+	"test-riscv64",
+	"test-mips"
+]
 
 # Afterwards run with:
 # "qemu-system-arm" "-nographic" "-snapshot" "-smp" "4" "-m" "1G" "-kernel" "scripts/images/arm-linux-gnueabi/zImage" "-M" "vexpress-a9" "-drive" "file=scripts/images/arm-linux-gnueabi/rootfs-ready.qcow2,if=sd" "-append" "rootwait console=ttyAMA0,115200 root=/dev/mmcblk0" "-net" "nic,model=lan9118" "-dtb" "scripts/images/arm-linux-gnueabi/vexpress-v2p-ca9.dtb" "-net" "user,hostfwd=tcp::10023-:22"

@@ -62,10 +62,10 @@ xattr = "1.2.0"
 crossbeam-channel = "0.5.8"
 
 # Syscall specification for all the supported system calls
-syzlang-data = { version = "0.1" }
+syzlang-data = { version = "0.1", optional = true }
 # syzlang-data = { path = "../syzlang-data" }
 # syzlang-data = { git = "https://github.com/rstenvi/syzlang-data" }
-syzlang-parser = "0.1"
+syzlang-parser = { version = "0.1", optional = true }
 # syzlang-parser = { path = "../syzlang-parser" }
 # syzlang-parser = { git = "https://github.com/rstenvi/syzlang-parser" }
 
@@ -96,11 +96,11 @@ num-traits = "0.2.18"
 scratch = "1"
 
 anyhow = "1"
-syzlang-data = { version = "0.1" }
+syzlang-data = { version = "0.1", optional = true }
 # syzlang-data = { path = "../syzlang-data" }
 # syzlang-data = { git = "https://github.com/rstenvi/syzlang-data" }
 
-syzlang-parser = "0.1"
+syzlang-parser = { version = "0.1", optional = true }
 # syzlang-parser = { path = "../syzlang-parser" }
 # syzlang-parser = { git = "https://github.com/rstenvi/syzlang-parser" }
 serde_json = "1.0"
@@ -120,5 +120,5 @@ serial_test = "3.0.0"
 
 [features]
 std = []
-syscalls = [ "syzlang-data/linux" ]
+syscalls = [ "syzlang-data/linux", "syzlang-parser" ]
 plugins = []

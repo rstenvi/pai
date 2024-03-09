@@ -8,10 +8,10 @@ use crate::{target::GenericCc, Registers, Result, TargetPtr};
 
 pub mod aarch32;
 pub mod aarch64;
+pub mod mips32;
 pub mod riscv64;
 pub mod x86;
 pub mod x86_64;
-pub mod mips32;
 
 /// All possible register values for supported architectures.
 ///
@@ -276,7 +276,6 @@ macro_rules! gen_bp_shellcode {
 	};
 }
 pub(crate) use gen_bp_shellcode;
-
 
 /// Architecture-neutral manner to read/write register.
 ///

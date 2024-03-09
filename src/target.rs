@@ -362,9 +362,9 @@ impl GenericCc {
 			CcArgAccess::from_named_reg("a2", &regs)?,
 			CcArgAccess::from_named_reg("a3", &regs)?,
 			CcArgAccess::from_sp_offset(STARTOFF * 4, 4),
-			CcArgAccess::from_sp_offset((STARTOFF+1) * 4, 4),
-			CcArgAccess::from_sp_offset((STARTOFF+2) * 4, 4),
-			CcArgAccess::from_sp_offset((STARTOFF+3) * 4, 4),
+			CcArgAccess::from_sp_offset((STARTOFF + 1) * 4, 4),
+			CcArgAccess::from_sp_offset((STARTOFF + 2) * 4, 4),
+			CcArgAccess::from_sp_offset((STARTOFF + 3) * 4, 4),
 		];
 		let retval = CcArgAccess::from_named_reg("v0", &regs)?;
 		let calltramp = CcArgAccess::from_named_reg("t9", &regs)?;

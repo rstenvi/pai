@@ -214,7 +214,10 @@ impl ClientThread {
 				// supported, but we should still return the info we have about
 				// the syscall.
 				if let Err(e) = self.enrich(sysno, &mut ins, Direction::In) {
-					log::warn!("got error when enriching syscall(entry) {}:{sysno} | error: {e:?}", ins.name);
+					log::warn!(
+						"got error when enriching syscall(entry) {}:{sysno} | error: {e:?}",
+						ins.name
+					);
 				}
 				let resp = if !self.args.only_notify_syscall_exit(tid) {
 					Some(Response::Syscall(ins.clone()))
@@ -232,7 +235,11 @@ impl ClientThread {
 			syscall.fill_in_output(retval.into());
 			log::debug!("sys exit before enrich {syscall:?}");
 			if let Err(e) = self.enrich(syscall.sysno, &mut syscall, Direction::Out) {
-				log::warn!("got error when enriching syscall(exit) {}:{} | error: {e:?}", syscall.name, syscall.sysno);
+				log::warn!(
+					"got error when enriching syscall(exit) {}:{} | error: {e:?}",
+					syscall.name,
+					syscall.sysno
+				);
 			}
 			let ret = Some(Response::Syscall(syscall));
 			Ok(ret)

@@ -4,4 +4,7 @@ core.*
 scripts/images
 scripts/keys
 scripts/toolchain
+
+# Files related to testing
 runner_config.toml
+test.env

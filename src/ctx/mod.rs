@@ -250,8 +250,11 @@ mod tests {
 		let numsleep = 3;
 		let mut files = crate::tests::get_all_tar_files().unwrap();
 		let sleep = files
-			.remove("sleep")
-			.expect("sleep not present in testdata");
+			.remove("sleep");
+		#[cfg(target_arch = "mips")]
+		if sleep.is_none() { return; }
+
+		let sleep = sleep.expect("sleep not present in testdata");
 		let pargs = vec![format!("{numsleep}")];
 		let mut ctx: Main<usize, crate::Error> =
 			Main::spawn_in_mem("sleep", sleep.clone(), pargs, 0_usize).unwrap();
@@ -287,8 +290,11 @@ mod tests {
 		let numclones = 2; // This is hard-coded in program
 		let mut files = crate::tests::get_all_tar_files().unwrap();
 		let threads = files
-			.remove("threads")
-			.expect("threads not present in testdata");
+			.remove("threads");
+
+		#[cfg(target_arch = "mips")]
+		if threads.is_none() { return; }
+		let threads = threads.expect("threads not present in testdata");
 
 		let mut ctx: Main<usize, crate::Error> =
 			Main::spawn_in_mem("threads", threads, &[], 0_usize).unwrap();
@@ -324,8 +330,12 @@ mod tests {
 		let numclones = 1;
 		let mut files = crate::tests::get_all_tar_files().unwrap();
 		let forkwait = files
-			.remove("forkwait")
-			.expect("forkwait not present in testdata");
+			.remove("forkwait");
+
+		#[cfg(target_arch = "mips")]
+		if forkwait.is_none() { return; }
+
+		let forkwait = forkwait.expect("forkwait not present in testdata");
 		let pargs = vec![format!("{numclones}")];
 		let mut ctx: Main<usize, crate::Error> =
 			Main::spawn_in_mem("forkwait", forkwait, pargs, 0_usize).unwrap();
@@ -383,10 +393,16 @@ mod tests {
 		let _s = sec.run_until_entry().unwrap();
 
 		let tid = sec.get_first_stopped().unwrap();
-		let pc = sec.client_mut().get_trampoline_addr(tid, crate::api::messages::TrampType::Call).unwrap();
+		let pc = sec
+			.client_mut()
+			.get_trampoline_addr(tid, crate::api::messages::TrampType::Call)
+			.unwrap();
 		log::debug!("tramp @ {pc:x}");
 
-		let pid = sec.client_mut().exec_raw_syscall(tid, libc::SYS_getpid as usize, &[]).unwrap();
+		let pid = sec
+			.client_mut()
+			.exec_raw_syscall(tid, libc::SYS_getpid as usize, &[])
+			.unwrap();
 		assert_eq!(<TargetPtr as Into<Tid>>::into(pid), tid);
 
 		let (rsp, res) = ctx.loop_until_exit().unwrap();
@@ -401,7 +417,10 @@ mod tests {
 		sec.client_mut().init_done().unwrap();
 		let _s = sec.run_until_entry().unwrap();
 		let tid = sec.get_first_stopped().unwrap();
-		let pc = sec.client_mut().get_trampoline_addr(tid, crate::api::messages::TrampType::Call).unwrap();
+		let pc = sec
+			.client_mut()
+			.get_trampoline_addr(tid, crate::api::messages::TrampType::Call)
+			.unwrap();
 		log::debug!("tramp @ {pc:x}");
 
 		let libc = sec.try_find_libc_so().unwrap();
@@ -448,8 +467,11 @@ mod tests {
 		let count = 2;
 		let mut files = crate::tests::get_all_tar_files().unwrap();
 		let getpid = files
-			.remove("getpid")
-			.expect("getpid not present in testdata");
+			.remove("getpid");
+		#[cfg(target_arch = "mips")]
+		if getpid.is_none() { return; }
+
+		let getpid = getpid.expect("getpid not present in testdata");
 		let pargs = vec![format!("{count}")];
 		let mut ctx: Main<usize, crate::Error> =
 			Main::spawn_in_mem("getpid", getpid, pargs, 0_usize).unwrap();

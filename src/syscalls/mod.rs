@@ -20,37 +20,31 @@ pub(crate) mod parsed;
 pub(crate) use parsed::{Syscall, Syscalls};
 
 macro_rules! get_parsed {
-	() => {
-		{
+	() => {{
 		log::trace!("getting read lock");
 		&crate::SYSCALLS
 			.read()
 			.expect("unable to read lock SYSCALLS")
 			.parsed
-		}
-	};
+	}};
 }
 pub(crate) use get_parsed;
 macro_rules! get_syscalls {
-	() => {
-		{
+	() => {{
 		log::trace!("getting read lock");
 		&crate::SYSCALLS
 			.read()
 			.expect("unable to read lock SYSCALLS")
-		}
-	};
+	}};
 }
 
 macro_rules! write_syscalls {
-	() => {
-		{
+	() => {{
 		log::trace!("getting write lock");
 		&mut crate::SYSCALLS
 			.write()
 			.expect("unable to write lock SYSCALLS")
-		}
-	};
+	}};
 }
 
 impl std::fmt::Display for LenType {
@@ -900,23 +894,19 @@ impl SyscallItem {
 				};
 				Ok(Some(Value::new_vma(raw, bits)))
 			}
-			ArgType::Const => {
-				Ok(if let Some(first) = opts.first() {
-					let value = Self::resolve_const_opt(raw, first)?;
-					Some(value)
-				} else {
-					None
-				})
-			}
-			ArgType::Flags => {
-				Ok(if let Some(opt) = opts.first() {
-					let set = Self::resolve_flag_opt(raw, opt)?;
-					Some(Value::new_flags(set))
-				} else {
-					log::warn!("no argopt to parse flags {atype:?}");
-					None
-				})
-			}
+			ArgType::Const => Ok(if let Some(first) = opts.first() {
+				let value = Self::resolve_const_opt(raw, first)?;
+				Some(value)
+			} else {
+				None
+			}),
+			ArgType::Flags => Ok(if let Some(opt) = opts.first() {
+				let set = Self::resolve_flag_opt(raw, opt)?;
+				Some(Value::new_flags(set))
+			} else {
+				log::warn!("no argopt to parse flags {atype:?}");
+				None
+			}),
 			ArgType::Len | ArgType::Bitsize | ArgType::Bytesize => {
 				Ok(if let Some(lenof) = opts.first() {
 					let lentype = match atype {
@@ -1039,7 +1029,11 @@ impl SyscallItem {
 			false
 		}
 	}
-	fn resolve_resource_ident(raw: TargetPtr, ident: &Identifier, dir: Direction) -> Result<Option<Value>> {
+	fn resolve_resource_ident(
+		raw: TargetPtr,
+		ident: &Identifier,
+		dir: Direction,
+	) -> Result<Option<Value>> {
 		let basics = get_parsed!().resource_to_basics(ident);
 		log::trace!("basics {ident:?} ->  {basics:?}");
 		if Self::argtypes_are_fd(ident, &basics) {
@@ -1079,14 +1073,21 @@ impl SyscallItem {
 						let sub = Value::new_number(value, 32);
 						Ok(Value::new_resource("fd", Some(sub)))
 					} else {
-						Err(Error::msg(format!("unable to find matching const {:?}", ident.name)))
+						Err(Error::msg(format!(
+							"unable to find matching const {:?}",
+							ident.name
+						)))
 					}
 				}
 				parser::Value::Int(_n) => Ok(Value::new_int_ptrsize(raw)),
-				_ => Err(Error::msg(format!("encountered {value:?} when trying to resolve const"))),
+				_ => Err(Error::msg(format!(
+					"encountered {value:?} when trying to resolve const"
+				))),
 			}
 		} else {
-			Err(Error::msg(format!("encountered {opt:?} when trying to resolve const")))
+			Err(Error::msg(format!(
+				"encountered {opt:?} when trying to resolve const"
+			)))
 		}
 	}
 	fn resolve_flag_ident(raw: TargetPtr, ident: &Identifier) -> Result<Vec<String>> {
@@ -1106,7 +1107,11 @@ impl SyscallItem {
 							ret.push(n.name.clone());
 						}
 					}
-					_ => return Err(Error::msg(format!("encountered {val:?} when trying to resolve flag ident"))),
+					_ => {
+						return Err(Error::msg(format!(
+							"encountered {val:?} when trying to resolve flag ident"
+						)))
+					}
 				}
 			}
 		}
@@ -1115,7 +1120,9 @@ impl SyscallItem {
 	fn resolve_flag_opt(raw: TargetPtr, opt: &ArgOpt) -> Result<Vec<String>> {
 		match opt {
 			ArgOpt::Ident(ident) => Self::resolve_flag_ident(raw, ident),
-			_ => Err(Error::msg(format!("encountered {opt:?} when trying to resolve flag opt"))),
+			_ => Err(Error::msg(format!(
+				"encountered {opt:?} when trying to resolve flag opt"
+			))),
 		}
 	}
 	fn resolve_const_ident(name: &str) -> Result<TargetPtr> {
@@ -1125,10 +1132,15 @@ impl SyscallItem {
 		{
 			match r.value() {
 				parser::Value::Int(n) => Ok((*n).into()),
-				_ => Err(Error::msg(format!("encountered {:?} when trying to resolve const ident",r.value()))),
+				_ => Err(Error::msg(format!(
+					"encountered {:?} when trying to resolve const ident",
+					r.value()
+				))),
 			}
 		} else {
-			Err(Error::msg(format!("const search for {name:?} returned None")))
+			Err(Error::msg(format!(
+				"const search for {name:?} returned None"
+			)))
 		}
 	}
 

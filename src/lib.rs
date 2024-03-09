@@ -476,6 +476,7 @@ error_from_crate! { serde_json::Error }
 error_from_crate! { elf::ParseError }
 error_from_crate! { std::io::Error }
 error_from_crate! { std::str::Utf8Error }
+#[cfg(feature = "syscalls")]
 error_from_crate! { syzlang_parser::Error }
 error_from_crate! { std::convert::Infallible }
 error_from_crate! { nix::errno::Errno }
@@ -682,6 +683,7 @@ pub(crate) mod tests {
 	#[test]
 	fn extract_tar_files() {
 		let maps = get_all_tar_files().unwrap();
+		#[cfg(not(target_arch = "mips"))]
 		assert!(maps.get("threads").is_some());
 	}
 
@@ -708,7 +710,8 @@ pub(crate) mod tests {
 		let raw = include_bytes!(concat!(env!("OUT_DIR"), "/syscalls.json.gz"));
 		let mut gz = flate2::bufread::GzDecoder::new(&raw[..]);
 		let mut s = String::new();
-		gz.read_to_string(&mut s).expect("unable to decompress gz from build.rs");
+		gz.read_to_string(&mut s)
+			.expect("unable to decompress gz from build.rs");
 
 		b.iter(move || {
 			let mut parsed: syscalls::Syscalls = serde_json::from_str(&s)
@@ -724,6 +727,7 @@ pub(crate) mod tests {
 		let raw = include_bytes!(concat!(env!("OUT_DIR"), "/syscalls.json.gz"));
 		let mut gz = flate2::bufread::GzDecoder::new(&raw[..]);
 		let mut s = String::new();
-		gz.read_to_string(&mut s).expect("unable to decompress gz from build.rs");
+		gz.read_to_string(&mut s)
+			.expect("unable to decompress gz from build.rs");
 	}
 }

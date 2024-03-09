@@ -323,7 +323,8 @@ struct Config {
 
 impl Config {
 	fn run(&self, arch: String, bin: PathBuf, args: Vec<String>) -> Result<()> {
-		log::info!("running {arch}: {bin:?}");
+		log::debug!("config {self:?}");
+		log::info!("running arch:{arch}: bin:{bin:?}");
 		if let Some(host) = self.host.as_ref() {
 			if let Some(h) = host.get(&arch) {
 				h.run(arch, bin, args)?;
@@ -357,33 +358,52 @@ fn main() -> anyhow::Result<()> {
 	let config: Config = toml::from_str(&config)?;
 	log::debug!("config {config:?}");
 
-	let mut cmd = Command::new("cross");
-	cmd.arg("test");
+	// let mut cmd = Command::new("cross");
+	// cmd.arg("test");
+	// cmd.arg("--message-format=json");
+	// cmd.arg("--no-run");
+	// cmd.arg("--quiet");
+	// cmd.arg(format!("--target-dir={}", args.target_dir));
+	// for feature in args.features.iter() {
+	// 	cmd.arg(format!("--features={feature}"));
+	// }
+	// if args.all_features {
+	// 	cmd.arg(format!("--all-features"));
+	// }
+	// for target in args.target.iter() {
+	// 	cmd.arg(format!("--target={target}"));
+	// }
+	let mut cmd = Command::new("cargo");
+	cmd.arg("make");
+	cmd.arg("--env-file");
+	cmd.arg("test.env");
+	cmd.arg("--env");
+	cmd.arg(format!("TARGET={}", args.target.first().unwrap()));
+	cmd.arg("crosstest-dry");
 	cmd.arg("--message-format=json");
-	cmd.arg("--no-run");
 	cmd.arg("--quiet");
-	cmd.arg(format!("--target-dir={}", args.target_dir));
-	for feature in args.features.iter() {
-		cmd.arg(format!("--features={feature}"));
-	}
-	if args.all_features {
-		cmd.arg(format!("--all-features"));
-	}
-	for target in args.target.iter() {
-		cmd.arg(format!("--target={target}"));
-	}
+	// for target in args.target.iter() {
+	// 	cmd.arg(format!("--target={target}"));
+	// }
 	let testpaths = exec_test(cmd)?;
 
 	log::debug!("testing {testpaths:?}");
 	let mut realtests = Vec::new();
-	let base = PathBuf::from(args.target_dir.clone());
+	let mut base = PathBuf::from(args.target_dir.clone());
+
 	for path in testpaths.into_iter() {
 		let p = PathBuf::from(path);
-		let p = p.strip_prefix("/target/").unwrap();
-		let out = base.join(p);
-		assert!(out.is_file());
-		realtests.push(out);
+		if let Ok(pp) = p.strip_prefix("/target/") {
+			base.push("cross");
+			let out = base.join(pp);
+			log::info!("out file {out:?}");
+			assert!(out.is_file());
+			realtests.push(out);
+		} else {
+			realtests.push(p);
+		}
 	}
+	log::debug!("realtests {realtests:?}");
 
 	if !args.no_run {
 		let cargs = std::mem::take(&mut args.args);
@@ -399,18 +419,60 @@ fn main() -> anyhow::Result<()> {
 	Ok(())
 }
 
+// macro_rules! from_os_str {
+// 	($id:ident) => {
+// 		{ $id.to_str().unwrap() }
+// 	}
+// }
+
+// struct CompiledTest {
+// 	arch: String,
+// 	file_name: String,
+// 	path: PathBuf,
+// }
+// impl CompiledTest {
+// 	fn from_path<P: Into<PathBuf>>(buf: P) -> Self {
+// 		let buf: PathBuf = buf.into();
+// 		let file_name = buf.file_name().unwrap().to_str().unwrap().to_string();
+// 		let mut arch = None;
+// 		for comp in buf.components() {
+// 			log::warn!("com {comp:?}");
+// 			let comps = comp.as_os_str().to_str().unwrap();
+// 			if let Some(stop) = comps.find("-") {
+// 				assert!(arch.is_none());
+// 				let ret = comps.get(0..stop).unwrap().to_string();
+// 				log::debug!("found {ret:?}");
+// 				arch = Some(ret);
+// 			}
+// 		}
+// 		let arch = arch.unwrap();
+// 		Self { arch, file_name, path: buf }
+// 	}
+// }
+
+// TODO: Not very robust, should redo this
 fn extract_arch<P: Into<PathBuf>>(buf: P) -> String {
 	let buf: PathBuf = buf.into();
-	let mut comps = buf.components();
-	let _out = comps.next().unwrap();
-	let target = comps.next().unwrap();
-	target.as_os_str().to_str().unwrap().to_string()
+	log::debug!("extracting arch from {buf:?}");
+	for comp in buf.components() {
+		log::debug!("com {comp:?}");
+		let ss = comp.as_os_str();
 
+		if let Some(s) = ss.to_str() {
+			if let Some(stop) = s.find("-") {
+				// let arch = s.get(0..stop).unwrap();
+				// log::debug!("found {ret:?}");
+				return s.to_string();
+			}
+		}
+	}
+	panic!("found no arch in {buf:?}");
 }
 
 fn exec_test(mut cmd: Command) -> Result<Vec<String>> {
 	log::debug!("cmd = {cmd:?}");
 	let out = cmd.output().expect("cross test failed");
+	log::trace!("out {out:?}");
 
 	let mut testpaths = Vec::new();
 	let stdout = std::str::from_utf8(&out.stdout)?;
@@ -423,7 +485,11 @@ fn exec_test(mut cmd: Command) -> Result<Vec<String>> {
 	for line in stdout.split('\n') {
 		if !line.is_empty() {
 			log::trace!("{line}");
-			let v: serde_json::Value = serde_json::from_str(line)?;
+			// We get some extra output which is not JSON, just throw that away
+			let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+				log::trace!("unparseable line");
+				continue;
+			};
 			log::trace!("{v}");
 			if let Some(reason) = v.get("reason") {
 				if reason == "build-finished" {
