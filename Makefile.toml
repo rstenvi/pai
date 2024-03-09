@@ -8,7 +8,7 @@ extend= [
 ]
 
 [tasks.publish]
-dependencies = ["enforcestd", "test-all"]
+dependencies = ["update", "enforcestd", "test-all"]
 
 [tasks.build]
 args = [ "build", "--all-features", "--target-dir=output", "--target=${@}"]
