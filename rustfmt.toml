@@ -1,1 +1,8 @@
 hard_tabs = true
+fn_params_layout = "Compressed"
+
+# Not stable: <https://github.com/rust-lang/rustfmt/issues/3358>
+# fn_single_line = true
+
+# Not stable: <https://github.com/rust-lang/rustfmt/issues/3348>
+# format_code_in_doc_comments = true

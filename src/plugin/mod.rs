@@ -113,9 +113,7 @@ struct PluginExt<R, W: std::io::Write> {
 }
 impl<R: std::io::Read, W: std::io::Write> PluginExt<R, W> {
 	fn new(
-		reader: BufReader<R>,
-		writer: BufWriter<W>,
-		client: ctx::Secondary<(), crate::Error>,
+		reader: BufReader<R>, writer: BufWriter<W>, client: ctx::Secondary<(), crate::Error>,
 	) -> Self {
 		log::info!("creating plugin mgr");
 		Self {
@@ -131,8 +129,7 @@ pub struct PluginExec;
 
 impl PluginExec {
 	pub fn spawn(
-		mut cmd: process::Command,
-		client: crate::Client,
+		mut cmd: process::Command, client: crate::Client,
 	) -> Result<JoinHandle<Result<()>>> {
 		let handle = std::thread::spawn(move || -> Result<()> {
 			let client = ctx::Secondary::new_second(client, ())?;
@@ -165,8 +162,7 @@ impl PluginExec {
 		Ok(handle)
 	}
 	pub fn connect_tcp_stream(
-		stream: TcpStream,
-		client: crate::Client,
+		stream: TcpStream, client: crate::Client,
 	) -> Result<JoinHandle<Result<()>>> {
 		let handle = std::thread::spawn(move || -> Result<()> {
 			let client = ctx::Secondary::new_second(client, ())?;
@@ -178,9 +174,7 @@ impl PluginExec {
 	}
 
 	pub fn get_num_incoming_tcp<A: std::net::ToSocketAddrs>(
-		ctx: ctx::Secondary<(), crate::Error>,
-		addr: A,
-		num: usize,
+		ctx: ctx::Secondary<(), crate::Error>, addr: A, num: usize,
 	) -> Result<Vec<JoinHandle<Result<()>>>> {
 		let mut rets = Vec::new();
 		let listener = std::net::TcpListener::bind(addr)?;

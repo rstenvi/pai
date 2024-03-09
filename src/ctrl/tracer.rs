@@ -306,9 +306,7 @@ impl CtrlTracer {
 		Ok(tids)
 	}
 	fn handle_cmd_remote_process(
-		&mut self,
-		_client: &mut ClientMaster,
-		cmd: ProcessCmd,
+		&mut self, _client: &mut ClientMaster, cmd: ProcessCmd,
 	) -> Result<Option<Response>> {
 		let r = match cmd {
 			ProcessCmd::GetTids => {
@@ -336,10 +334,7 @@ impl CtrlTracer {
 		Ok(Some(r))
 	}
 	fn exec_raw_syscall(
-		&mut self,
-		tid: Tid,
-		sysno: usize,
-		args: &[TargetPtr],
+		&mut self, tid: Tid, sysno: usize, args: &[TargetPtr],
 	) -> Result<TargetPtr> {
 		let mut regs = self.tracer.get_libc_regs(tid)?;
 		let oregs = regs.clone();
@@ -382,10 +377,7 @@ impl CtrlTracer {
 		Ok(mem.addr())
 	}
 	fn handle_cmd_remote_thread(
-		&mut self,
-		client: &mut ClientMaster,
-		tid: Tid,
-		cmd: ThreadCmd,
+		&mut self, client: &mut ClientMaster, tid: Tid, cmd: ThreadCmd,
 	) -> Result<Option<Response>> {
 		let r = match cmd {
 			ThreadCmd::GetRegisters => {
@@ -490,9 +482,7 @@ impl CtrlTracer {
 		Ok(Some(r))
 	}
 	fn handle_cmd_remote(
-		&mut self,
-		client: &mut ClientMaster,
-		rcmd: RemoteCmd,
+		&mut self, client: &mut ClientMaster, rcmd: RemoteCmd,
 	) -> Result<Option<Response>> {
 		match rcmd {
 			RemoteCmd::Process { cmd } => self.handle_cmd_remote_process(client, cmd),
@@ -506,9 +496,7 @@ impl CtrlTracer {
 		Ok(())
 	}
 	fn handle_cmd_manager(
-		&mut self,
-		client: &mut ClientMaster,
-		cmd: ManagerCmd,
+		&mut self, client: &mut ClientMaster, cmd: ManagerCmd,
 	) -> Result<Option<Response>> {
 		match cmd {
 			ManagerCmd::Wait => {
@@ -556,9 +544,7 @@ impl CtrlTracer {
 	}
 
 	fn handle_cmd_send_event(
-		&mut self,
-		client: &mut ClientMaster,
-		event: Event,
+		&mut self, client: &mut ClientMaster, event: Event,
 	) -> Result<Response> {
 		let reg = RegEvent::from_event(&event.event);
 		for (_i, client) in self.clients.iter_mut() {
@@ -645,10 +631,7 @@ pub struct ClientMaster {
 
 impl ClientMaster {
 	pub fn new(
-		id: usize,
-		ctype: ClientType,
-		tx: Sender<Response>,
-		handle: JoinHandle<Result<()>>,
+		id: usize, ctype: ClientType, tx: Sender<Response>, handle: JoinHandle<Result<()>>,
 	) -> Self {
 		let args = ClientArgs::default();
 		let state = ctype.initial_state();

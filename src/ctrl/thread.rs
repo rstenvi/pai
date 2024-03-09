@@ -53,10 +53,7 @@ pub(crate) struct ClientThread {
 
 impl ClientThread {
 	pub fn new(
-		id: usize,
-		mtx: Sender<MasterComm>,
-		mrx: Receiver<Response>,
-		rx: Receiver<Command>,
+		id: usize, mtx: Sender<MasterComm>, mrx: Receiver<Response>, rx: Receiver<Command>,
 		tx: Sender<Response>,
 	) -> Self {
 		let wrap = IdWrapper::new(id);
@@ -185,9 +182,7 @@ impl ClientThread {
 		Ok(())
 	}
 	fn fill_syscall_regs(
-		args: &mut Vec<u64>,
-		cc: &GenericCc,
-		regs: &dyn RegisterAccess,
+		args: &mut Vec<u64>, cc: &GenericCc, regs: &dyn RegisterAccess,
 	) -> Result<()> {
 		let len = args.capacity();
 		for i in 0..len {

@@ -38,11 +38,7 @@ impl BuildVersion {
 
 impl BuildInfo {
 	fn new<S1: Into<String>, S2: Into<String>>(
-		linker: S1,
-		version: BuildVersion,
-		target: BuildTarget,
-		triple: S2,
-		githash: Option<String>,
+		linker: S1, version: BuildVersion, target: BuildTarget, triple: S2, githash: Option<String>,
 	) -> Self {
 		let linker = linker.into();
 		let triple = triple.into();
@@ -58,11 +54,7 @@ impl BuildInfo {
 
 impl BuildTarget {
 	pub fn new(
-		arch: BuildArch,
-		os: BuildOs,
-		endian: BuildEndian,
-		ptrwidth: usize,
-		abi: BuildAbi,
+		arch: BuildArch, os: BuildOs, endian: BuildEndian, ptrwidth: usize, abi: BuildAbi,
 		env: BuildEnv,
 	) -> Self {
 		Self {

@@ -582,9 +582,7 @@ impl GenericCc {
 	}
 
 	fn _set_arg(
-		arg: &CcArgAccess,
-		regs: &mut dyn RegisterAccess,
-		val: u64,
+		arg: &CcArgAccess, regs: &mut dyn RegisterAccess, val: u64,
 		client: Option<&mut crate::Client>,
 	) -> Result<()> {
 		let endian = &crate::TARGET_INFO.read().unwrap().target.endian;
@@ -620,9 +618,7 @@ impl GenericCc {
 		Ok(())
 	}
 	fn _get_arg(
-		arg: &CcArgAccess,
-		regs: &dyn RegisterAccess,
-		client: Option<&mut crate::Client>,
+		arg: &CcArgAccess, regs: &dyn RegisterAccess, client: Option<&mut crate::Client>,
 	) -> Result<u64> {
 		let endian = &crate::TARGET_INFO.read().unwrap().target.endian;
 		let mut data = Vec::with_capacity(arg.size);
@@ -659,20 +655,13 @@ impl GenericCc {
 		Ok(ret)
 	}
 	pub fn get_arg(
-		&self,
-		num: usize,
-		regs: &dyn RegisterAccess,
-		client: &mut crate::Client,
+		&self, num: usize, regs: &dyn RegisterAccess, client: &mut crate::Client,
 	) -> Result<u64> {
 		let arg = self.args.get(num).ok_or(Error::Unknown)?;
 		Self::_get_arg(arg, regs, Some(client))
 	}
 	pub fn set_arg(
-		&self,
-		num: usize,
-		val: u64,
-		regs: &mut dyn RegisterAccess,
-		client: &mut crate::Client,
+		&self, num: usize, val: u64, regs: &mut dyn RegisterAccess, client: &mut crate::Client,
 	) -> Result<()> {
 		let arg = self.args.get(num).ok_or(Error::Unknown)?;
 		Self::_set_arg(arg, regs, val, Some(client))
@@ -684,17 +673,12 @@ impl GenericCc {
 		Self::_set_arg(&self.retval, regs, val, None)
 	}
 	pub fn set_reg_call_tramp(
-		&self,
-		regs: &mut dyn RegisterAccess,
-		value: crate::TargetPtr,
+		&self, regs: &mut dyn RegisterAccess, value: crate::TargetPtr,
 	) -> Result<()> {
 		Self::_set_arg(&self.calltramp, regs, value.into(), None)
 	}
 	pub fn set_arg_regonly(
-		&self,
-		num: usize,
-		val: u64,
-		regs: &mut dyn RegisterAccess,
+		&self, num: usize, val: u64, regs: &mut dyn RegisterAccess,
 	) -> Result<()> {
 		let arg = self.args.get(num).ok_or(Error::Unknown)?;
 		Self::_set_arg(arg, regs, val, None)
@@ -704,9 +688,7 @@ impl GenericCc {
 		Self::_get_arg(arg, regs, None)
 	}
 	pub fn get_return_addr(
-		&self,
-		regs: &dyn RegisterAccess,
-		client: &mut crate::Client,
+		&self, regs: &dyn RegisterAccess, client: &mut crate::Client,
 	) -> Result<u64> {
 		let arg = self.returnaddr.as_ref().ok_or(Error::unsupported())?;
 		Self::_get_arg(arg, regs, Some(client))

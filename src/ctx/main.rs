@@ -74,10 +74,7 @@ where
 	/// notification. Unsure why this bug happens, but disabled until it's
 	/// figured out.
 	pub fn spawn_in_mem<S: Into<String>, V: Into<Vec<String>>>(
-		name: S,
-		elf: Vec<u8>,
-		args: V,
-		data: T,
+		name: S, elf: Vec<u8>, args: V, data: T,
 	) -> Result<Self> {
 		let name: String = name.into();
 		let args: Vec<String> = args.into();

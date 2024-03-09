@@ -185,10 +185,7 @@ where
 	crate::Error: From<crossbeam_channel::SendError<TX>>,
 {
 	pub(crate) fn new(
-		id: usize,
-		tx: Sender<TX>,
-		rx: Receiver<RX>,
-		wrap: Box<dyn ApiWrapper<TX, RX> + Send>,
+		id: usize, tx: Sender<TX>, rx: Receiver<RX>, wrap: Box<dyn ApiWrapper<TX, RX> + Send>,
 	) -> Self {
 		let stream = Box::new(ClientThread::new(tx, rx));
 		Self { id, wrap, stream }
@@ -246,10 +243,7 @@ where
 
 	/// Execute a syscall with the given `sysno` and `args`
 	pub fn exec_raw_syscall<S: Into<Vec<TargetPtr>>>(
-		&mut self,
-		tid: Tid,
-		sysno: usize,
-		args: S,
+		&mut self, tid: Tid, sysno: usize, args: S,
 	) -> Result<TargetPtr> {
 		let cmd = RemoteCmd::syscall(tid, sysno, args.into());
 		self.wr_value_remote(cmd)
@@ -312,10 +306,7 @@ where
 		self.wr_value_remote(cmd)
 	}
 	pub fn write_bytes<B: Into<Vec<u8>>>(
-		&mut self,
-		tid: Tid,
-		addr: TargetPtr,
-		bytes: B,
+		&mut self, tid: Tid, addr: TargetPtr, bytes: B,
 	) -> Result<usize> {
 		let cmd = RemoteCmd::write_bytes(tid, addr, bytes);
 		self.wr_value_remote(cmd)
@@ -342,10 +333,7 @@ where
 	client_read_int! { read_i128, i128 }
 
 	pub fn write_int<T: num_traits::ops::bytes::ToBytes>(
-		&mut self,
-		tid: Tid,
-		addr: TargetPtr,
-		val: T,
+		&mut self, tid: Tid, addr: TargetPtr, val: T,
 	) -> Result<usize> {
 		let bytes = val.to_ne_bytes().as_ref().to_vec();
 		let cmd = RemoteCmd::write_bytes(tid, addr, bytes);
@@ -364,17 +352,13 @@ where
 	// 	self.wr_value_remote(cmd)
 	// }
 	pub fn write_scratch_string<S: Into<String>>(
-		&mut self,
-		tid: Tid,
-		string: S,
+		&mut self, tid: Tid, string: S,
 	) -> Result<TargetPtr> {
 		let cmd = RemoteCmd::write_scratch_string(tid, string);
 		self.wr_value_remote(cmd)
 	}
 	pub fn write_scratch_bytes<S: Into<Vec<u8>>>(
-		&mut self,
-		tid: Tid,
-		bytes: S,
+		&mut self, tid: Tid, bytes: S,
 	) -> Result<TargetPtr> {
 		let cmd = RemoteCmd::write_scratch_bytes(tid, bytes);
 		self.wr_value_remote(cmd)
@@ -387,8 +371,7 @@ where
 
 impl Client<MasterComm, Response> {
 	pub(crate) fn new_master_comm(
-		tx: Sender<MasterComm>,
-		rx: Receiver<Response>,
+		tx: Sender<MasterComm>, rx: Receiver<Response>,
 		wrap: Box<dyn ApiWrapper<MasterComm, Response> + Send>,
 	) -> Self {
 		Self::new(0, tx, rx, wrap)
@@ -405,9 +388,7 @@ impl Client<Command, Response> {
 		R: std::io::Read + Send + 'static,
 		W: std::io::Write + Send + 'static,
 	>(
-		id: usize,
-		reader: BufReader<R>,
-		writer: BufWriter<W>,
+		id: usize, reader: BufReader<R>, writer: BufWriter<W>,
 	) -> Self {
 		let wrap = ClientGen;
 		let wrap = Box::new(wrap);

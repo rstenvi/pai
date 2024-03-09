@@ -275,10 +275,7 @@ impl Tracer {
 		Ok(())
 	}
 	fn _get_trampoline_addr(
-		&mut self,
-		tid: Tid,
-		t: TrampType,
-		maxattempts: usize,
+		&mut self, tid: Tid, t: TrampType, maxattempts: usize,
 	) -> Result<TargetPtr> {
 		if let Some(addr) = self.tramps.get(&t) {
 			Ok(*addr)
@@ -365,9 +362,7 @@ impl Tracer {
 		Self::new(proc, tracer)
 	}
 	pub fn spawn_in_mem<V: Into<Vec<String>>>(
-		name: &str,
-		data: Vec<u8>,
-		args: V,
+		name: &str, data: Vec<u8>, args: V,
 	) -> Result<(Self, Tid)> {
 		let args: Vec<String> = args.into();
 		match unsafe { nix::unistd::fork() } {
@@ -445,10 +440,7 @@ impl Tracer {
 		// }
 	}
 	fn check_if_swbp(
-		&mut self,
-		tracee: &mut TraceStop,
-		tid: Tid,
-		pc: TargetPtr,
+		&mut self, tracee: &mut TraceStop, tid: Tid, pc: TargetPtr,
 	) -> Result<Option<Stop>> {
 		let ret = if let Some(mut swbp) = self.swbps.remove(&pc) {
 			log::trace!("hit bp {swbp:?}");
@@ -481,10 +473,7 @@ impl Tracer {
 		Ok(ret)
 	}
 	fn handle_wait_signal(
-		&mut self,
-		tracee: &mut TraceStop,
-		signal: pete::Signal,
-		tid: Tid,
+		&mut self, tracee: &mut TraceStop, signal: pete::Signal, tid: Tid,
 	) -> Result<Stop> {
 		let pc = tracee.regs.get_pc();
 
@@ -527,11 +516,7 @@ impl Tracer {
 		}
 	}
 	pub fn insert_bp(
-		&mut self,
-		_cid: usize,
-		tid: Tid,
-		pc: TargetPtr,
-		bptype: BpType,
+		&mut self, _cid: usize, tid: Tid, pc: TargetPtr, bptype: BpType,
 	) -> Result<()> {
 		if !matches!(bptype, BpType::SingleUse) {
 			log::error!("BP type {bptype:?} not supported on ptrace backend");
@@ -601,10 +586,7 @@ impl Tracer {
 
 	/// Read up-until NULL-byte, but don't read the actual NULL-byte
 	fn read_until_null_byte(
-		&mut self,
-		tracee: &mut Tracee,
-		mut addr: u64,
-		output: &mut Vec<u8>,
+		&mut self, tracee: &mut Tracee, mut addr: u64, output: &mut Vec<u8>,
 	) -> Result<()> {
 		const READSZ: usize = 32;
 		let mut data = vec![0; READSZ];
@@ -784,10 +766,7 @@ impl Tracer {
 		Ok(loc)
 	}
 	fn _scratch_write_bytes(
-		&mut self,
-		tid: Tid,
-		bytes: Vec<u8>,
-		attempts: usize,
+		&mut self, tid: Tid, bytes: Vec<u8>, attempts: usize,
 	) -> Result<TargetPtr> {
 		if attempts > 0 {
 			let prot = Perms::new().read().write();
@@ -843,10 +822,7 @@ impl Tracer {
 		}
 	}
 	fn _exec_tramp(
-		&mut self,
-		mut tracee: TraceStop,
-		tramp: &TrampType,
-		max: usize,
+		&mut self, mut tracee: TraceStop, tramp: &TrampType, max: usize,
 	) -> TraceResult<TraceStop> {
 		if let Some(pc) = self.tramps.get(tramp) {
 			let pc = *pc;
@@ -1003,9 +979,7 @@ impl Tracer {
 		Ok(())
 	}
 	fn run_until(
-		&mut self,
-		tracee: TraceStop,
-		dostop: fn(&pete::Stop) -> Result<bool>,
+		&mut self, tracee: TraceStop, dostop: fn(&pete::Stop) -> Result<bool>,
 	) -> TraceResult<TraceStop> {
 		log::debug!("entered run_until");
 		self.tracer

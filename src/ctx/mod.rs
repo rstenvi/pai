@@ -249,10 +249,11 @@ mod tests {
 	fn clientmgr_early_ret_func() {
 		let numsleep = 3;
 		let mut files = crate::tests::get_all_tar_files().unwrap();
-		let sleep = files
-			.remove("sleep");
+		let sleep = files.remove("sleep");
 		#[cfg(target_arch = "mips")]
-		if sleep.is_none() { return; }
+		if sleep.is_none() {
+			return;
+		}
 
 		let sleep = sleep.expect("sleep not present in testdata");
 		let pargs = vec![format!("{numsleep}")];
@@ -289,11 +290,12 @@ mod tests {
 	fn clientmgr_strace_clone() {
 		let numclones = 2; // This is hard-coded in program
 		let mut files = crate::tests::get_all_tar_files().unwrap();
-		let threads = files
-			.remove("threads");
+		let threads = files.remove("threads");
 
 		#[cfg(target_arch = "mips")]
-		if threads.is_none() { return; }
+		if threads.is_none() {
+			return;
+		}
 		let threads = threads.expect("threads not present in testdata");
 
 		let mut ctx: Main<usize, crate::Error> =
@@ -329,11 +331,12 @@ mod tests {
 	fn clientmgr_strace_fork() {
 		let numclones = 1;
 		let mut files = crate::tests::get_all_tar_files().unwrap();
-		let forkwait = files
-			.remove("forkwait");
+		let forkwait = files.remove("forkwait");
 
 		#[cfg(target_arch = "mips")]
-		if forkwait.is_none() { return; }
+		if forkwait.is_none() {
+			return;
+		}
 
 		let forkwait = forkwait.expect("forkwait not present in testdata");
 		let pargs = vec![format!("{numclones}")];
@@ -466,10 +469,11 @@ mod tests {
 	fn clientmgr_bp2() {
 		let count = 2;
 		let mut files = crate::tests::get_all_tar_files().unwrap();
-		let getpid = files
-			.remove("getpid");
+		let getpid = files.remove("getpid");
 		#[cfg(target_arch = "mips")]
-		if getpid.is_none() { return; }
+		if getpid.is_none() {
+			return;
+		}
 
 		let getpid = getpid.expect("getpid not present in testdata");
 		let pargs = vec![format!("{count}")];

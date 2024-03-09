@@ -344,9 +344,7 @@ pub trait RegisterAccess {
 }
 
 pub(crate) fn prep_native_syscall(
-	regs: &mut dyn RegisterAccess,
-	sysno: usize,
-	args: &[TargetPtr],
+	regs: &mut dyn RegisterAccess, sysno: usize, args: &[TargetPtr],
 ) -> Result<()> {
 	log::trace!("sysno {sysno} | args {args:?}");
 	let cc = GenericCc::new_syscall_target()?;

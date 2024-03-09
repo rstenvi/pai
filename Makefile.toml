@@ -8,26 +8,17 @@ extend= [
 ]
 
 [tasks.publish]
-dependencies = ["enforcestd", "buildall", "fulltest"]
+dependencies = ["enforcestd", "test-all"]
 
 [tasks.build]
 args = [ "build", "--all-features", "--target-dir=output", "--target=${@}"]
-
-[tasks.buildall]
-command = "cargo"
-args = [
-	"make", "build",
-	"x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu",
-	"aarch64-unknown-linux-gnu", "armv7-unknown-linux-gnueabihf",
-	"riscv64gc-unknown-linux-gnu",
-]
 
 [tasks.coverage]
 alias="coverage_grcov"
 
 [tasks.bench]
 command = "cargo"
-args = ["bench", "--features=syscalls"]
+args = ["bench", "--all-features"]
 
 # # Doc also expects target argument
 [tasks.docpublic]

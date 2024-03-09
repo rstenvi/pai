@@ -16,11 +16,8 @@ pub struct Syscall {
 
 impl Syscall {
 	pub fn new(
-		ident: parser::Identifier,
-		sysno: usize,
-		args: Vec<parser::Argument>,
-		output: parser::ArgType,
-		arches: Vec<parser::Arch>,
+		ident: parser::Identifier, sysno: usize, args: Vec<parser::Argument>,
+		output: parser::ArgType, arches: Vec<parser::Arch>,
 	) -> Self {
 		Self {
 			ident,

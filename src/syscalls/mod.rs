@@ -421,9 +421,7 @@ pub struct BuildValue {
 }
 impl BuildValue {
 	fn evaluate_size_struct(
-		&mut self,
-		names: &mut Vec<String>,
-		s: &parser::Struct,
+		&mut self, names: &mut Vec<String>, s: &parser::Struct,
 	) -> Result<usize> {
 		let mut ret = 0;
 		names.push(s.identifier().name.clone());
@@ -458,10 +456,7 @@ impl BuildValue {
 		}
 	}
 	fn evaluate_size_field(
-		&mut self,
-		names: &mut Vec<String>,
-		arg: &ArgType,
-		opts: &[ArgOpt],
+		&mut self, names: &mut Vec<String>, arg: &ArgType, opts: &[ArgOpt],
 	) -> Result<usize> {
 		if arg.is_int() {
 			let sz = arg.evaluate_size(&Target::syzarch())?;
@@ -552,10 +547,7 @@ impl SyscallItem {
 		None
 	}
 	fn parse_ptr_ident<T: Send + 'static>(
-		raw: TargetPtr,
-		id: &parser::Identifier,
-		tid: isize,
-		client: &mut Client<T, Response>,
+		raw: TargetPtr, id: &parser::Identifier, tid: isize, client: &mut Client<T, Response>,
 		maxdepth: isize,
 	) -> Result<Option<serde_json::Value>>
 	where
@@ -627,13 +619,8 @@ impl SyscallItem {
 		}
 	}
 	fn parse_ptr<T: Send + 'static>(
-		raw: TargetPtr,
-		tid: Tid,
-		client: &mut Client<T, Response>,
-		arg: &ArgType,
-		opts: &[ArgOpt],
-		len: Option<&ValueLen>,
-		maxdepth: isize,
+		raw: TargetPtr, tid: Tid, client: &mut Client<T, Response>, arg: &ArgType, opts: &[ArgOpt],
+		len: Option<&ValueLen>, maxdepth: isize,
 	) -> Result<Option<Value>>
 	where
 		crate::Error: From<crossbeam_channel::SendError<T>>,
@@ -706,10 +693,7 @@ impl SyscallItem {
 		}
 	}
 	pub fn parse_deep<T: Send + 'static>(
-		&mut self,
-		tid: Tid,
-		client: &mut Client<T, Response>,
-		parsedir: Direction,
+		&mut self, tid: Tid, client: &mut Client<T, Response>, parsedir: Direction,
 	) -> Result<()>
 	where
 		crate::Error: From<crossbeam_channel::SendError<T>>,
@@ -1030,9 +1014,7 @@ impl SyscallItem {
 		}
 	}
 	fn resolve_resource_ident(
-		raw: TargetPtr,
-		ident: &Identifier,
-		dir: Direction,
+		raw: TargetPtr, ident: &Identifier, dir: Direction,
 	) -> Result<Option<Value>> {
 		let basics = get_parsed!().resource_to_basics(ident);
 		log::trace!("basics {ident:?} ->  {basics:?}");

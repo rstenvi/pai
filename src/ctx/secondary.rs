@@ -62,9 +62,7 @@ where
 	Err: Into<crate::Error>,
 {
 	pub fn new(
-		real: TargetPtr,
-		fake: TargetPtr,
-		lazylink: bool,
+		real: TargetPtr, fake: TargetPtr, lazylink: bool,
 		func: Callback<HookEntryCb<T, Err>, HookExitCb<T, Err>>,
 	) -> Self {
 		Self {
@@ -145,9 +143,7 @@ where
 	Err: Into<crate::Error>,
 {
 	pub(crate) fn new(
-		mut client: crate::Client,
-		data: T,
-		req: Option<ReqNewClient>,
+		mut client: crate::Client, data: T, req: Option<ReqNewClient>,
 	) -> Result<Self> {
 		let signalcbs = HashMap::new();
 		let bpcbs = HashMap::new();
@@ -330,9 +326,7 @@ where
 
 	/// Resolve a given symbol `name` in a given module with path `pbuf`
 	pub fn resolve_symbol_in_mod(
-		&mut self,
-		pbuf: &PathBuf,
-		name: &str,
+		&mut self, pbuf: &PathBuf, name: &str,
 	) -> Result<Option<ElfSymbol>> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		self.ensure_elf_exists(&pbuf)?;
@@ -352,29 +346,17 @@ where
 	/// Insert a hook to be executed every time the function `name` in `pbuf` is
 	/// called.
 	pub fn hook_got_entry(
-		&mut self,
-		tid: Tid,
-		pbuf: &PathBuf,
-		name: &str,
-		cbentry: HookEntryCb<T, Err>,
+		&mut self, tid: Tid, pbuf: &PathBuf, name: &str, cbentry: HookEntryCb<T, Err>,
 	) -> Result<()> {
 		self.hook_got(tid, pbuf, name, cbentry, Self::empty_hook_func_exit)
 	}
 	pub fn hook_got_exit(
-		&mut self,
-		tid: Tid,
-		pbuf: &PathBuf,
-		name: &str,
-		cbexit: HookExitCb<T, Err>,
+		&mut self, tid: Tid, pbuf: &PathBuf, name: &str, cbexit: HookExitCb<T, Err>,
 	) -> Result<()> {
 		self.hook_got(tid, pbuf, name, Self::empty_hook_func_entry, cbexit)
 	}
 	pub fn hook_got(
-		&mut self,
-		tid: Tid,
-		pbuf: &PathBuf,
-		name: &str,
-		cbentry: HookEntryCb<T, Err>,
+		&mut self, tid: Tid, pbuf: &PathBuf, name: &str, cbentry: HookEntryCb<T, Err>,
 		cbexit: HookExitCb<T, Err>,
 	) -> Result<()> {
 		// A couple of different states the GOT entry can be in:
@@ -422,11 +404,7 @@ where
 	}
 
 	pub fn overwrite_got_symbol(
-		&mut self,
-		tid: Tid,
-		pbuf: &PathBuf,
-		name: &str,
-		value: TargetPtr,
+		&mut self, tid: Tid, pbuf: &PathBuf, name: &str, value: TargetPtr,
 	) -> Result<()> {
 		let addr = self.resolve_symbol_got(pbuf, name)?;
 		self.client.write_int(tid, addr, usize::from(value))?;
@@ -441,9 +419,7 @@ where
 	/// Enumerate all symbols of the given type. See [SymbolType] for more
 	/// details on type of symbols.
 	pub fn enumerate_symbols_of_type(
-		&mut self,
-		pbuf: &PathBuf,
-		symtype: SymbolType,
+		&mut self, pbuf: &PathBuf, symtype: SymbolType,
 	) -> Result<Vec<ElfSymbol>> {
 		let pbuf = std::fs::canonicalize(pbuf)?;
 		self.ensure_elf_exists(&pbuf)?;
@@ -684,10 +660,7 @@ where
 	/// Call the function at `addr` with the arguments in `args`. The return
 	/// value is what we got from the tracee.
 	pub fn call_func(
-		&mut self,
-		tid: Tid,
-		addr: TargetPtr,
-		args: &[TargetPtr],
+		&mut self, tid: Tid, addr: TargetPtr, args: &[TargetPtr],
 	) -> Result<TargetPtr> {
 		let mut regs = self.client.get_registers(tid)?;
 		let oregs = regs.clone();
@@ -736,9 +709,7 @@ where
 	}
 	#[cfg(feature = "syscalls")]
 	pub fn set_generic_syscall_handler(
-		&mut self,
-		cbentry: SyscallEntryCb<T, Err>,
-		cbexit: SyscallExitCb<T, Err>,
+		&mut self, cbentry: SyscallEntryCb<T, Err>, cbexit: SyscallExitCb<T, Err>,
 	) {
 		self.syscallcb = Some(Callback::new(cbentry, cbexit));
 		self.args.set_intercept_all_syscalls(true);
@@ -754,10 +725,7 @@ where
 	}
 	#[cfg(feature = "syscalls")]
 	pub fn set_syscall_hook(
-		&mut self,
-		sysno: usize,
-		cbentry: SyscallEntryCb<T, Err>,
-		cbexit: SyscallExitCb<T, Err>,
+		&mut self, sysno: usize, cbentry: SyscallEntryCb<T, Err>, cbexit: SyscallExitCb<T, Err>,
 	) {
 		self.syscallcbs
 			.insert(sysno, Callback::new(cbentry, cbexit));
@@ -774,10 +742,7 @@ where
 	}
 
 	pub fn register_function_hook(
-		&mut self,
-		tid: Tid,
-		addr: TargetPtr,
-		cbentry: HookEntryCb<T, Err>,
+		&mut self, tid: Tid, addr: TargetPtr, cbentry: HookEntryCb<T, Err>,
 		cbexit: HookExitCb<T, Err>,
 	) -> Result<()> {
 		self.client.insert_bp(tid, addr)?;
@@ -786,26 +751,17 @@ where
 		Ok(())
 	}
 	pub fn register_function_hook_entry(
-		&mut self,
-		tid: Tid,
-		addr: TargetPtr,
-		cbentry: HookEntryCb<T, Err>,
+		&mut self, tid: Tid, addr: TargetPtr, cbentry: HookEntryCb<T, Err>,
 	) -> Result<()> {
 		self.register_function_hook(tid, addr, cbentry, Self::empty_hook_func_exit)
 	}
 	pub fn register_function_hook_exit(
-		&mut self,
-		tid: Tid,
-		addr: TargetPtr,
-		cbexit: HookExitCb<T, Err>,
+		&mut self, tid: Tid, addr: TargetPtr, cbexit: HookExitCb<T, Err>,
 	) -> Result<()> {
 		self.register_function_hook(tid, addr, Self::empty_hook_func_entry, cbexit)
 	}
 	pub fn register_breakpoint_handler(
-		&mut self,
-		tid: Tid,
-		addr: TargetPtr,
-		cb: BreakpointCb<T, Err>,
+		&mut self, tid: Tid, addr: TargetPtr, cb: BreakpointCb<T, Err>,
 	) -> Result<()> {
 		self.client.insert_bp(tid, addr)?;
 		self.bpcbs.insert(addr, cb);
