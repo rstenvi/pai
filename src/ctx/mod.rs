@@ -404,7 +404,7 @@ mod tests {
 
 		let pid = sec
 			.client_mut()
-			.exec_raw_syscall(tid, libc::SYS_getpid as usize, &[])
+			.exec_raw_syscall(tid, libc::SYS_getpid as usize, [])
 			.unwrap();
 		assert_eq!(<TargetPtr as Into<Tid>>::into(pid), tid);
 

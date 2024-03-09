@@ -298,7 +298,7 @@ impl Tracer {
 	pub fn set_trampoline_code(&mut self, t: TrampType, code: Vec<u8>) -> Result<()> {
 		// No point in setting trampoline code if we've already written it to
 		// memory. We could re-write, but would have to implement it.
-		if self.tramps.get(&t).is_some() {
+		if self.tramps.contains_key(&t) {
 			return Err(Error::msg("trampoline has already been written to memory"));
 		}
 		self.trampcode.insert(t, code);

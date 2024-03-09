@@ -684,7 +684,7 @@ pub(crate) mod tests {
 	fn extract_tar_files() {
 		let maps = get_all_tar_files().unwrap();
 		#[cfg(not(target_arch = "mips"))]
-		assert!(maps.get("threads").is_some());
+		assert!(maps.contains_key("threads"));
 	}
 
 	#[test]
